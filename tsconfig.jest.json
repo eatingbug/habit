@@ -1,0 +1,15 @@
+{
+  "//": "Self-contained TS config for the pure-TS domain/data jest suite. Deliberately does NOT extend expo/tsconfig.base (whose moduleResolution 'bundler' is incompatible with the CommonJS module that ts-jest needs in a Node test environment). Keeps the Phase 1-2 test gate isolated from the app build config.",
+  "compilerOptions": {
+    "target": "ES2019",
+    "lib": ["ES2020"],
+    "module": "CommonJS",
+    "moduleResolution": "node",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true
+  },
+  "include": ["src/**/*.ts"]
+}
