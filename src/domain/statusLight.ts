@@ -87,7 +87,7 @@ export function deriveStatusLight(habit: Habit, entries: HabitEntry[], today: st
   // INTERVENTION
   if (
     habit.lifecycle === 'forming' &&
-    consecutiveMissCount(entries, today) >= TUNING.statusLight.interventionConsecMiss
+    consecutiveMissCount(entries, today, habit) >= TUNING.statusLight.interventionConsecMiss
   ) {
     return 'intervention';
   }

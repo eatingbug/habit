@@ -1,4 +1,4 @@
-import type { HabitEntry } from '../models';
+import type { HabitEntry, SkipReason } from '../models';
 import {
   addDays,
   daysBetween,
@@ -8,8 +8,9 @@ import {
   nthWeekWindow,
   isExceptionSkip,
   metFloor,
-  aboveFloorAmount,
   entriesInWindow,
+  toDayRecords,
+  countEngagedDays,
   floorCompletionRate,
   DateWindow,
 } from './util';
@@ -24,6 +25,19 @@ function entry(over: Partial<HabitEntry> & Pick<HabitEntry, 'date' | 'state'>): 
     ...over,
   };
 }
+
+/** Facts-only helpers for the day-based helpers. `state` is a vestigial placeholder. */
+let seq = 0;
+function act(date: string, actual: number): HabitEntry {
+  seq += 1;
+  return { id: `a${seq}`, habitId: 'h1', date, timestamp: `${date}T12:00:00.000Z`, actual, state: 'done' };
+}
+function skip(date: string, skipReason: SkipReason): HabitEntry {
+  seq += 1;
+  return { id: `s${seq}`, habitId: 'h1', date, timestamp: `${date}T12:00:00.000Z`, actual: 0, skipReason, state: 'skip' };
+}
+
+const COUNT_HABIT = { floor: 10, target: 30, kind: 'count' as const };
 
 describe('addDays', () => {
   it('moves forward', () => {
@@ -153,8 +167,8 @@ describe('nthWeekWindow (weekStartsOn = 1, Monday)', () => {
   });
 });
 
-describe('isExceptionSkip', () => {
-  it('is true only for skip + exception', () => {
+describe('isExceptionSkip (facts-only: reason === exception)', () => {
+  it('is true for an exception skip', () => {
     expect(isExceptionSkip(entry({ date: '2026-06-10', state: 'skip', skipReason: 'exception' }))).toBe(true);
   });
 
@@ -162,13 +176,13 @@ describe('isExceptionSkip', () => {
     expect(isExceptionSkip(entry({ date: '2026-06-10', state: 'skip', skipReason: 'floor' }))).toBe(false);
   });
 
-  it('is false for a non-skip state even if no reason', () => {
+  it('is false for an activity row (no reason)', () => {
     expect(isExceptionSkip(entry({ date: '2026-06-10', state: 'done', actual: 5 }))).toBe(false);
     expect(isExceptionSkip(entry({ date: '2026-06-10', state: 'over', actual: 50 }))).toBe(false);
   });
 });
 
-describe('metFloor', () => {
+describe('metFloor (legacy per-row, kept for UI)', () => {
   it('is true for done', () => {
     expect(metFloor(entry({ date: '2026-06-10', state: 'done', actual: 5 }))).toBe(true);
   });
@@ -180,22 +194,6 @@ describe('metFloor', () => {
   it('is false for skip (any reason)', () => {
     expect(metFloor(entry({ date: '2026-06-10', state: 'skip', skipReason: 'floor' }))).toBe(false);
     expect(metFloor(entry({ date: '2026-06-10', state: 'skip', skipReason: 'exception' }))).toBe(false);
-  });
-});
-
-describe('aboveFloorAmount', () => {
-  const habit = { floor: 10 };
-
-  it('is the difference when actual strictly exceeds the floor', () => {
-    expect(aboveFloorAmount(entry({ date: '2026-06-10', state: 'over', actual: 25 }), habit)).toBe(15);
-  });
-
-  it('is 0 when actual equals the floor', () => {
-    expect(aboveFloorAmount(entry({ date: '2026-06-10', state: 'done', actual: 10 }), habit)).toBe(0);
-  });
-
-  it('is 0 when actual is below the floor', () => {
-    expect(aboveFloorAmount(entry({ date: '2026-06-10', state: 'skip', actual: 3 }), habit)).toBe(0);
   });
 });
 
@@ -219,57 +217,110 @@ describe('entriesInWindow', () => {
   });
 });
 
-describe('floorCompletionRate', () => {
+describe('toDayRecords', () => {
+  it('groups multiple rows on a date and sums activity', () => {
+    const recs = toDayRecords([act('2026-06-02', 6), act('2026-06-02', 6)], COUNT_HABIT);
+    expect(recs).toHaveLength(1);
+    expect(recs[0]).toMatchObject({ date: '2026-06-02', state: 'done', sumActual: 12 });
+  });
+
+  it('classifies each day and sorts ascending by date', () => {
+    const recs = toDayRecords(
+      [act('2026-06-03', 3), skip('2026-06-01', 'cue'), act('2026-06-02', 50)],
+      COUNT_HABIT,
+    );
+    expect(recs.map((r) => [r.date, r.state])).toEqual([
+      ['2026-06-01', 'skip'],
+      ['2026-06-02', 'over'],
+      ['2026-06-03', 'partial'],
+    ]);
+  });
+
+  it('exposes the effective skip reason', () => {
+    const recs = toDayRecords([skip('2026-06-01', 'floor')], COUNT_HABIT);
+    expect(recs[0].effectiveSkipReason).toBe('floor');
+  });
+
+  it('binary habit ignores target (multiple done rows → one done day)', () => {
+    const binary = { floor: 1, kind: 'binary' as const };
+    const recs = toDayRecords([act('2026-06-01', 1), act('2026-06-01', 1)], binary);
+    expect(recs).toEqual([
+      { date: '2026-06-01', state: 'done', sumActual: 2, effectiveSkipReason: undefined },
+    ]);
+  });
+});
+
+describe('countEngagedDays', () => {
+  const win: DateWindow = { from: '2026-06-01', to: '2026-06-30' };
+  const entries = [
+    act('2026-06-02', 10), // done
+    act('2026-06-03', 3), // partial
+    skip('2026-06-04', 'floor'), // miss
+    skip('2026-06-05', 'exception'), // excluded
+  ];
+
+  it('counts done/partial/non-exception-skip by default; excludes exception & blank', () => {
+    expect(countEngagedDays(entries, win, COUNT_HABIT)).toBe(3);
+  });
+
+  it('excludes partial when countPartialAsEngaged is false', () => {
+    expect(countEngagedDays(entries, win, COUNT_HABIT, { countPartialAsEngaged: false })).toBe(2);
+  });
+});
+
+describe('floorCompletionRate (day-based)', () => {
   const win: DateWindow = { from: '2026-06-01', to: '2026-06-30' };
 
   it('empty sample → 1.0', () => {
-    expect(floorCompletionRate([], win)).toBe(1);
+    expect(floorCompletionRate([], win, COUNT_HABIT)).toBe(1);
   });
 
-  it('1.0 when there are no entries inside the window (blanks excluded)', () => {
-    const entries = [entry({ date: '2026-05-15', state: 'skip', skipReason: 'floor' })];
-    expect(floorCompletionRate(entries, win)).toBe(1);
+  it('1.0 when nothing falls in the window (blanks excluded)', () => {
+    expect(floorCompletionRate([act('2026-05-15', 3)], win, COUNT_HABIT)).toBe(1);
   });
 
   it('exception skips are excluded from the denominator', () => {
-    // 1 done, 1 exception skip → denominator 1, numerator 1 → 1.0 (not 0.5).
-    const entries = [
-      entry({ date: '2026-06-02', state: 'done', actual: 5 }),
-      entry({ date: '2026-06-03', state: 'skip', skipReason: 'exception' }),
-    ];
-    expect(floorCompletionRate(entries, win)).toBe(1);
+    const entries = [act('2026-06-02', 10), skip('2026-06-03', 'exception')];
+    expect(floorCompletionRate(entries, win, COUNT_HABIT)).toBe(1);
   });
 
-  it('a real (floor) skip counts in the denominator as a miss', () => {
-    // 1 done, 1 floor-skip → denominator 2, numerator 1 → 0.5.
-    const entries = [
-      entry({ date: '2026-06-02', state: 'done', actual: 5 }),
-      entry({ date: '2026-06-03', state: 'skip', skipReason: 'floor' }),
-    ];
-    expect(floorCompletionRate(entries, win)).toBe(0.5);
+  it('a real (floor) skip counts as a miss', () => {
+    const entries = [act('2026-06-02', 10), skip('2026-06-03', 'floor')];
+    expect(floorCompletionRate(entries, win, COUNT_HABIT)).toBe(0.5);
   });
 
-  it('yields the exact met/counted fraction for a mixed set', () => {
-    // In-window: 2 done, 1 over (met = 3), 1 floor-skip, 1 cue-skip (misses),
-    // 1 exception-skip (excluded). Out-of-window done is ignored.
-    // counted = 5, met = 3 → 0.6.
-    const entries = [
-      entry({ date: '2026-06-05', state: 'done', actual: 5 }),
-      entry({ date: '2026-06-06', state: 'done', actual: 5 }),
-      entry({ date: '2026-06-07', state: 'over', actual: 50 }),
-      entry({ date: '2026-06-08', state: 'skip', skipReason: 'floor' }),
-      entry({ date: '2026-06-09', state: 'skip', skipReason: 'cue' }),
-      entry({ date: '2026-06-10', state: 'skip', skipReason: 'exception' }), // excluded
-      entry({ date: '2026-07-01', state: 'done', actual: 5 }), // out of window
-    ];
-    expect(floorCompletionRate(entries, win)).toBeCloseTo(0.6, 10);
+  it('a partial day lowers the rate by default (engaged, not met)', () => {
+    const entries = [act('2026-06-02', 10), act('2026-06-03', 3)];
+    expect(floorCompletionRate(entries, win, COUNT_HABIT)).toBe(0.5);
   });
 
-  it('returns 0 when every counted entry is a miss', () => {
+  it('with countPartialAsEngaged:false, partial days are excluded from both parts', () => {
+    const entries = [act('2026-06-02', 10), act('2026-06-03', 3)];
+    expect(floorCompletionRate(entries, win, COUNT_HABIT, { countPartialAsEngaged: false })).toBe(1);
+  });
+
+  it('sums multiple activity rows on one day before classifying', () => {
+    const entries = [act('2026-06-02', 6), act('2026-06-02', 6)]; // one day, sum 12 → done
+    expect(floorCompletionRate(entries, win, COUNT_HABIT)).toBe(1);
+  });
+
+  it('yields the exact met/engaged fraction for a mixed set', () => {
     const entries = [
-      entry({ date: '2026-06-02', state: 'skip', skipReason: 'floor' }),
-      entry({ date: '2026-06-03', state: 'skip', skipReason: 'cue' }),
+      act('2026-06-05', 10), // done
+      act('2026-06-06', 10), // done
+      act('2026-06-07', 50), // over
+      skip('2026-06-08', 'floor'), // miss
+      skip('2026-06-09', 'cue'), // miss
+      skip('2026-06-10', 'exception'), // excluded
+      act('2026-06-11', 4), // partial → engaged, not met
+      act('2026-07-01', 10), // out of window
     ];
-    expect(floorCompletionRate(entries, win)).toBe(0);
+    // engaged = 6 (3 met + 2 miss + 1 partial), met = 3 → 0.5
+    expect(floorCompletionRate(entries, win, COUNT_HABIT)).toBeCloseTo(0.5, 10);
+  });
+
+  it('returns 0 when every engaged day is a miss', () => {
+    const entries = [skip('2026-06-02', 'floor'), skip('2026-06-03', 'cue')];
+    expect(floorCompletionRate(entries, win, COUNT_HABIT)).toBe(0);
   });
 });

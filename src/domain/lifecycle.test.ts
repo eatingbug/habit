@@ -44,6 +44,12 @@ function dataset(count: number, met: number): HabitEntry[] {
   return out;
 }
 
+/** A partial day: activity below the floor (actual 2 < floor 5). */
+function partial(date: string): HabitEntry {
+  entryCounter += 1;
+  return { id: `p${entryCounter}`, habitId: 'h1', date, timestamp: `${date}T09:00:00.000Z`, actual: 2, state: 'done' };
+}
+
 describe('evaluateLifecycle', () => {
   it('promotes forming → established when age ≥ 30 and rate ≥ 0.80 with real data', () => {
     // 10 entries, 8 met → rate = 0.80 exactly (the threshold).
@@ -133,5 +139,27 @@ describe('evaluateLifecycle', () => {
       entry('2026-06-05', 'skip', 'exception'),
     ];
     expect(evaluateLifecycle(habit(), entries, TODAY)).toBe('established');
+  });
+
+  // ── A2: partial days are excluded from the demotion rate (scoped fairness) ────
+  it('A2: honest partial days do not demote an established habit', () => {
+    // 4 done + 3 partial. Partial-INCLUDED rate would be 4/7 ≈ 0.57 (< 0.80 → would demote),
+    // but the demotion rate EXCLUDES partial: engaged 4, met 4 → 1.0 → stays established.
+    const established = habit({ lifecycle: 'established' });
+    const entries = [
+      entry('2026-06-01', 'done'),
+      entry('2026-06-02', 'done'),
+      entry('2026-06-03', 'done'),
+      entry('2026-06-04', 'done'),
+      partial('2026-06-05'),
+      partial('2026-06-06'),
+      partial('2026-06-07'),
+    ];
+    expect(evaluateLifecycle(established, entries, TODAY)).toBe('established');
+  });
+
+  it('A2: a window of only partial days stays forming (no engaged floor data)', () => {
+    const entries = [partial('2026-06-01'), partial('2026-06-02'), partial('2026-06-03')];
+    expect(evaluateLifecycle(habit(), entries, TODAY)).toBe('forming');
   });
 });

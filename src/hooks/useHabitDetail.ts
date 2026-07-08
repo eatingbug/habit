@@ -151,9 +151,9 @@ export function useHabitDetail(id: string): HabitDetailData {
   const statName = habit
     ? (TUNING.stats.find((s) => s.id === habit.statId)?.name ?? habit.statId)
     : '';
-  const streak = habit ? computeStreak(entries, today) : 0;
+  const streak = habit ? computeStreak(entries, today, habit) : 0;
   const floorRatePct = habit
-    ? Math.round(floorCompletionRate(entries, windowFrom(today, TUNING.diagnosis.floorRateWindowDays)) * 100)
+    ? Math.round(floorCompletionRate(entries, windowFrom(today, TUNING.diagnosis.floorRateWindowDays), habit) * 100)
     : 0;
   const xpWeek = habit ? weekXP(entries, today) : 0;
 

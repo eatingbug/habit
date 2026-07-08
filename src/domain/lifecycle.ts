@@ -5,7 +5,7 @@
  */
 import type { Habit, HabitEntry } from '../models';
 import { TUNING } from '../config/tuning';
-import { daysBetween, entriesInWindow, floorCompletionRate, isExceptionSkip, windowFrom } from './util';
+import { countEngagedDays, daysBetween, floorCompletionRate, windowFrom } from './util';
 
 /**
  * Compute the lifecycle a habit SHOULD be in as of `today`.
@@ -14,11 +14,13 @@ import { daysBetween, entriesInWindow, floorCompletionRate, isExceptionSkip, win
  *   auto-pauses or auto-resumes, so a paused habit short-circuits to "paused".
  * - Otherwise (forming / established) we run ONE symmetric trailing-window verdict that
  *   drives both promotion and demotion (no hysteresis in V1 — SPEC §12.4):
- *     established ⇔ age ≥ 30d AND there is real (non-exception) data in the window
+ *     established ⇔ age ≥ 30d AND there is real engaged data in the window
  *                  AND floor-completion rate ≥ 80%.
  *
- * The `sample.length > 0` guard is load-bearing: floorCompletionRate returns 1.0 for an
- * empty sample, which would otherwise spuriously promote a habit that has no data.
+ * A2 (scoped fairness, SPEC §3.2/§4.7): demotion must not punish an honest shortfall, so
+ * both the rate AND the sample guard here EXCLUDE `partial` days
+ * (`countPartialAsEngaged: false`). An engaged-count > 0 guard is load-bearing because
+ * floorCompletionRate returns 1.0 for an empty sample.
  */
 export function evaluateLifecycle(
   habit: Habit,
@@ -28,13 +30,14 @@ export function evaluateLifecycle(
   if (habit.lifecycle === 'paused') return 'paused';
 
   const w = windowFrom(today, TUNING.formingToEstablishedDays);
-  const sample = entriesInWindow(entries, w).filter((e) => !isExceptionSkip(e));
-  const rate = floorCompletionRate(entries, w);
+  const opts = { countPartialAsEngaged: false };
+  const engaged = countEngagedDays(entries, w, habit, opts);
+  const rate = floorCompletionRate(entries, w, habit, opts);
   const age = daysBetween(today, habit.createdAt.slice(0, 10));
 
   const established =
     age >= TUNING.formingToEstablishedDays &&
-    sample.length > 0 &&
+    engaged > 0 &&
     rate >= TUNING.formingToEstablishedRate;
 
   return established ? 'established' : 'forming';

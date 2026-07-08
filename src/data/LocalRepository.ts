@@ -105,10 +105,9 @@ export class LocalRepository implements HabitRepository {
   async getFreeLogs(from: string, to: string): Promise<FreeLog[]> {
     const logs = await this.readCollection<FreeLog>(FREELOGS_KEY);
     return logs
-      .filter((l) => {
-        const date = l.timestamp.slice(0, 10);
-        return date >= from && date <= to;
-      })
+      // Forward-compat: logs persisted before `date` read back with it derived from timestamp.
+      .map((l) => (l.date ? l : { ...l, date: l.timestamp.slice(0, 10) }))
+      .filter((l) => l.date! >= from && l.date! <= to)
       .sort((a, b) => a.timestamp.localeCompare(b.timestamp));
   }
 

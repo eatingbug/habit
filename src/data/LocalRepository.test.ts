@@ -181,6 +181,19 @@ describe("freelogs", () => {
     const got = await repo.getFreeLogs("2000-01-01", "2100-01-01");
     expect(got.map((l) => l.id)).toEqual(["b"]);
   });
+
+  test("a log persisted without `date` reads back with date derived from its timestamp", async () => {
+    await repo.upsertFreeLog(makeLog({ id: "nd", timestamp: "2026-06-12T08:00:00.000Z" }));
+    const [got] = await repo.getFreeLogs("2026-06-12", "2026-06-12");
+    expect(got.date).toBe("2026-06-12");
+  });
+
+  test("an explicit `date` is authoritative for filtering (independent of timestamp)", async () => {
+    // Backfilled log: dated 06-11 though its timestamp is 06-30.
+    await repo.upsertFreeLog(makeLog({ id: "bf", date: "2026-06-11", timestamp: "2026-06-30T08:00:00.000Z" }));
+    expect((await repo.getFreeLogs("2026-06-10", "2026-06-12")).map((l) => l.id)).toContain("bf");
+    expect((await repo.getFreeLogs("2026-06-28", "2026-07-01")).map((l) => l.id)).not.toContain("bf");
+  });
 });
 
 function makeReflection(over: Partial<ReflectionSession> = {}): ReflectionSession {

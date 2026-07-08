@@ -79,7 +79,7 @@ export function useDashboard(): DashboardData {
         name: h.name,
         statName: TUNING.stats.find((s) => s.id === h.statId)?.name ?? h.statId,
         cue: h.cue,
-        streak: computeStreak(entries, today),
+        streak: computeStreak(entries, today, h),
         light: deriveStatusLight(h, entries, today),
         cells: buildHeatCells(h, entries, today),
       };

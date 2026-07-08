@@ -16,6 +16,9 @@ export interface Stat {
 // ── §3.2 Habit ───────────────────────────────────────────────────────────────
 export type Lifecycle = 'forming' | 'established' | 'paused';
 
+// Creation invariants (SPEC §3.2, enforced by the creation form / repository):
+//   floor >= 1; target, when present, is strictly > floor (so `over ⇒ done`);
+//   binary ⇒ floor === 1 && target === undefined.
 export interface Habit {
   id: string;
   name: string;
@@ -23,7 +26,7 @@ export interface Habit {
   kind: 'count' | 'binary'; // 'count' = numeric amount; 'binary' = yes/no (floor 1, no target)
   floor: number; // can't-fail minimum; creation invariant: floor >= 1
   floorUnit: string; // e.g. 'reps', 'pages', 'min'
-  target?: number; // optional stretch goal
+  target?: number; // optional stretch goal; when present, strictly > floor
   cue?: string; // optional at creation (§5)
   identity?: string; // optional at creation (§5)
   lifecycle: Lifecycle;
@@ -31,26 +34,45 @@ export interface Habit {
 }
 
 // ── §3.3 HabitEntry ──────────────────────────────────────────────────────────
-export type EntryState = 'done' | 'over' | 'skip';
 export type SkipReason = 'cue' | 'floor' | 'exception' | 'identity';
 
+/**
+ * Multi-entry recording model (SPEC §3.3 / §4.1). Entries are FACTS ONLY; a day's
+ * outcome is COMPUTED from that day's rows (see DayState / classifyDay), never stored.
+ *  - activity row: `actual > 0`, no skipReason.
+ *  - skip row:     `actual === 0` + a skipReason.
+ * Multiple rows may share a (habitId, date); the day's amount is the SUM of activity rows.
+ */
 export interface HabitEntry {
   id: string;
   habitId: string; // FK → Habit.id
-  date: string; // 'YYYY-MM-DD' (local calendar date)
-  timestamp: string; // ISO-8601 UTC (when logged)
-  actual: number; // 0 for skip
-  state: EntryState;
+  date: string; // 'YYYY-MM-DD' (local calendar date) — authoritative for day grouping
+  timestamp: string; // ISO-8601 UTC (when logged) — sort / tiebreak only
+  actual: number; // 0 for skip; the logged amount otherwise
   /**
-   * Required when state === 'skip' (runtime invariant — not expressible in the type;
-   * enforced by the composer / repository).
+   * @deprecated Vestigial per-row state kept only for the not-yet-migrated UI layer.
+   * The domain IGNORES this field and computes day-state from facts (classifyDay).
+   * Removed in the UI-migration phase once hooks/components stop reading it.
    */
+  state: EntryState;
+  /** Present only on skip rows (actual === 0). Absent on activity rows. */
   skipReason?: SkipReason;
   note?: string;
 }
 
-// Blank = absence of a row. A day with no HabitEntry is treated as `unknown` by the
-// engine — never a miss. Only `skip` with a non-`exception` reason is a diagnostic miss.
+// Kept for the vestigial HabitEntry.state above (UI-only). New code uses DayState.
+export type EntryState = 'done' | 'over' | 'skip';
+
+/**
+ * Computed outcome of a single (habitId, date) — a pure function of that day's rows
+ * (SPEC §4.1). Never stored.
+ *  - `unknown` — no rows (blank); never a miss.
+ *  - `partial` — activity but sum < floor; not a miss, not a completion (lowers floor rate).
+ *  - `done`    — sum >= floor.
+ *  - `over`    — sum >= target (target strictly > floor); implies done.
+ *  - `skip`    — only skip rows; a miss iff the effective reason is non-`exception`.
+ */
+export type DayState = 'unknown' | 'partial' | 'done' | 'over' | 'skip';
 
 // ── §3.4 FreeLog ─────────────────────────────────────────────────────────────
 // Standalone — no habitId link (CONCEPT §9.4 deliberate decoupling).
@@ -58,6 +80,7 @@ export type LogType = 'note' | 'win' | 'mood' | 'idea';
 
 export interface FreeLog {
   id: string;
+  date?: string; // 'YYYY-MM-DD'; authoritative for day grouping. Defaulted from timestamp on read.
   timestamp: string; // ISO-8601 UTC; user can select time (§9.1)
   type: LogType;
   text: string;

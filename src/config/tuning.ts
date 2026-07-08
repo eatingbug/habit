@@ -66,6 +66,7 @@ export const TUNING = {
   // §12.4 — Diagnosis thresholds (PLACEHOLDER). Window/count numbers that the SPEC §4.4
   // prose hardcoded are promoted to named constants here.
   diagnosis: {
+    minEngagedDaysForRate: 5, // A3: Rule 1 / Rule 4 stay silent below this many engaged days
     floorRateWindowDays: 28, // Rule 1 / Rule 3 floor-rate window
     lowFloorRateThreshold: 0.6, // Rule 1: below this → "floor may be too high"
     cueClusterWindowDays: 28, // Rule 2 window

@@ -11,7 +11,8 @@
  *     local components is not — so we are explicit to avoid timezone drift (Hermes /
  *     Safari inconsistencies).
  */
-import type { Habit, HabitEntry } from '../models';
+import type { DayState, Habit, HabitEntry, SkipReason } from '../models';
+import { classifyDay, compareEntries, effectiveSkipReason } from './classify';
 
 export interface DateWindow {
   from: string; // inclusive 'YYYY-MM-DD'
@@ -71,17 +72,16 @@ export function nthWeekWindow(asOfDate: string, weeksAgo: number, weekStartsOn: 
 
 /** True when an entry is an `exception` skip (excluded from miss / rate sampling). */
 export function isExceptionSkip(entry: HabitEntry): boolean {
-  return entry.state === 'skip' && entry.skipReason === 'exception';
+  // Facts-only: a skip row carries a skipReason; only skip rows can be `exception`.
+  return entry.skipReason === 'exception';
 }
 
-/** True when the entry met the floor (done or over). */
+/**
+ * @deprecated Legacy per-row "met floor" (reads the vestigial `state`) kept for the UI.
+ * The domain decides floor-completion per DAY via `classifyDay` / `DayRecord.state`.
+ */
 export function metFloor(entry: HabitEntry): boolean {
   return entry.state === 'done' || entry.state === 'over';
-}
-
-/** Above-floor amount for an entry (0 unless actual strictly exceeds floor). */
-export function aboveFloorAmount(entry: HabitEntry, habit: Pick<Habit, 'floor'>): number {
-  return entry.actual > habit.floor ? entry.actual - habit.floor : 0;
 }
 
 /** Entries whose date falls within [window.from, window.to] (inclusive). */
@@ -89,20 +89,104 @@ export function entriesInWindow(entries: HabitEntry[], window: DateWindow): Habi
   return entries.filter((e) => e.date >= window.from && e.date <= window.to);
 }
 
+// ── Day grouping (the multi-entry primitive, SPEC §4.1) ──────────────────────
+
+/** Computed outcome of one (habitId, date) — see model `DayState`. */
+export interface DayRecord {
+  date: string;
+  state: DayState;
+  sumActual: number; // sum of the day's activity rows
+  effectiveSkipReason?: SkipReason;
+}
+
+type HabitShape = Pick<Habit, 'floor' | 'target' | 'kind'>;
+
+/** Group entries by calendar date; each day's rows are sorted by the total order (A4). */
+export function groupByDate(entries: HabitEntry[]): Map<string, HabitEntry[]> {
+  const byDate = new Map<string, HabitEntry[]>();
+  for (const e of entries) {
+    const arr = byDate.get(e.date);
+    if (arr) arr.push(e);
+    else byDate.set(e.date, [e]);
+  }
+  for (const arr of byDate.values()) arr.sort(compareEntries);
+  return byDate;
+}
+
+/** Computed day records (one per date that has rows), ascending by date. */
+export function toDayRecords(entries: HabitEntry[], habit: HabitShape): DayRecord[] {
+  const target = habit.kind === 'binary' ? undefined : habit.target;
+  const records: DayRecord[] = [];
+  for (const [date, dayEntries] of groupByDate(entries)) {
+    records.push({
+      date,
+      state: classifyDay(dayEntries, habit.floor, target),
+      sumActual: dayEntries.reduce((s, e) => (e.actual > 0 ? s + e.actual : s), 0),
+      effectiveSkipReason: effectiveSkipReason(dayEntries),
+    });
+  }
+  return records.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+}
+
+/** Day records keyed by date, for backward calendar walks (streak / miss counting). */
+export function dayRecordMap(entries: HabitEntry[], habit: HabitShape): Map<string, DayRecord> {
+  const map = new Map<string, DayRecord>();
+  for (const r of toDayRecords(entries, habit)) map.set(r.date, r);
+  return map;
+}
+
 /**
- * Floor-completion rate over a window.
- *
- * Denominator = days that HAVE an entry in the window, EXCLUDING exception skips
- * (a sick day is removed from the sample, not counted as a miss — CONCEPT §3.2 / §13).
- * Blank days (no entry) are excluded entirely (unknown, never a miss).
- * Numerator   = entries that met the floor (done / over).
- *
- * Empty sample → 1.0 (a habit with no data reads as healthy, so the low-rate diagnosis
- * rules do not false-fire on a brand-new habit).
+ * Days that count toward the floor-completion rate (SPEC §4.4).
+ * Always: `done` / `over` / non-exception `skip`. When `countPartial`, `partial` too.
+ * Excludes blank (`unknown`) and `exception` skips (the sick day is removed, not a miss).
  */
-export function floorCompletionRate(entries: HabitEntry[], window: DateWindow): number {
-  const counted = entriesInWindow(entries, window).filter((e) => !isExceptionSkip(e));
-  if (counted.length === 0) return 1;
-  const met = counted.filter(metFloor).length;
-  return met / counted.length;
+function engagedRecords(records: DayRecord[], countPartial: boolean): DayRecord[] {
+  return records.filter(
+    (r) =>
+      r.state === 'done' ||
+      r.state === 'over' ||
+      (r.state === 'skip' && r.effectiveSkipReason !== 'exception') ||
+      (countPartial && r.state === 'partial'),
+  );
+}
+
+export interface RateOptions {
+  /**
+   * Whether `partial` days count as engaged (SPEC §4.4 rate-role split, A2/A5).
+   * Default true: diagnosis Rule 1/3/4 let an honest `partial` lower the rate (the
+   * intended "floor too high" signal). The lifecycle DEMOTION passes `false` so a
+   * `partial`-logger is never evicted from Established.
+   */
+  countPartialAsEngaged?: boolean;
+}
+
+/**
+ * Floor-completion rate over a window, computed per DAY.
+ *
+ * Denominator = engaged days (see `engagedRecords`); numerator = `done`/`over` days.
+ * Empty sample → 1.0 (a habit with no data reads as healthy; callers apply the
+ * `minEngagedDaysForRate` guard where a low-rate diagnosis could false-fire — A3).
+ */
+export function floorCompletionRate(
+  entries: HabitEntry[],
+  window: DateWindow,
+  habit: HabitShape,
+  opts: RateOptions = {},
+): number {
+  const countPartial = opts.countPartialAsEngaged ?? true;
+  const engaged = engagedRecords(toDayRecords(entriesInWindow(entries, window), habit), countPartial);
+  if (engaged.length === 0) return 1;
+  const met = engaged.filter((r) => r.state === 'done' || r.state === 'over').length;
+  return met / engaged.length;
+}
+
+/** Count of engaged days in a window (the sample size behind `floorCompletionRate`). */
+export function countEngagedDays(
+  entries: HabitEntry[],
+  window: DateWindow,
+  habit: HabitShape,
+  opts: RateOptions = {},
+): number {
+  const countPartial = opts.countPartialAsEngaged ?? true;
+  return engagedRecords(toDayRecords(entriesInWindow(entries, window), habit), countPartial).length;
 }

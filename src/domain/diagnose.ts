@@ -2,20 +2,23 @@
  * domain/diagnose.ts — weekly diagnosis rules (SPEC §4.4 + plan resolutions).
  *
  * Runs all four rules in order and returns the fired flags (possibly empty). Pure:
- * date math + the shared floor-rate helper + the miss predicate. No React, no I/O.
+ * day-grouped classification + the shared floor-rate helper. No React, no I/O.
+ *
+ * A3 (min-sample guard): the rate-driven rules (1 and 4) stay silent until the window
+ * holds ≥ minEngagedDaysForRate engaged days, so a brand-new habit with one partial day
+ * does not trip a "floor too high" / "fill your cue" diagnosis off a single data point.
  */
 import type { DiagnosisFlag, Habit, HabitEntry } from '../models';
 import { TUNING } from '../config/tuning';
 import {
-  aboveFloorAmount,
+  countEngagedDays,
   dayOfWeek,
   entriesInWindow,
   floorCompletionRate,
-  metFloor,
   nthWeekWindow,
+  toDayRecords,
   windowFrom,
 } from './util';
-import { isMiss } from './classify';
 
 const DAY_NAMES = [
   '일요일',
@@ -27,13 +30,28 @@ const DAY_NAMES = [
   '토요일',
 ];
 
+/** Non-exception miss DAYS within a window (SPEC §4.1 isMissDay, grouped). */
+function missDaysInWindow(
+  entries: HabitEntry[],
+  window: { from: string; to: string },
+  habit: Habit,
+) {
+  return toDayRecords(entriesInWindow(entries, window), habit).filter(
+    (r) => r.state === 'skip' && r.effectiveSkipReason !== 'exception',
+  );
+}
+
 export function diagnose(habit: Habit, entries: HabitEntry[], asOfDate: string): DiagnosisFlag[] {
   const flags: DiagnosisFlag[] = [];
+  const minSample = TUNING.diagnosis.minEngagedDaysForRate;
 
-  // RULE 1 — Floor too high.
+  // RULE 1 — Floor too high. (A3: needs a minimum engaged sample.)
   const r1Window = windowFrom(asOfDate, TUNING.diagnosis.floorRateWindowDays);
-  const r1Rate = floorCompletionRate(entries, r1Window);
-  if (r1Rate < TUNING.diagnosis.lowFloorRateThreshold) {
+  const r1Rate = floorCompletionRate(entries, r1Window, habit);
+  if (
+    countEngagedDays(entries, r1Window, habit) >= minSample &&
+    r1Rate < TUNING.diagnosis.lowFloorRateThreshold
+  ) {
     flags.push({
       component: 'floor',
       severity: 'warning',
@@ -42,9 +60,9 @@ export function diagnose(habit: Habit, entries: HabitEntry[], asOfDate: string):
     });
   }
 
-  // RULE 2 — Cue clustering: all misses fall on a single weekday and there are >= 2.
+  // RULE 2 — Cue clustering: all miss days fall on a single weekday and there are >= 2.
   const r2Window = windowFrom(asOfDate, TUNING.diagnosis.cueClusterWindowDays);
-  const misses = entriesInWindow(entries, r2Window).filter(isMiss);
+  const misses = missDaysInWindow(entries, r2Window, habit);
   const counts = [0, 0, 0, 0, 0, 0, 0];
   for (const miss of misses) {
     counts[dayOfWeek(miss.date)] += 1;
@@ -67,16 +85,16 @@ export function diagnose(habit: Habit, entries: HabitEntry[], asOfDate: string):
   }
 
   // RULE 3 — Stagnation: floor solid but no above-floor growth across the last N complete weeks.
-  // Binary (yes/no) habits have no above-floor magnitude (it is structurally always 0), so this
-  // rule cannot apply — it would otherwise fire forever. Only diagnose stagnation for count habits.
+  // Binary (yes/no) habits have no above-floor magnitude (structurally 0), so this rule cannot
+  // apply — it would otherwise fire forever. Only diagnose stagnation for count habits.
   const N = TUNING.diagnosis.stagnationAboveFloorWeeks;
   let allWeeksQualify = habit.kind === 'count';
   for (let weeksAgo = 1; allWeeksQualify && weeksAgo <= N; weeksAgo += 1) {
     const weekWindow = nthWeekWindow(asOfDate, weeksAgo, TUNING.weekStartsOn);
-    const weekEntries = entriesInWindow(entries, weekWindow);
-    const hasFloorMet = weekEntries.some(metFloor);
-    const rate = floorCompletionRate(entries, weekWindow);
-    const aboveFloor = weekEntries.reduce((sum, e) => sum + aboveFloorAmount(e, habit), 0);
+    const weekRecords = toDayRecords(entriesInWindow(entries, weekWindow), habit);
+    const hasFloorMet = weekRecords.some((r) => r.state === 'done' || r.state === 'over');
+    const rate = floorCompletionRate(entries, weekWindow, habit);
+    const aboveFloor = weekRecords.reduce((sum, r) => sum + Math.max(0, r.sumActual - habit.floor), 0);
     const qualifies =
       hasFloorMet && rate >= TUNING.diagnosis.lowFloorRateThreshold && aboveFloor === 0;
     if (!qualifies) {
@@ -93,12 +111,15 @@ export function diagnose(habit: Habit, entries: HabitEntry[], asOfDate: string):
     });
   }
 
-  // RULE 4 — Fill cue / identity first (SPEC deviation, plan).
+  // RULE 4 — Fill cue / identity first (SPEC deviation, plan). A3: needs a minimum sample.
   if (!habit.cue || !habit.identity) {
     const r4Window = windowFrom(asOfDate, TUNING.diagnosis.cuePromptWindowDays);
-    const rate = floorCompletionRate(entries, r4Window);
-    const hasMiss = entriesInWindow(entries, r4Window).some(isMiss);
-    if (rate < TUNING.diagnosis.lowCompletionForCuePrompt || hasMiss) {
+    const rate = floorCompletionRate(entries, r4Window, habit);
+    const hasMiss = missDaysInWindow(entries, r4Window, habit).length > 0;
+    if (
+      countEngagedDays(entries, r4Window, habit) >= minSample &&
+      (rate < TUNING.diagnosis.lowCompletionForCuePrompt || hasMiss)
+    ) {
       const field = habit.cue ? 'identity' : 'cue';
       const fieldKo = field === 'cue' ? '신호' : '정체성';
       flags.push({

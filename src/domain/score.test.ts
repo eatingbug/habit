@@ -27,13 +27,14 @@ function entry(
     date,
     timestamp: `${date}T12:00:00.000Z`,
     actual,
-    state,
+    state, // vestigial placeholder — the domain classifies from `actual`
     ...(skipReason ? { skipReason } : {}),
   };
 }
 
 const done = (date: string, actual = 10) => entry(date, 'done', actual);
 const over = (date: string, actual = 30) => entry(date, 'over', actual);
+const part = (date: string, actual = 3) => entry(date, 'done', actual); // 0 < actual < floor → partial
 const skip = (date: string, reason: SkipReason) => entry(date, 'skip', 0, reason);
 
 /** Build a run of consecutive done days starting at `start` for `n` days. */
@@ -48,29 +49,32 @@ function doneRun(start: string, n: number): HabitEntry[] {
 
 describe('computeStreak', () => {
   it('returns 0 for no entries', () => {
-    expect(computeStreak([], '2026-06-23')).toBe(0);
+    expect(computeStreak([], '2026-06-23', habit)).toBe(0);
   });
 
   it('counts consecutive done/over days backward from today', () => {
     const entries = [done('2026-06-21'), over('2026-06-22'), done('2026-06-23')];
-    expect(computeStreak(entries, '2026-06-23')).toBe(3);
+    expect(computeStreak(entries, '2026-06-23', habit)).toBe(3);
   });
 
   it('a blank day between two done days does NOT break the streak (transparent)', () => {
-    // 06-22 is blank
-    const entries = [done('2026-06-21'), done('2026-06-23')];
-    expect(computeStreak(entries, '2026-06-23')).toBe(2);
+    const entries = [done('2026-06-21'), done('2026-06-23')]; // 06-22 blank
+    expect(computeStreak(entries, '2026-06-23', habit)).toBe(2);
   });
 
-  it('trailing blanks between today and last done day do not break', () => {
-    // today 06-23, 06-23 & 06-22 blank, last done 06-21
-    const entries = [done('2026-06-20'), done('2026-06-21')];
-    expect(computeStreak(entries, '2026-06-23')).toBe(2);
+  it('a partial day is transparent (neither counts nor breaks)', () => {
+    const entries = [done('2026-06-21'), part('2026-06-22'), done('2026-06-23')];
+    expect(computeStreak(entries, '2026-06-23', habit)).toBe(2);
+  });
+
+  it('a trailing partial day does not add to the streak', () => {
+    const entries = [done('2026-06-22'), part('2026-06-23')];
+    expect(computeStreak(entries, '2026-06-23', habit)).toBe(1);
   });
 
   it('exception skip is transparent (neither counts nor breaks)', () => {
     const entries = [done('2026-06-21'), skip('2026-06-22', 'exception'), done('2026-06-23')];
-    expect(computeStreak(entries, '2026-06-23')).toBe(2);
+    expect(computeStreak(entries, '2026-06-23', habit)).toBe(2);
   });
 
   it('a non-exception skip breaks the streak', () => {
@@ -80,23 +84,23 @@ describe('computeStreak', () => {
       skip('2026-06-22', 'cue'),
       done('2026-06-23'),
     ];
-    // walking back: 06-23 done (1), 06-22 skip -> break
-    expect(computeStreak(entries, '2026-06-23')).toBe(1);
+    expect(computeStreak(entries, '2026-06-23', habit)).toBe(1);
   });
 
   it('returns 0 when today itself is a non-exception skip', () => {
     const entries = [done('2026-06-22'), skip('2026-06-23', 'floor')];
-    expect(computeStreak(entries, '2026-06-23')).toBe(0);
+    expect(computeStreak(entries, '2026-06-23', habit)).toBe(0);
   });
 
-  it('still counts when today is blank but earlier days are done', () => {
-    const entries = [done('2026-06-22')];
-    expect(computeStreak(entries, '2026-06-23')).toBe(1);
+  it('sums multiple activity rows on one day to meet the floor', () => {
+    // 06-23 has two rows summing to 12 (>= floor 10) → one done day
+    const entries = [done('2026-06-22'), entry('2026-06-23', 'done', 6), entry('2026-06-23', 'done', 6)];
+    expect(computeStreak(entries, '2026-06-23', habit)).toBe(2);
   });
 
   it('does not require entries to be pre-sorted', () => {
     const entries = [done('2026-06-23'), done('2026-06-21'), done('2026-06-22')];
-    expect(computeStreak(entries, '2026-06-23')).toBe(3);
+    expect(computeStreak(entries, '2026-06-23', habit)).toBe(3);
   });
 });
 
@@ -107,13 +111,26 @@ describe('computeXP', () => {
   });
 
   it('over days add base, target bonus, AND above-floor intensity', () => {
-    // 2 done(actual 10, floor 10 → 0 above) + 1 over(actual 30 → 20 above) =>
-    // floorMetDays=3, overDays=1, aboveFloor=20.
     const entries = [done('2026-06-01'), done('2026-06-03'), over('2026-06-05')];
     expect(computeXP(entries, habit)).toBe(
       3 * TUNING.xpPerFloorCompletion +
         1 * TUNING.xpBonusTargetExceed +
         20 * TUNING.xpPerAboveFloorUnit,
+    );
+  });
+
+  it('a partial day earns no XP (sum below floor)', () => {
+    const entries = [done('2026-06-01'), part('2026-06-02'), done('2026-06-03')];
+    expect(computeXP(entries, habit)).toBe(2 * TUNING.xpPerFloorCompletion);
+  });
+
+  it('above-floor intensity is per DAY (multiple rows summed)', () => {
+    // one day, two rows of 20 → sum 40: over (>= target 30), above-floor 30.
+    const entries = [entry('2026-06-01', 'done', 20), entry('2026-06-01', 'done', 20)];
+    expect(computeXP(entries, habit)).toBe(
+      1 * TUNING.xpPerFloorCompletion +
+        1 * TUNING.xpBonusTargetExceed +
+        30 * TUNING.xpPerAboveFloorUnit,
     );
   });
 
@@ -124,9 +141,7 @@ describe('computeXP', () => {
 
   it('a 7-run adds the 7 milestone bonus (+120) but not the 30 bonus', () => {
     const entries = doneRun('2026-06-01', 7);
-    expect(computeXP(entries, habit)).toBe(
-      7 * TUNING.xpPerFloorCompletion + TUNING.xpStreakBonus[7],
-    );
+    expect(computeXP(entries, habit)).toBe(7 * TUNING.xpPerFloorCompletion + TUNING.xpStreakBonus[7]);
   });
 
   it('a 6-run does NOT reach the 7 milestone (boundary just-below)', () => {
@@ -142,29 +157,21 @@ describe('computeXP', () => {
   });
 
   it('milestone uses LONGEST run; a non-exception skip resets the run', () => {
-    // run of 7, break, run of 3 -> longest 7 -> +120 only
-    const entries = [
-      ...doneRun('2026-06-01', 7),
-      skip('2026-06-08', 'cue'),
-      ...doneRun('2026-06-09', 3),
-    ];
-    const floorMet = 7 + 3;
+    const entries = [...doneRun('2026-06-01', 7), skip('2026-06-08', 'cue'), ...doneRun('2026-06-09', 3)];
     expect(computeXP(entries, habit)).toBe(
-      floorMet * TUNING.xpPerFloorCompletion + TUNING.xpStreakBonus[7],
+      (7 + 3) * TUNING.xpPerFloorCompletion + TUNING.xpStreakBonus[7],
     );
   });
 
+  it('a partial day is transparent to the longest-run milestone', () => {
+    // 4 done, partial, 3 done → contiguous run of 7 for milestone purposes
+    const entries = [...doneRun('2026-06-01', 4), part('2026-06-05'), ...doneRun('2026-06-06', 3)];
+    expect(computeXP(entries, habit)).toBe(7 * TUNING.xpPerFloorCompletion + TUNING.xpStreakBonus[7]);
+  });
+
   it('exception skips are transparent inside a run (do not reset longest)', () => {
-    // 4 done, exception skip, 3 done -> contiguous run of 7 for milestone purposes
-    const entries = [
-      ...doneRun('2026-06-01', 4),
-      skip('2026-06-05', 'exception'),
-      ...doneRun('2026-06-06', 3),
-    ];
-    const floorMet = 7;
-    expect(computeXP(entries, habit)).toBe(
-      floorMet * TUNING.xpPerFloorCompletion + TUNING.xpStreakBonus[7],
-    );
+    const entries = [...doneRun('2026-06-01', 4), skip('2026-06-05', 'exception'), ...doneRun('2026-06-06', 3)];
+    expect(computeXP(entries, habit)).toBe(7 * TUNING.xpPerFloorCompletion + TUNING.xpStreakBonus[7]);
   });
 
   it('returns 0 for empty history', () => {
@@ -184,7 +191,6 @@ describe('levelForXP', () => {
 
 describe('computeStatLevel = levelForXP(computeXP)', () => {
   it('count level reflects folded XP (base + over + intensity + streak)', () => {
-    // 7 done(floor) then 1 over(actual 30 → 20 above) = a run of 8.
     const entries = [...doneRun('2026-06-01', 7), over('2026-06-08', 30)];
     const expectedXP =
       8 * TUNING.xpPerFloorCompletion +
@@ -215,56 +221,60 @@ describe('computeXP — binary habit', () => {
       5 * TUNING.xpPerFloorCompletion + TUNING.binaryStreakMilestones[5],
     );
   });
+
+  it('multiple done rows on one day count once (idempotent)', () => {
+    // 06-01 has two done rows (one done day) + 4 more days → run of 5
+    const entries = [
+      entry('2026-06-01', 'done', 1),
+      entry('2026-06-01', 'done', 1),
+      ...doneRun('2026-06-02', 4),
+    ];
+    expect(computeXP(entries, binaryHabit)).toBe(
+      5 * TUNING.xpPerFloorCompletion + TUNING.binaryStreakMilestones[5],
+    );
+  });
 });
 
 describe('milestoneBonusXP', () => {
   it('a run of exactly 5 awards the 5-tier once', () => {
-    expect(milestoneBonusXP(doneRun('2026-06-01', 5))).toBe(TUNING.binaryStreakMilestones[5]);
+    expect(milestoneBonusXP(doneRun('2026-06-01', 5), binaryHabit)).toBe(TUNING.binaryStreakMilestones[5]);
   });
 
   it('a run of 4 awards nothing (below the first tier)', () => {
-    expect(milestoneBonusXP(doneRun('2026-06-01', 4))).toBe(0);
+    expect(milestoneBonusXP(doneRun('2026-06-01', 4), binaryHabit)).toBe(0);
   });
 
   it('a continuous run of 10 awards the 5-tier AND the 10-tier once each', () => {
-    expect(milestoneBonusXP(doneRun('2026-06-01', 10))).toBe(
+    expect(milestoneBonusXP(doneRun('2026-06-01', 10), binaryHabit)).toBe(
       TUNING.binaryStreakMilestones[5] + TUNING.binaryStreakMilestones[10],
     );
   });
 
   it('break-and-rebuild: the second 5-achievement is decayed (×0.5)', () => {
-    const entries = [
-      ...doneRun('2026-06-01', 5),
-      skip('2026-06-06', 'cue'),
-      ...doneRun('2026-06-07', 5),
-    ];
+    const entries = [...doneRun('2026-06-01', 5), skip('2026-06-06', 'cue'), ...doneRun('2026-06-07', 5)];
     const base = TUNING.binaryStreakMilestones[5];
-    expect(milestoneBonusXP(entries)).toBe(base + Math.round(base * TUNING.binaryMilestoneDecay));
+    expect(milestoneBonusXP(entries, binaryHabit)).toBe(base + Math.round(base * TUNING.binaryMilestoneDecay));
   });
 
-  it('a blank gap is forgiven: "5, gap, 5 more" is one 10-run (not the 5-tier twice)', () => {
+  it('a blank gap is forgiven: "5, gap, 5 more" is one 10-run', () => {
     const entries = [...doneRun('2026-06-01', 5), ...doneRun('2026-06-13', 5)];
-    expect(milestoneBonusXP(entries)).toBe(
+    expect(milestoneBonusXP(entries, binaryHabit)).toBe(
       TUNING.binaryStreakMilestones[5] + TUNING.binaryStreakMilestones[10],
     );
   });
 
   it('an exception skip is transparent inside a run', () => {
-    const entries = [
-      ...doneRun('2026-06-01', 3),
-      skip('2026-06-04', 'exception'),
-      ...doneRun('2026-06-05', 2),
-    ];
-    expect(milestoneBonusXP(entries)).toBe(TUNING.binaryStreakMilestones[5]);
+    const entries = [...doneRun('2026-06-01', 3), skip('2026-06-04', 'exception'), ...doneRun('2026-06-05', 2)];
+    expect(milestoneBonusXP(entries, binaryHabit)).toBe(TUNING.binaryStreakMilestones[5]);
   });
 
-  it('is order-independent (sorted internally)', () => {
+  it('is order-independent (grouped/sorted internally)', () => {
     const run = doneRun('2026-06-01', 5);
     const shuffled = [run[3], run[0], run[4], run[1], run[2]];
-    expect(milestoneBonusXP(shuffled)).toBe(milestoneBonusXP(run));
+    expect(milestoneBonusXP(shuffled, binaryHabit)).toBe(milestoneBonusXP(run, binaryHabit));
   });
 
   it('empty history awards nothing', () => {
-    expect(milestoneBonusXP([])).toBe(0);
+    expect(milestoneBonusXP([], binaryHabit)).toBe(0);
   });
 });
