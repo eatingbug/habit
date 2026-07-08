@@ -1,7 +1,7 @@
 # Habit System — Product Specification
 
 **Tagline:** Build the Habit, Grow yourself
-**Status:** Draft v3.1 (MVP scope) · updated 2026-06-24 (measurement types + unified XP progression)
+**Status:** Draft v3.3 (MVP scope) · updated 2026-07-08 (recording review: scoped fairness + engagement streak, log-time reward, proactive never-miss-twice save, visible weekly growth, skip-reasons drive diagnosis; minimal adaptive Linear/Notion visual language)
 **Working name:** Habiquest (candidate, not final)
 
 ---
@@ -84,24 +84,39 @@ For **count** habits:
 - **Actual** — what the user actually did. Above-floor actual converts into XP
   (intensity). Measures **intensity**.
 
-### 3.2 Entry states (per day, per habit)
-Distinguishing these is essential to keep the diagnosis engine clean:
-- **done** — floor met.
-- **over** — above floor (count habits only; feeds intensity via XP).
-- **skip** — explicitly marked not-done, *with a reason* (see §5, Stage 2).
-- **blank** — no entry. Treated as **unknown**, *not* as a miss.
+### 3.2 Day states (per day, per habit) — computed, not logged
+A day can hold **several entries** (you log as you go — see §5, Stage 2). What you
+*record* is the raw fact (an amount, or a skip-with-reason); the **state of the day**
+is *computed* by summing that day's activity. Distinguishing these states keeps the
+diagnosis engine clean:
+- **done** — the day's total met the floor.
+- **over** — the day's total exceeded the target (count habits only; feeds intensity).
+- **partial** — you logged real activity but the total fell short of the floor.
+- **skip** — the day was explicitly marked not-done, *with a reason* (no real
+  activity that day).
+- **blank** — no entry at all. Treated as **unknown**.
 
-Yes/No habits use only **done** / **skip** / **blank** — they have no **over**.
+Yes/No habits use only **done** / **skip** / **blank** — they have no **over** or
+**partial** (any "done" is the whole floor).
 
-Only **skip** (with a non-exception reason) counts as a miss for diagnosis;
-**blank is excluded.** This prevents forgotten logging from poisoning the
-diagnosis (a false "you keep missing Tuesdays"). Trade-off: a genuine miss the
-user never marks stays unknown — we accept under-counting in exchange for clean
-signal, and mitigate it with backfill (§5).
+**Neither blank nor partial is a miss.** Only **skip** (with a non-exception reason)
+counts as a miss for diagnosis. Excluding *blank* prevents forgotten logging from
+poisoning the diagnosis (a false "you keep missing Tuesdays"). Excluding *partial*
+upholds a fairness rule, scoped precisely: **honestly logging that you fell short must
+never be worse for you than logging nothing — for XP, streak, or miss-count.** A partial
+day still *informs* the design: it deliberately lowers your floor-completion rate, which
+is exactly the "your floor may be too high" signal. That lowering is help, not a penalty,
+so it must not leak into places where a lower rate would *cost* you (being demoted out of
+Established, §3.3 — see SPEC §4.4/§4.7). And a partial day is made *strictly better* than
+a blank one by the **engagement ("showed up") streak** (§10), which rewards showing up
+without granting XP. Trade-off: a genuine miss the user never marks stays unknown — we
+accept under-counting for clean signal, and mitigate it with easy backfill (§5).
 
 ### 3.3 Habit lifecycle
-- **Forming** — still establishing; goal is floor consistency. XP/streak/nudges
-  are foreground.
+- **Forming** — still establishing; goal is floor consistency. XP / streak / the "showed
+  up" streak / nudges are foreground, and the UI **sets the ~66-day expectation** (Lally,
+  §1) with progress measured by accumulated repetitions, not the calendar — so a slow
+  stretch reads as "still forming," not "failing."
 - **Established** — automaticity reached; floor is effectively automatic. The
   product shifts to **monitoring mode**: the new focus is the *actual trend*
   (growing / flat / declining), not daily encouragement.
@@ -114,14 +129,20 @@ Paused; Established → Forming (demotion if it starts slipping).
 
 ## 4. Product Surfaces (UI map)
 
-1. **Dashboard** — character sheet: stat levels + XP bars, per-habit heatmap, and
-   **always-on status lights** (§7) that route attention to habits needing action.
-2. **Today** — chronological feed of the day (habit entries + free logs) with a
-   unified composer (§9).
-3. **Habit Detail** — a single habit's current Design (cue/floor/identity), stats,
-   and journal history.
-4. **Reflection** — per-habit, entered by tapping a habit's status light;
-   diagnoses, recommends, and updates the design (§6).
+**Visual language:** clean, minimal, adaptive light + dark (Linear/Notion family). The
+game layer (XP, levels, streaks, lights) stays but is rendered *quietly* — thin progress
+bars, muted stat chips, small status dots — not a gold RPG skin (principle 2). See SPEC
+§6.0 / the mockup `mvp/habiquest-linear.html`.
+
+1. **Dashboard** — a restrained character sheet: stat levels + thin XP bars, per-habit
+   heatmap, a **one-tap log on each row** (§5), and **always-on status lights** (§7) that
+   route attention to habits needing action.
+2. **Today** — chronological feed of the day (habit entries + free logs) with a unified
+   composer (§9), immediate log-time reward, and the never-miss-twice save banner.
+3. **Habit Detail** — a single habit's current Design (cue/floor/identity), stats, the
+   **weekly-actual growth chart** (visible gradual growth), and journal history.
+4. **Reflection** — per-habit, entered by tapping a habit's status light; diagnoses (with
+   visible evidence), recommends, and updates the design (§6).
 
 ---
 
@@ -154,23 +175,42 @@ purpose, and is cheaper than blank-form abandonment at creation.
 
 ### Stage 2 — Perform → Record (collect data)
 
-- **Logging.** A count habit entry records timestamp + *actual* amount; the system
-  classifies done / over by comparing to floor / target. A Yes/No habit logs a
-  single "done" (no amount). Added from the Today composer (§9) or Habit Detail.
-- **Backfill (required).** Past-date entries can be added, so "did it but forgot
-  to log" is recoverable and does not register as a miss.
-- **Skip with reason.** Marking a day as skipped requires choosing a reason from a
-  small fixed set (4–5 max, to keep skipping low-friction). Reasons map directly
-  onto the diagnostic components, so a skip *is* a pre-classified diagnosis:
+- **Logging is one tap where you already are.** A count habit records an *actual*
+  amount; a Yes/No habit logs a single "done." The highest-frequency action — "I did my
+  minimum today" — is a **one-tap "+floor" (count) / "✓" (yes/no)** available on both the
+  Today composer (§9) *and* the Dashboard row, with **smart defaults and quick-add chips**
+  for other amounts, so logging almost never requires typing. Time is captured
+  automatically (it only affects ordering) and tucked behind a reveal.
+- **Log as you go (incremental).** A habit can be logged **multiple times in one day** —
+  "2 glasses now, 3 more tonight" — instead of pre-summing in your head. The day's outcome
+  is the **sum** of that day's entries, compared to the floor/target once at the day level
+  (two `2` + `3` make a `5` day). A **live progress-to-floor** indicator ("3/5 · 2 to go")
+  turns each log into visible movement. Each entry is independently editable and deletable;
+  a skip logged earlier is overridden if real activity is logged later the same day.
+- **Reward the moment, not just the dashboard.** Every log gives **immediate, attributed
+  feedback** — "floor hit · +60 XP", "past target", a level-up, a milestone, or a
+  **"showed up"** acknowledgment for a partial. A computed-but-undelivered reward is a dead
+  reward; the reinforcing moment is the instant of the behavior.
+- **Backfill (required), and easy.** Past-date entries can be added, so "did it but forgot
+  to log" is recoverable and never a miss. A **"yesterday" fast-path** sits right in the
+  Today composer for the dominant forgot-last-night case; older gaps use Habit Detail. This
+  keeps the "blank is not a miss" bargain honest — forgotten days must be cheap to recover.
+- **Skip with reason — a pre-classified diagnosis that now *acts*.** Marking a day skipped
+  is **one tap on a reason chip** (a small fixed set, to stay low-friction). Reasons map
+  onto the diagnostic components, and V1 now **feeds them into diagnosis** (SPEC §4.4
+  Rule 5) rather than merely storing them — a repeated reason raises its component directly:
   - "missed the time / forgot" → **cue**
-  - "too hard / too much" → **floor** (or load)
+  - "too hard / too much" → **floor**
   - "sick / off / external" → **legitimate exception — excluded from miss count**
   - "didn't feel like it / no meaning" → **identity**
   - free-text note optional, alongside the category.
-- **Heatmap.** Daily states visualized; skip is visually distinct from blank.
-- **never-miss-twice (required).** One miss is normal and recoverable; only
-  *consecutive* misses are the real failure signal. The system must intervene at
-  the moment of the *second* risk, not just declare the principle.
+- **Heatmap.** Daily states visualized, each visually distinct: a *blank* (unknown) day
+  must not look like a *partial* (logged-but-short) or a *skip* (miss) day.
+- **never-miss-twice — a proactive save.** One miss is normal and recoverable; only
+  *consecutive* misses are the real failure signal. The system intervenes **inside the open
+  save window** — yesterday was a miss (or a streak just broke) and today is still blank —
+  with an opportunity-framed nudge ("one floor log today keeps this rolling"), *before* the
+  second miss completes, not after.
 
 ### Stage 3 — Reflect
 
@@ -202,6 +242,11 @@ Reflection must be cheap. The user's job is **choosing, not writing**:
    - skips clustering on a weekday → *check that weekday's cue*
    - floor met but zero above-floor for N weeks → *stagnation / floor too low*
    - **cue/identity empty + low completion → propose filling them first** (§5)
+   - **repeated skip-reason → its component** (several "forgot" skips → cue; several
+     "too hard" → floor; several "no meaning" → identity) — the pre-classified skip
+     now actively drives diagnosis, not just context (§5)
+   - a low floor-rate needs a **minimum sample** before it flags — one honest partial
+     day never trips a caution (honest logging is never punished vs. silence)
 3. **Recommended action, pre-selected.** The fix is offered already checked:
    *"floor looks high → [Lower floor ✓]."* The user commits, or edits.
    Options: adjust cue / lower floor / raise target / fill cue·identity /
@@ -221,17 +266,22 @@ Borrowed from the RPG pattern of badges/glows that route attention to where
 action is available — adapted to avoid the ways that pattern fails.
 
 ### 7.1 States
-- 🟢 **Stable** — no action needed; normally unlit. On a notable achievement it
-  lights *positively* (e.g., ⭐ "personal best this week"), so the dashboard isn't
-  only a nag.
+- 🟢 **Stable** — no action needed; normally unlit. On a notable achievement it lights
+  *positively* (⭐), and this reaches **both lifecycles** so the dashboard isn't only a
+  nag: **Established** celebrates an *intensity* best (best weekly total); **Forming**
+  celebrates a *consistency* best (best floor-completion week, or a new longest streak) —
+  so the cohort that most needs encouragement gets it from day one.
 - 🟡 **Caution** — one flag; "look when you have a moment." Queued, not urgent.
-- 🔴 **Intervention opportunity** — consecutive miss (Forming) or declining actual
-  trend (Established). Framed as *"a small fix gets this rolling again,"* never as
-  "you failed." Consider amber over aggressive red.
+- 🔴 **Intervention opportunity** — consecutive miss (Forming) or a declining actual
+  trend **that has fallen back toward the floor** (Established). Framed as *"a small fix
+  gets this rolling again,"* never "you failed"; amber over aggressive red. A decline that
+  merely settles from an unsustainable peak while still above target is **not** lit red —
+  improving is never punished (§10).
 
 ### 7.2 Lifecycle changes the meaning of the same light
 - **Forming 🔴** = floor consecutive miss → "wobbling, time to adjust the design."
-- **Established 🔴** = actual trend declining → "automatic, but growth has cooled."
+- **Established 🔴** = actual trend declining **toward the floor** → "automatic, but
+  growth has cooled." (A dip from a peak that stays above target is not red — §7.1/§10.)
 Tapping either enters that habit's reflection (§6), but lands on a different view.
 
 ### 7.3 Aggregation — show the count
@@ -283,8 +333,9 @@ A logging layer alongside habits, on the **Today** surface.
 - **Purpose:** a simple record of the user's day — *not* part of habit scoring or
   reflection. Just "what happened today."
 - **Types:** Note / Win / Mood / Idea.
-- **Timestamp:** user-selectable, **separate hour and minute pickers, minutes in
-  10-minute increments**. Defaults to now, rounded down to nearest 10 minutes.
+- **Timestamp:** defaults to now and is **collapsed behind a small "🕑 지금 HH:MM"
+  reveal** (SPEC §6.2, B3) — timestamp only affects ordering — with separate hour/minute
+  pickers (10-minute increments) shown on tap for the rare override.
 - **No XP, no stat/streak effect.** Free logs never touch the game layer.
 
 ### 9.2 Unified composer
@@ -328,11 +379,22 @@ where requirements rise as you improve → negative reinforcement → churn):
   motivates but can't be farmed. A merely-blank gap is forgiven (the streak
   continues); only a logged miss resets it.
 - **Streak milestones (count) → once-only bonus** at N-day marks.
+- **Showing up (sub-floor) → a "showed up" streak, not XP** — a partial day (real
+  activity below the floor) earns **no XP** (the floor stays *the* rewarded threshold, so
+  nothing can be farmed by logging a tiny amount), but it advances a separate
+  **engagement streak** ("showed up 7 days"). This makes *attempting* the habit strictly
+  better than doing nothing — reinforcing the very repetitions that build automaticity in
+  the Forming phase (Lally) — without diluting the floor or the XP economy.
+- **Reward is delivered at the moment of the log**, not left as a number on a dashboard:
+  each log shows what it just unlocked (floor hit, past target, level-up, milestone, or
+  "showed up"). Immediate, attributed reinforcement is what installs the habit.
 
-By lifecycle: **Forming** foregrounds floor/XP/streak; **Established** shifts to
-monitoring the *actual trend* — so a successfully automated habit still has a
-reason to stay in the app (growth tracking), dissolving the "succeed → app
-becomes useless" tension.
+By lifecycle: **Forming** foregrounds floor / XP / streak / the "showed up" streak;
+**Established** shifts to monitoring the *actual trend*, now **shown as a real
+weekly-actual growth chart** (not merely an internal signal) — so a successfully automated
+habit still has a reason to stay (visible growth tracking), dissolving the "succeed → app
+becomes useless" tension. Cumulative XP keeps rising, but *growth* is read from the trend,
+so the game layer can never visually mask a real decline.
 
 > **Superseded design note 1:** the original "vary XP-bar size by days-to-level-up
 > / max-performance-based XP" is **replaced** by the XP model above, because it
@@ -398,24 +460,32 @@ Deferred to keep the MVP focused and validatable. Design when built:
 6. **Success metrics.** How "the loop closed" is measured (candidate north-star:
    4-week floor-retention; loop metrics: reflection-completion rate,
    post-reflection design-change rate, design-change → retention link). Undecided.
-7. **Data model.** Entities (Habit, Stat, HabitEntry[state/reason], FreeLog,
-   ReflectionSession, lifecycle state) and relations, before build.
+7. **Data model.** Entities (Habit, Stat, HabitEntry[facts-only: `actual` / optional
+   `skipReason` — day-state is *computed*, not stored], FreeLog, ReflectionSession,
+   lifecycle state) and relations. *(Largely resolved — see SPEC §3; day-states are
+   derived per SPEC §4.1.)*
 
 ---
 
 ## 13. Design Principles (summary)
 
 1. The loop must close. Records exist to update the design.
-2. Game layer is a scaffold, not the product. Science wins conflicts.
+2. Game layer is a scaffold, not the product. Science wins conflicts — and it is
+   rendered *quietly* (minimal, adaptive light+dark UI; §4 / SPEC §6.0), not a loud RPG skin.
 3. The first design is a hypothesis — keep creation light (floor required for count
    habits; cue/identity introduced when the data shows they're needed).
 4. Reward the floor (consistency) and growth above it (intensity) — unified as XP,
    the single currency that drives level.
-5. never miss twice — one miss is recoverable, not a failure.
+5. never miss twice — one miss is recoverable, not a failure; intervene proactively
+   inside the still-open save window, *before* the second miss completes.
 6. Resurface records actively; an unread record is dead.
 7. Reflection is per-habit, active (verify, don't write), and ends in a decision.
 8. Keep the diagnosis input clean: only explicit skips count as misses; blank is
-   unknown; free logs stay out of reflection.
+   unknown and partial (logged-but-short) is not a miss. Honest logging is never
+   penalized vs. silence — scoped to XP, streak, and miss-count (partial deliberately
+   lowers the floor-rate as a *help* signal, but never causes demotion), and the "showed
+   up" streak makes an honest partial strictly *better* than silence. Explicit
+   skip-reasons actively drive diagnosis; free logs stay out of reflection.
 9. Status lights are intervention *opportunities*, not reproaches — and mix in
    positive lighting.
 10. Overload is a design failure: prevent with Forming slots, correct with Focus

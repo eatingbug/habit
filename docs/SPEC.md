@@ -1,6 +1,6 @@
 # Habiquest — Implementation Specification
 
-**Status:** Draft v2 · 2026-06-24 (yes/no habit type + unified XP→level progression)
+**Status:** Draft v3.1 · 2026-07-08 (recording review pass — correctness A1–A6; easier logging B1–B6; gradual-growth C1–C7; skip-reasons load-bearing D; adaptive Linear/Notion visual language §6.0)
 **Companion document:** [`CONCEPT.md`](./CONCEPT.md) (product spec — read this first)
 **Scope of this document:** Engineering decisions, architecture, data model, domain
 engine contract, surface definitions, acceptance criteria, and project layout for
@@ -23,9 +23,16 @@ the first real implementation of Habiquest.
   floor / unit / target required for count, omitted for yes/no; cue / identity
   optional at creation — see CONCEPT §5 for the deliberate late-introduction rationale).
 - **Stage 2 — Perform → Record:** habit entry logging (count: timestamp + actual;
-  yes/no: a single "done" = `actual: 1`); entry states `done / over / skip / blank`;
-  skip-with-reason (4 categories); backfill (past-date entries); heatmap
-  visualization; never-miss-twice detection.
+  yes/no: a single "done" = `actual: 1`). **Multiple entries per (habit, day) are
+  allowed** — entries store raw facts only and the day's state
+  `unknown / partial / done / over / skip` is **computed** from the day's summed
+  `actual` (§4.1). **Low-friction logging:** one-tap "+floor" / "✓" from Today *and* the
+  Dashboard (B1), smart-default + quick-add chips (B2), collapsed time picker (B3), a
+  "yesterday" fast-path (B4), one-tap skip-reason chips (B5), undo-toast for one-tap
+  appends (B6). skip-with-reason (4 categories, now diagnostic — Part D); per-entry edit &
+  delete; backfill (bounded by `createdAt`); heatmap; never-miss-twice detection **plus a
+  proactive `atRiskToday` save (C2)**; immediate attributed log-time reward
+  (`describeLogEffect`, C1); within-day progress-to-floor (C7a).
 - **Stage 3 — Reflect:** per-habit, entered via a status light; week mirror;
   rule-based diagnosis (4 rules, 4 components); pre-selected recommended action with
   visible reasoning; commit → writes the design change → loop closes.
@@ -36,11 +43,14 @@ the first real implementation of Habiquest.
 - **Progression (§10):** XP is the single currency — base XP from floor completion
   (both kinds), above-floor intensity + target bonus for count habits, decaying
   streak-milestone XP for yes/no habits; **stat level = cumulative-XP threshold
-  lookup** (no max-performance-based XP).
+  lookup** (no max-performance-based XP). Plus a non-XP **engagement ("showed up")
+  streak** that rewards sub-floor `partial` days without XP (C3), and a **weekly-actual
+  growth chart** that makes gradual growth visible (C4).
 - **Lifecycle (§3.3):** `forming` → `established` → `paused`; demotion path.
 - **All 4 surfaces:** Dashboard, Today, Habit Detail, Reflection.
-- Visual reference: `mvp/habiquest-demo_2.html` (existing HTML demo). Replace its
-  seeded data with real domain + repository; preserve the look and layout.
+- Visual reference: **`mvp/habiquest-linear.html`** (new Linear/Notion adaptive mockup —
+  §6.0 / §6.5), which supersedes `mvp/habiquest-demo_2.html` for **look**; the old demo
+  remains a layout/flow reference only. Replace seeded data with real domain + repository.
 
 ### 1.3 Explicitly deferred (named here so they are not forgotten)
 
@@ -125,10 +135,14 @@ export const TUNING = {
   statusLight: {
     cautionMinFlags:         1,    // 🟡 at >= this many flags
     interventionConsecMiss:  2,    // 🔴 (Forming) after this many consecutive misses
-    establishedDeclWeeks:    3,    // 🔴 (Established) after N weeks of declining actual
+    establishedDeclWeeks:    3,    // 🔴 (Established) after N weeks of declining actual …
+    establishedDeclineFloorGuard: true, // …but ONLY when latest week's total <= target (C5 — don't punish settling from a peak)
   },
 
   // §12.4 — Forming → Established transition (PLACEHOLDER)
+  // NOTE (C7b): 30d is well under Lally's ~66-day median formation window. Either raise
+  // toward the evidence, or keep 30d@80% as the mode-switch but retain light Forming
+  // scaffolding past day 30 (don't strip support while automaticity is still weak).
   formingToEstablishedDays:  30,   // days of sustained floor-rate above threshold
   formingToEstablishedRate:  0.80, // floor-completion rate threshold (80%)
 
@@ -140,6 +154,10 @@ export const TUNING = {
     lowFloorRateThreshold:     0.60,  // below this → "floor may be too high"
     stagnationAboveFloorWeeks: 3,     // zero above-floor for N weeks → stagnation
     lowCompletionForCuePrompt: 0.50,  // below this + empty cue → "fill cue first"
+    minEngagedDaysForRate:     5,     // Rules 1 & 4 stay silent below this many engaged days (§4.4)
+    cueSkipThreshold:          2,     // ≥ this many cue-skips in window → cue flag (§4.4 / Part D)
+    floorSkipThreshold:        2,     // ≥ this many floor-skips in window → reinforce floor flag
+    identitySkipThreshold:     2,     // ≥ this many identity-skips in window → identity flag
   },
 } as const;
 ```
@@ -178,29 +196,60 @@ interface Habit {
 }
 ```
 
-### 3.3 `HabitEntry`
+**Creation / edit invariants** (enforced by the create/edit form; assumed by the engine):
+- `floor >= 1`.
+- `target`, when present, satisfies **`target > floor` (strict)** — `over` means
+  "beyond a stretch goal that is itself above the floor," so a target at or below the
+  floor is meaningless; it is rejected at input and defensively ignored by
+  `classifyDay` (§4.1).
+- **Binary** habits satisfy `floor === 1` **and** `target === undefined`.
+
+### 3.3 `HabitEntry` — facts-only; day-state is computed
+
+An entry is a **raw fact** ("at this time I did this amount" or "I skipped, for this
+reason"). It does **not** store a classified state. Multiple entries may exist for
+the same `(habitId, date)`; the day's state is computed by aggregation (§4.1).
+
 ```typescript
-type EntryState     = 'done' | 'over' | 'skip';
-type SkipReason     = 'cue' | 'floor' | 'exception' | 'identity';
+type SkipReason = 'cue' | 'floor' | 'exception' | 'identity';
 
 interface HabitEntry {
-  id:          string;
+  id:          string;           // append-only event id (UUID)
   habitId:     string;           // FK → Habit.id
-  date:        string;           // 'YYYY-MM-DD' (local calendar date)
-  timestamp:   string;           // ISO-8601 UTC (when logged)
-  actual:      number;           // 0 for skip
-  state:       EntryState;
-  skipReason?: SkipReason;       // required when state === 'skip'
+  date:        string;           // 'YYYY-MM-DD' — AUTHORITATIVE for day-grouping
+  timestamp:   string;           // ISO-8601 UTC — ordering & latest-skip tiebreak only
+  actual:      number;           // activity row: > 0 · skip row: 0
+  skipReason?: SkipReason;       // present ⇔ this is a skip row (actual is 0)
   note?:       string;
 }
 ```
 
-**Blank = absence of a row.** A day with no `HabitEntry` for a given habit is
-treated as `unknown` by the domain engine — never as a miss. Only `skip` with a
-non-`exception` reason counts as a diagnostic miss (CONCEPT §3.2).
+- **`date` is authoritative** for which calendar day an entry belongs to;
+  `timestamp` is metadata used only for ordering and the latest-skip tiebreak
+  (§4.1). Timezone is **not** stored — `date` is trusted as the user's declared
+  local day (V1 is single-device, so DST/travel cannot shift entries between days).
+- **Row discriminator:** an **activity row** has `actual > 0` and no `skipReason`;
+  a **skip row** has `actual: 0` and a `skipReason`. There is no separate `state`
+  or `kind` field on the row — the presence of `skipReason` distinguishes them.
+- **`actual > 0` invariant** for activity rows: there is **no per-row floor check**.
+  An individual row may be below `floor`; the floor comparison happens only on the
+  day-level sum (§4.1). A count entry of `0` is meaningless — the composer routes it
+  to a skip (with reason) or to deletion. Yes/No activity rows are fixed `actual: 1`;
+  "undoing" a yes/no done is a row **delete**, not an `actual: 0` row.
 
-**Yes/No habits** store each "done" as `actual: 1, state: 'done'` and never produce
-`'over'` — `classifyEntry(1, 1, undefined) → 'done'` on the same path as count.
+**Day-state (computed, never stored):**
+```typescript
+type DayState = 'unknown' | 'partial' | 'done' | 'over' | 'skip';
+```
+See §4.1 for the `classifyDay` aggregation that produces it.
+
+**Blank = absence of any row** for a `(habitId, date)` → `unknown`, never a miss.
+A day with only skip rows is `skip`; only `skip` with a non-`exception` reason
+counts as a diagnostic miss (CONCEPT §3.2). A day with positive activity below
+floor is `partial` (also not a miss — see §4.1).
+
+**Yes/No habits** store each "done" as an `actual: 1` activity row and never produce
+`over` — the day resolves to `done` whenever ≥1 activity row exists.
 
 ### 3.4 `FreeLog`
 ```typescript
@@ -208,12 +257,17 @@ type LogType = 'note' | 'win' | 'mood' | 'idea';
 
 interface FreeLog {
   id:        string;
+  date:      string;    // 'YYYY-MM-DD' — set at creation; authoritative for grouping
   timestamp: string;    // ISO-8601 UTC; user can select time (§9.1)
   type:      LogType;
   text:      string;
 }
 ```
-Standalone — **no `habitId` link** (CONCEPT §9.4 deliberate decoupling).
+Standalone — **no `habitId` link** (CONCEPT §9.4 deliberate decoupling). `date` is
+set at creation (consistent with `HabitEntry`'s date-authoritative grouping) so the
+Today feed groups free logs by their declared local day, not a timezone-derived one.
+Free logs carry no scoring weight; `text`, `type`, and `timestamp` are all editable,
+and they use the same per-entry Alert-confirm delete as habit entries (§6.2).
 
 ### 3.5 `ReflectionSession`
 ```typescript
@@ -251,9 +305,11 @@ interface ReflectionSession {
 ```
 
 ### 3.6 Computed (not stored)
-Streak, floor-rate, XP, stat level, and status light are **derived by domain
-functions** on each render pass. They may be memoised in React state but are never
-persisted independently — they must be re-derivable from the stored entities alone.
+**Day-state** (`classifyDay`, §4.1), streak, **engagement streak** (§4.3), floor-rate,
+XP, **per-log effect** (`describeLogEffect`, §4.2), **weekly actual totals** (§4.6), stat
+level, and status light are **derived by domain functions** on each render pass. They may
+be memoised in React state but are never persisted independently — they must be
+re-derivable from the stored entities (raw entry rows) alone.
 
 ---
 
@@ -262,23 +318,79 @@ persisted independently — they must be re-derivable from the stored entities a
 All domain logic lives in `src/domain/`. Every file is **pure TypeScript** — no
 React, no AsyncStorage, no Supabase. Each module ships with a `*.test.ts` file.
 
-### 4.1 Classification — `domain/classify.ts`
+### 4.1 Day-level classification (aggregation) — `domain/classify.ts`
+
+Day-state is **computed from all of a day's entries**, never stored on a row.
+`classifyDay` is the single authoritative classifier; it replaces the old per-row
+`classifyEntry`/`RangeError` contract.
 
 ```typescript
-function classifyEntry(actual: number, floor: number, target?: number): EntryState
+function classifyDay(entries: HabitEntry[], habit: Habit): DayState
 ```
-- `actual >= floor` → `'done'`; `actual >= target` (if set) → `'over'`
-- A caller-provided `skip` reason supersedes classification (the `HabitEntry.state`
-  is always `'skip'` when the user marks a day as skipped).
-- **Yes/No** habits reuse this unchanged: `classifyEntry(1, 1, undefined) → 'done'`
-  (no target → no `'over'`).
+`entries` are all rows for one `(habitId, date)`. Algorithm:
+
+1. Partition into **activity rows** (`actual > 0`, no `skipReason`) and **skip rows**
+   (`actual: 0`, `skipReason` present).
+2. If there are **no rows** → `'unknown'`.
+3. If there is **≥1 activity row**, compute `sum = Σ actual` (the aggregation
+   function is always **SUM** in V1 — see note) and classify by the sum; skip rows
+   are ignored ("positive activity overrides skip"). Classify `done` first, then
+   *upgrade* to `over` — so **`over` always implies `done`** (never the reverse):
+   - `0 < sum < floor` → `'partial'`
+   - `sum >= floor` → `'done'`
+   - …and additionally `'over'` when the habit has an **effective target**
+     (`kind === 'count'` **and** `target !== undefined` **and** `target > floor`)
+     and `sum >= target`.
+4. If there are **only skip rows** → `'skip'`.
+
+> **Defensive target read (fixes an ordering hazard).** `done` is tested *before*
+> `over`, and `over` is only ever reached as an upgrade of a floor-met day. A corrupt
+> `target <= floor`, or *any* `target` on a binary habit, is treated as **no target**,
+> so a bad record can never emit a phantom `over` while below the floor (the old
+> "check `sum >= target` first" phrasing misclassified a `floor 5, target 3, sum 4`
+> day as `over`). See the `target > floor` invariant (§3.2, §7.3).
 
 ```typescript
-function isMiss(entry: HabitEntry | undefined): boolean
+function effectiveSkipReason(entries: HabitEntry[]): SkipReason | undefined
 ```
-- `undefined` (blank) → `false` (unknown is not a miss)
-- `state === 'skip' && skipReason !== 'exception'` → `true`
-- anything else → `false`
+For an only-skip day with differing reasons, the **most recent skip row's** reason
+represents the day — "latest intent wins." "Most recent" is defined by the domain's
+**total order `(timestamp ASC, then id ASC)`** (§7.3 invariant), *not* by array or
+storage read order — so the result is deterministic even when same-day backfilled rows
+share the noon timestamp (§6.3 gives them strictly increasing sub-noon offsets, with
+`id ASC` as the final tiebreak).
+
+> **`partial` (new state) — exactly three engine effects.** Removing the per-row
+> floor check means a positive-but-sub-floor day can now exist. It is classified
+> `partial`, whose engine effects are **exactly these three, and no others**:
+> (1) earns **0 XP** (floor not met; §4.2); (2) is **transparent** to the streak and
+> to never-miss-twice — it never breaks a streak and never counts as a miss (§4.3);
+> (3) **lowers `floorCompletionRate`** as an intended non-completion so the "floor too
+> high" diagnosis can fire (§4.4, Rule 1). Heatmap renders it with a distinct shade.
+>
+> **Scoped fairness rule.** Honestly logging a shortfall (`partial`) must never leave
+> the user worse off than logging nothing (`unknown`) **for XP, streak, or
+> miss-count** — and it is not, on any of the three. It *does* intentionally lower
+> `floorCompletionRate` (effect 3); that lowering is the helpful "your floor may be
+> too high" signal, not a penalty, so it must **not** leak into surfaces where a lower
+> rate *hurts* the user (Established→Forming demotion, caution light) — see §4.4 /
+> §4.6 / §4.7 for the split. On top of this "never worse" floor, `engagementStreak`
+> (§4.3) makes a `partial` day *strictly better* than a blank one — reinforcing
+> showing up without granting XP.
+
+> **SUM-only (V1 scope).** Day aggregation is always the sum of `actual`. This fits
+> additive count habits (glasses, pages, minutes). Measurement / "lower-is-better"
+> habits (e.g. weight) and non-SUM aggregations (LAST/MAX/AVG) are **out of scope**;
+> the current floor/target comparison only supports `sum >= target`.
+
+```typescript
+function isMissDay(state: DayState): boolean
+```
+- `'unknown'` (blank) → `false`; `'partial'` → `false`; `'done'`/`'over'` → `false`
+- `'skip'` → `true` **only when** `effectiveSkipReason !== 'exception'`
+
+**Yes/No** habits: any activity row (`actual: 1`) makes the day `'done'`; multiple
+"done" rows are idempotent (the day is still `done`, XP awarded once — §4.2).
 
 ### 4.2 Scoring — `domain/score.ts`
 
@@ -288,37 +400,85 @@ function milestoneBonusXP(entries: HabitEntry[]): number   // yes/no streak mile
 function computeStreak(entries: HabitEntry[], today: string): number
 function levelForXP(xp: number): number
 function computeStatLevel(entries: HabitEntry[], habit: Habit): number
+
+// C1 — what THIS log just unlocked, for immediate log-time feedback (§6.2)
+type LogEffect = {
+  xpGained:          number;
+  floorCrossedToday: boolean;   // day went unknown/partial → done
+  pushedToOver:      boolean;
+  statLevelUp:       boolean;
+  streakMilestoneHit?: number;  // milestone reached (incl. decayed re-achievement)
+  showedUp:          boolean;   // a partial log — engagement, not floor XP (C3)
+  savedAtRiskDay:    boolean;   // this log resolved an atRiskToday save window (§4.3)
+};
+function describeLogEffect(before: HabitEntry[], after: HabitEntry[], habit: Habit): LogEffect
 ```
 
+All scoring operates on **day aggregates** (entries grouped by `date`, summed),
+not individual rows.
+
 - **XP** — the single progression currency; branches on `habit.kind`. Both kinds
-  earn floor-met days × `TUNING.xpPerFloorCompletion`. **Count** habits add
+  earn floor-met days × `TUNING.xpPerFloorCompletion` (a `done`/`over` day counts
+  once regardless of how many activity rows it has). **Count** habits add
   target-exceeded days × `TUNING.xpBonusTargetExceed`, above-floor intensity
-  (`sum(actual − floor) × TUNING.xpPerAboveFloorUnit`), and once-only
-  `TUNING.xpStreakBonus` milestones (keyed on the longest run). **Binary** habits
-  add `milestoneBonusXP` instead.
-- **`milestoneBonusXP`** (binary) — walks runs of done/over (blanks & exception
-  skips transparent; a logged miss resets the run). Each milestone in
-  `TUNING.binaryStreakMilestones` fires once per run that reaches it; the k-th time
-  a milestone is reached awards `base × TUNING.binaryMilestoneDecay^(k-1)` (rounded;
-  dropped below `TUNING.milestoneBonusEpsilon`). A pure function of the entries —
-  idempotent under recomputation; a merely-blank gap is forgiven (one long run).
-- **Streak** = consecutive days with `state !== 'skip'` (non-exception) working
-  backward from `today`. Blank days are excluded from the count (not breaks).
+  (`Σ_days (daySum − floor) × TUNING.xpPerAboveFloorUnit`, over `done`/`over` days),
+  and once-only `TUNING.xpStreakBonus` milestones (keyed on the longest run).
+  **Binary** habits add `milestoneBonusXP` instead. A `partial` day earns **no**
+  floor-completion XP (floor not met) and contributes no intensity.
+- **`milestoneBonusXP`** (binary) — walks runs of `done` days (blank, `partial`, &
+  exception-skip days transparent; a non-exception miss resets the run). Each
+  milestone in `TUNING.binaryStreakMilestones` fires once per run that reaches it;
+  the k-th time a milestone is reached awards `base × TUNING.binaryMilestoneDecay^(k-1)`
+  (rounded; dropped below `TUNING.milestoneBonusEpsilon`). A pure function of the
+  entries — idempotent; binary XP for any day is awarded at most once.
+- **Streak** = consecutive days whose day-state is `done`/`over`, working backward
+  from `today`. `blank`, `partial`, and exception-skip days are **transparent**
+  (neither extend nor break the streak); a non-exception `skip` day breaks it.
 - **`levelForXP`** = highest index in `TUNING.statLevelThresholds` whose threshold
   ≤ the XP.
 - **Stat level** = `levelForXP(computeXP(entries, habit))` — cumulative XP drives
   the level. The Dashboard sums each stat's per-habit XP, then looks up the level
   (and the character level = the highest stat level).
+- **`describeLogEffect`** (C1) = a **pure delta**: it diffs `computeXP` / level / streak
+  between `before` and `after` a single log and tags *which* term moved (floor crossed,
+  above-floor intensity, target, streak milestone, stat level-up), plus `showedUp` for a
+  `partial` and `savedAtRiskDay` when the log closed a §4.3 save window. Because scoring
+  is already a pure function of the whole entry set, the delta is exact and essentially
+  free. It powers the Today log-time reward (§6.2) — it *computes* reward but never
+  stores it (a computed-but-undelivered reward is a dead reward).
 
-### 4.3 Never-miss-twice — `domain/streak.ts`
+### 4.3 Never-miss-twice & engagement — `domain/streak.ts`
 
 ```typescript
 function consecutiveMissCount(entries: HabitEntry[], asOfDate: string): number
 function needsNeverMissTwiceIntervention(entries: HabitEntry[], asOfDate: string): boolean
+function atRiskToday(entries: HabitEntry[], today: string): boolean          // C2
+function engagementStreak(entries: HabitEntry[], today: string): number      // C3
+function showedUpDays(entries: HabitEntry[], window: number): number         // C3 (cumulative)
 ```
-Returns `true` when the consecutive miss count reaches
-`TUNING.statusLight.interventionConsecMiss`. The UI reads this to show the 🔴
-status light and to surface the "don't miss twice" nudge message.
+Counts consecutive **miss days** (a `skip` day whose effective reason is
+non-`exception`) working backward from `asOfDate`. `done`/`over`/`blank`/`partial`
+and exception-skip days do **not** increment the count — a `partial` day, like a
+blank, never registers as a miss. `needsNeverMissTwiceIntervention` returns `true`
+when the count reaches `TUNING.statusLight.interventionConsecMiss`. The UI reads
+this to show the 🔴 status light and the "don't miss twice" nudge.
+
+- **`atRiskToday` (C2) — the proactive save.** Returns `true` when the most recent
+  *resolved* day (`today − 1`) is a non-exception miss (or a streak just broke) **and**
+  today is still `unknown`/`partial`. This is the open save window — *before* the second
+  miss completes — that `needsNeverMissTwiceIntervention` (which fires only *after* two
+  misses) misses. When `true`, Today shows an amber, opportunity-framed save banner
+  ("어제 놓쳤어요 — 오늘 최소 한 번이면 이어갈 수 있어요") wired to the B1 one-tap floor log
+  (§6.2). In-app only. Fulfils CONCEPT §5's "intervene at the moment of the second
+  *risk*, not just declare the principle."
+- **`engagementStreak` / `showedUpDays` (C3) — reward showing up, not XP.** Consecutive
+  (and cumulative-in-window) days with **any real engagement** — `done`/`over`/**`partial`**
+  — distinct from the floor-`computeStreak` (which counts `done`/`over` only). This makes a
+  `partial` day **strictly better than blank** (satisfying the scoped fairness rule §3.2,
+  which forbids only *worse*) **without granting XP** — `partial` stays 0 XP (§4.2).
+  Foregrounded in Forming (Habit Detail §6.3; the C1 log acknowledgment reads
+  "나타남 · 7일째"), because in formation the decisive quantity is repetitions-in-context
+  (Lally: early reps move the automaticity curve most), not perfect floor days.
 
 ### 4.4 Diagnosis engine — `domain/diagnose.ts`
 
@@ -327,6 +487,33 @@ function diagnose(habit: Habit, entries: HabitEntry[], asOfDate: string): Diagno
 ```
 
 Runs all four rules in order; returns an array of `DiagnosisFlag` (may be empty).
+All rules read **day-states** (§4.1), not rows.
+
+**`floorCompletionRate(entries, window)`** = `done`/`over` days ÷ "engaged" days,
+where engaged days = `done` + `over` + `partial` + non-exception `skip` days within
+the window. `blank` (unknown) and exception-skip days are excluded from both. A
+`partial` day therefore lowers the rate (it is a non-completion the user attempted)
+without being a miss — this is what lets Rule 1 fire when the floor is chronically
+out of reach.
+
+> **Minimum-sample guard (avoids n=1 false positives).** The rate reports a
+> "not-enough-data" state (treated as healthy — no flag) until the window holds at
+> least `TUNING.diagnosis.minEngagedDaysForRate` (default 5) engaged days. Without it,
+> a single honest `partial` gives `0/1 = 0%` and would trip Rule 1 (28-day) and
+> Rule 4 (14-day) off one data point — flagging an honest early logger while a blank
+> day (excluded, rate healthy) is never flagged. Rules 1 and 4 do not fire below the
+> guard.
+
+> **Rate role split (upholds the scoped fairness rule, §3.2/§4.1).** `partial` lowers
+> this rate deliberately. That is *helpful* where a low rate prompts a fix — Rule 1's
+> "lower your floor," and the 🟡 caution light it raises, are intended **opportunities**
+> (§7.4), not penalties. But where a low rate would instead **cost** the user status —
+> the Established→Forming demotion (§4.7) — that consumer must use a **partial-excluded**
+> rate (engaged days = `done` + `over` + non-exception `skip`; `partial` in neither
+> numerator nor denominator), so an honest partial-logger is never *evicted from
+> Established* (principle 11) while a silent blank-logger is not. Property to hold
+> (§7.3): converting any day `blank → partial` must never worsen a **demotion** or a
+> **🔴 intervention** outcome (a 🟡 caution is allowed — it is help, not harm).
 
 **Rule 1 — Floor too high**
 ```
@@ -365,6 +552,26 @@ if (!habit.cue || !habit.identity)
       evidence: `${Math.round(rate*100)}% completion and ${field} is empty` }
 ```
 
+**Rule 5 — Skip-reason attribution (Part D — makes the pre-classified skip load-bearing)**
+
+Each of the four skip reasons *is* a user-declared, pre-classified diagnosis (CONCEPT §5),
+but no Rule 1–4 reads the reason **category** (Rule 2 only clusters misses by weekday), so
+in the current spec the reason beyond `exception` was collected but inert. Rule 5 counts
+skip rows by reason in the 28-day window and raises the matching component directly,
+complementing the pattern rules:
+
+```
+const c = countSkipsByReason(entries, window=28)   // exception excluded (never a miss)
+if (c.cue      >= TUNING.diagnosis.cueSkipThreshold)      → { component: 'cue',      severity: 'warning', evidence: `${c.cue} cue skips in 28 days` }
+if (c.floor    >= TUNING.diagnosis.floorSkipThreshold)    → { component: 'floor',    severity: 'warning', evidence: `${c.floor} 'too hard' skips in 28 days` }  // reinforces Rule 1
+if (c.identity >= TUNING.diagnosis.identitySkipThreshold) → { component: 'identity', severity: 'warning', evidence: `${c.identity} 'no meaning' skips in 28 days` }
+```
+
+- `exception` skips are never counted (consistent with `isMissDay`).
+- Flags stack with Rules 1–4, **deduped by component** — the higher severity wins, so a
+  Rule 4 `critical` cue is not downgraded by a Rule 5 `warning`.
+- Habit-data only (skip rows + their reasons) — principle 8 holds; free logs never enter.
+
 ### 4.5 Recommended-action mapping — `domain/recommend.ts`
 
 ```typescript
@@ -379,8 +586,14 @@ Priority order (first matching rule wins):
 | Any `critical` flag on `identity` | `'fill_identity'` |
 | Any `warning` flag on `floor` | `'lower_floor'` |
 | Any `warning` flag on `cue` | `'adjust_cue'` |
+| Any `warning` flag on `identity` | `'fill_identity'` (revisit your "why") |
 | Any `warning` flag on `load` (stagnation) | `'raise_target'` |
 | No flags at all | `'keep'` |
+
+> **Note (Part D).** Rule 5 can raise a `warning` on `identity` (repeated "no meaning"
+> skips) even when an identity is already set; `fill_identity` then reads as "revisit
+> your why." A dedicated `adjust_identity` action is a future refinement (cf. the yes/no
+> limitation below).
 
 > **Yes/No limitation (known, deferred):** `lower_floor` and `raise_target` are
 > meaningless for a yes/no habit (floor is fixed at 1, no target). `suggestAction`
@@ -392,6 +605,8 @@ Priority order (first matching rule wins):
 ```typescript
 type StatusLight = 'stable' | 'caution' | 'intervention' | 'personal_best';
 
+// C4/C5 — day-summed actual per ISO week, most-recent last; also drives the §6.3 growth chart
+function weeklyActualTotals(entries: HabitEntry[], weeks: number): number[]
 function deriveStatusLight(
   habit:   Habit,
   entries: HabitEntry[],
@@ -399,11 +614,23 @@ function deriveStatusLight(
 ): StatusLight
 ```
 
-Logic:
+Logic (weekly "total actual" and trends come from `weeklyActualTotals`, i.e.
+**day-summed** values):
 - `intervention` — `Forming` + consecutive miss ≥ threshold **OR** `Established` +
-  declining actual trend over `TUNING.statusLight.establishedDeclWeeks` weeks.
-- `caution` — `flags.length >= TUNING.statusLight.cautionMinFlags`.
-- `personal_best` — `Established` + this week's total actual > any prior week's.
+  declining actual trend over `TUNING.statusLight.establishedDeclWeeks` weeks **and** the
+  latest week's total is at/below target (**absolute-level guard**,
+  `TUNING.statusLight.establishedDeclineFloorGuard`, **C5**). The guard stops a habit that
+  merely settled back from an unsustainable peak (e.g. 12→8 with target 8) from being
+  reproached with a 🔴 — the "requirements rise as you improve → churn" anti-pattern §10
+  forbids. A decline still comfortably above target resolves to `stable` (at most `caution`).
+- `caution` — `flags.length >= TUNING.statusLight.cautionMinFlags` (flag-driven; a Rule 1
+  caution is an intended *opportunity*, §7.4 — see the rate role split, §4.4).
+- `personal_best` — **lifecycle-aware (C6):**
+  - `Established` → this week's **total actual** > any prior week's (an intensity best).
+  - `Forming` → a **consistency** best: best floor-completion week yet, or a new longest
+    streak. So the encouraging ⭐ light reaches the cohort that needs it most and stays
+    faithful to Forming foregrounding the floor (CONCEPT §7.1 wants positive lighting, not
+    only nags).
 - `stable` — everything else.
 
 ```typescript
@@ -423,9 +650,14 @@ function evaluateLifecycle(habit: Habit, entries: HabitEntry[], today: string): 
 
 Transitions:
 - `forming` → `established`: floor-completion rate ≥ `TUNING.formingToEstablishedRate`
-  for `TUNING.formingToEstablishedDays` consecutive days (PLACEHOLDER thresholds).
-- `established` → `forming` (demotion): floor-completion rate falls below threshold
-  for the same window.
+  for `TUNING.formingToEstablishedDays` consecutive days (PLACEHOLDER thresholds). The
+  standard (partial-inclusive) rate is fine here — a `partial`-lowered rate only keeps
+  the user in Forming longer, which is *more* scaffolding, not a penalty.
+- `established` → `forming` (demotion): the **partial-excluded** floor-completion rate
+  (§4.4 — `partial` in neither numerator nor denominator) falls below threshold for the
+  same window. The partial-excluded rate is **required** by the scoped fairness rule
+  (§3.2): an honest `partial`-logger must not be evicted from Established (principle 11)
+  when a silent blank-logger would not be.
 - `* → paused`: explicit user action only (not triggered automatically).
 - `paused → forming/established`: explicit resume action only.
 
@@ -476,53 +708,186 @@ Class stub implementing `HabitRepository`. All methods throw
 `'SupabaseRepository not yet configured'`. Swapped in by changing one line in the
 app's DI/context provider — no domain or UI code changes needed.
 
+**V1 is single-device, local-only** — offline is the default and only mode; there is
+no sync in V1. Entries and free logs are kept **append-only** locally (a cheap property
+that costs nothing; corrections are edit/delete of a specific row, §6.2).
+
+> **Multi-device sync — deferred to V2.** Merge semantics (how two devices reconcile
+> rows and deletes) are **not designed here** — specifying union-by-id, tombstones, or
+> conflict resolution now would lock decisions with zero V1 validation and introduce a
+> concept (tombstones) that has no V1 runtime (a local delete just removes the row).
+> Two forward risks are noted so they are not forgotten when sync is actually built:
+> (1) a hard delete on one device can resurrect on a naive union merge — needs a real
+> delete-propagation design; (2) `date` is the device-local calendar day, so the same
+> physical evening logged on two devices in different offsets can split one `done` into
+> two sub-floor `partial` days — capturing a per-row UTC offset **at write time** is the
+> (deferred) insurance, since that provenance is unrecoverable on an append-only model
+> once the row is written.
+
 ---
 
 ## 6. UI Surfaces
 
-Visual language, colours, and typography come directly from
-`mvp/habiquest-demo_2.html`. Replace seeded arrays with live data from the
-repository; all business logic stays in the domain layer.
+### 6.0 Visual language — adaptive, minimal (Linear / Notion)
+
+The visual language is a **clean, minimal, typographic system in the Linear/Notion
+family** — *not* the dark-gold RPG treatment of `mvp/habiquest-demo_2.html` (that file is
+now a **layout/flow reference only**; the new mockup `mvp/habiquest-linear.html` (§6.5)
+supersedes its look). Principles:
+
+- **Adaptive light + dark.** One token set, both themes first-class (follow the OS
+  setting; a manual toggle is optional). Neither theme is an afterthought.
+- **Restrained, content-first.** Generous whitespace, a clear type hierarchy, hairline
+  1px borders and subtle surfaces instead of heavy cards; one functional accent used
+  sparingly. Depth via border + faint shadow, never gradients or glows.
+- **Gamification, minimally rendered (principle 2 — the game is a scaffold).** XP, stat
+  levels, streaks, and status lights **stay**, but read as *quiet UI*: a thin progress
+  bar (not a glowing gold bar), a small muted stat chip (not a badge), a compact numeric
+  level, small semantic status dots. Emoji appear sparingly as small status glyphs, not
+  decoration. The RPG feel comes from clarity and momentum, not gold and sparkle.
+- **Design tokens** (CSS/JS constants; concrete values live with the mockup §6.5 and the
+  theme module `src/theme/`):
+  - *Color:* a neutral scale (bg / surface / border / text-primary / text-muted), one
+    **accent** (interactive/brand), and **semantic** hues for day-states and lights
+    (`done` / `over` / `partial` / `skip` / `caution` / `intervention` / `positive`) —
+    muted, and distinct in **both** themes (the heatmap must keep blank ≠ partial ≠ skip
+    legible in light *and* dark).
+  - *Type:* a system / Inter-like sans; a small modular scale (≈ 12 / 14 / 16 / 20 / 28);
+    tabular numerals for counts and XP.
+  - *Space & shape:* an 8px spacing rhythm; small radii (6–10px); hairline borders.
+- **Motion:** brief and functional (150–200ms) — the log-time reward (C1), the undo
+  toast (B6), and the save banner (C2) fade/slide subtly; no confetti.
+
+Replace the demo's seeded arrays with live data from the repository; all business logic
+stays in the domain layer. Each surface below notes how its gamification reads in this
+restrained language; §6.5 links the reference mockup.
 
 ### 6.1 Dashboard (`app/index.tsx` or `app/(tabs)/dashboard.tsx`)
 - Stat cards: level (from cumulative XP), XP bar, "to next level" label.
-- Quest Log: per-habit row with name, stat tag, cue summary, streak, 20-day
-  heatmap, **status light** (🟢 / 🟡 / 🔴). Tapping a 🔴 navigates to
-  `reflect/[habitId]`; tapping a row navigates to `habit/[habitId]`.
+- Quest Log: per-habit row with name, stat tag, cue summary, streak, 20-day heatmap
+  (each cell a computed day-state — `unknown`/`partial`/`done`/`over`/`skip` — with
+  `partial` rendered distinctly from blank), **status light** (🟢 / 🟡 / 🔴).
+  - **One-tap log on the row (B1).** A primary log affordance so the highest-frequency
+    action is the cheapest, right where the user lands: binary → a "✓" appending
+    `actual: 1` for today; count → a **"+floor"** appending one `actual = floor` activity
+    row (guaranteed `done` + base XP, zero typing). If today already has activity the
+    control reads **"+1 더"** (append, not re-log). Writes are optimistic and update the
+    row's heatmap/streak/light in place, with the B6 undo toast.
+  - **Long-press → skip chips (B5).** Long-pressing today's heatmap cell reveals the
+    four reason chips, so a miss can be reason-tagged without opening the composer.
+  - Tapping a 🔴 (or 🟡) navigates to `reflect/[habitId]`; tapping the row navigates to
+    `habit/[habitId]`.
 - Aggregate status count ("shaky habits · N").
 
 ### 6.2 Today (`app/(tabs)/today.tsx`)
 - Date header + tally (quests done / logs / XP earned today).
 - **Unified composer:**
+  - **Date control (B4).** Defaults to **오늘 (today)**, with a one-tap **어제
+    (yesterday)** toggle and a stepper back to the habit's `createdAt` (future blocked,
+    §6.3). A non-today entry is a **backfill** and follows the §6.3 rules (noon-based
+    timestamp, append-only). This makes Today the single logging surface for the two
+    dominant cases — today, and "did it last night, forgot to log" — so forgotten days
+    are recovered where the thought occurs and `unknown` days (and lost misses) stop
+    piling up. Older gaps still use Habit-Detail backfill.
   - Target selector: "Free log" or one of the user's habits.
   - Free log path: type chips (Note / Win / Mood / Idea) + optional note.
-  - Habit path (count): numeric actual input + unit + floor hint + optional note.
-  - Habit path (yes/no): a single "✓ Mark done" (no amount) + optional note.
-  - Time picker: separate hour (`00`–`23`) and minute (`00`, `10`, … `50`) selects;
-    defaults to current time rounded down to nearest 10 minutes.
-  - Log button — calls `upsertEntry` or `upsertFreeLog`.
+  - **Habit path (count):**
+    - **One-tap "✓ 최소 실행 (+floor)".** Appends one activity row `actual = floor` with
+      no numeric entry — a guaranteed `done` + base XP for the highest-frequency action
+      ("I did my minimum today"), the count analog of binary's Mark-done.
+    - For any other amount: a numeric `actual` input **pre-filled with a smart default**
+      (the habit's `floor` for the day's first entry, else its last-used amount) plus
+      **quick-add chips `+1 / +floor / 직전값`**, so a full log is one tap + Log. `actual`
+      **must be `> 0`**; a **sub-floor amount is valid** (it sums toward the day →
+      `partial`); `0` is not an activity row — route to a skip instead.
+    - **Progress-to-floor (C7a).** The composer shows the day's **running sum** and
+      remaining-to-floor ("오늘 3/5 · 2 남음") and previews the staged amount's result
+      ("→ 5/5 done · +60 XP"); once the floor is met it flips to "done ✓" and nudges the
+      target / personal-best. Turns log-as-you-go into visible progress (goal-gradient).
+  - **Habit path (yes/no):** a single "✓ Mark done" (no amount; `actual: 1`) + optional note.
+  - **Skip path (B5).** A row of **one-tap reason chips** (깜빡함 `cue` / 너무 힘듦 `floor`
+    / 예외 `exception` / 안 내킴 `identity`) — tapping a chip logs the skip (two taps total),
+    replacing the old dropdown. Optional free-text note. (Reasons are diagnostic — Part D.)
+  - **Time.** Defaults to **now**; the hour/minute picker is **collapsed behind a small
+    "🕑 지금 HH:MM" affordance (B3)** and revealed only to override (rare — `timestamp` is
+    ordering/tiebreak only, §3.3). Applies to habit entries and free logs alike.
+  - Log button — calls `upsertEntry` or `upsertFreeLog` (always a fresh `id`; the
+    composer never overwrites another day's rows — multiple per day are expected).
+  - **Log-time reward feedback (C1).** On a successful log, Today shows an immediate,
+    attributed confirmation from `describeLogEffect` (§4.2): "바닥 달성 · +60 XP 💪",
+    "목표 초과", a level-up moment, a milestone amount, or a **"나타남 (showed up)"**
+    acknowledgment for a `partial` — never silence. In-app only (no push).
 - Chronological Today feed (habit entries and free logs interleaved by timestamp).
+- **Edit & delete (per entry):**
+  - Tap a feed item → re-opens the composer pre-filled, preserving the row's `id`
+    (edits that one row only; never spawns a duplicate).
+  - Editable fields: `actual` (count), `timestamp` (via the reveal), `note`, and
+    skip↔activity mode (incl. `skipReason`); free logs additionally allow `type`.
+  - **Undo, not confirm, for one-tap appends (B6).** Every one-tap / quick-add append
+    (the `+floor` / `✓` and the chips, on Today and on the Dashboard §6.1) shows a
+    transient **undo toast** ("기록됨 +N {unit} · 실행취소"); Undo deletes the
+    just-appended row by `id` (append-only → a clean single-row delete). The toast also
+    serves as the "it registered" confirmation one-tap logging otherwise lacks.
+  - **Deliberate deletes** (edit-form / swipe) are **immediate** for an ordinary row
+    (undo = re-log; append-only keeps this low-stakes). The one guarded case is deleting
+    the **last remaining row of a date** or a **miss-bearing skip**: show a
+    **consequence-aware** confirm ("이 날이 비워지고 N일 스트릭이 끊깁니다") — that reverts
+    the day to `unknown` and can silently break a streak or erase a recorded miss. There
+    is no "clear whole day" action.
+  - *(This revises the earlier blanket "native Alert on every delete, no undo-toast"
+    rule — scoped now: undo-toast for the new frequent one-tap creates, a
+    consequence-aware confirm only for the destructive edge cases.)*
 
 ### 6.3 Habit Detail (`app/habit/[id].tsx`)
 - Header: name, stat tag.
-- Stat pills: streak, floor-rate (28-day), XP/week.
+- Stat pills: streak, **engagement ("나타남") streak** (C3 — foregrounded in Forming),
+  floor-rate (28-day), XP/week.
+- **Growth panel (C4, count habits).** A bar/sparkline of **weekly summed actual**
+  (`weeklyActualTotals`, last 8–12 weeks) with the **floor** and **target** as reference
+  lines and a ⭐ on the best week. For **Established** habits this is the *primary* panel
+  (above streak/XP) — it realizes the "monitor the actual trend" value-prop that was
+  previously computed for the status light but never rendered, and it is reused as the
+  **visible evidence** for Rule 3 stagnation and the Established decline light
+  (§4.4/§4.6), turning "0 above-floor reps in N weeks" from text into a picture.
+- **Forming expectation (C7b).** While `Forming`, show a light expectation affordance —
+  "형성 중 — 대개 ~2개월(Lally)" — with progress measured by **accumulated repetitions**
+  (showed-up / floor days), not the calendar, so a shaky stretch reads as "still forming,"
+  not "failing." (See §2.3 `formingToEstablishedDays` reconciliation.)
 - **Design box:** Cue / Floor / Identity — current hypothesis. Edit affordance.
   For yes/no habits the floor cell reads "Yes / No" and the edit form hides
   floor/target.
-- Journal: last N entries as a timeline, each showing date, state chip
-  (done / over / skip), actual, note (yes/no shows "✓ done", no amount).
+- Journal: entries as a timeline. A day may show **multiple rows**; each row shows
+  its time, `actual`, and note (yes/no shows "✓ done", no amount), and is
+  individually editable/deletable (§6.2). The day's computed state chip
+  (`partial` / `done` / `over` / `skip`) reflects the aggregate (§4.1).
   **Backfill** entry: tap a past-date in the heatmap (or a "+ add past entry"
-  button) to log retroactively (yes/no backfill is a single "mark done").
+  button) to **append** a row to that date (yes/no backfill is a single "mark done").
+  Backfill rules:
+  - Allowed range: from the habit's `createdAt` date up to **today**; pre-creation
+    and **future** dates are blocked.
+  - A backfilled row's `timestamp` is the target date at **noon (`T12:00` local)** —
+    not the moment of entry — so it groups onto the correct day and orders sanely.
+    Multiple same-day backfills get **strictly increasing sub-noon offsets**
+    (`T12:00:00`, `T12:00:01`, …) in creation order, so the domain total order
+    `(timestamp ASC, then id ASC)` (§7.3) is well-defined and `effectiveSkipReason`
+    (§4.1) is deterministic — plain "creation sequence" is otherwise unimplementable
+    (UUIDs are not monotonic).
+  - Backfill **appends** (it does not overwrite) — same-day "duplicates" are
+    intentional under the multi-entry model; edit/delete a specific row to correct.
 
 ### 6.4 Reflection (`app/reflect/[id].tsx`)
 - Entry point: tap a 🔴 or 🟡 status light on the Dashboard.
-- **Mirror:** 7-day heatmap grid showing this week's states (done / over / miss) +
-  any journal notes.
+- **Mirror:** 7-day heatmap grid showing this week's **day-states**
+  (`unknown` / `partial` / `done` / `over` / `skip`), each visually distinct so the
+  user can tell "didn't log (unknown)" from "logged but fell short (partial)" from
+  "skipped (miss)" — plus any journal notes.
 - **Diagnosis flags:** pre-computed, rule-based cards. Each shows:
   - Component (CUE / FLOOR / IDENTITY / LOAD), severity badge.
   - Human-readable message.
-  - **Evidence** (the cited data — always visible, not hidden). This is the
-    guardrail against rubber-stamping (CONCEPT §6.2 rule 4).
+  - **Evidence** (the cited data — always visible, not hidden), rule-specific:
+    floor-completion %, weekday miss clustering, the **growth chart / weekly totals** for
+    Rule 3 stagnation and the decline light (§4.6, C4), and **skip-reason counts** for
+    Rule 5 (Part D). This is the guardrail against rubber-stamping (CONCEPT §6.2 rule 4).
 - **Recommended action** — pre-selected button (with explanation). User can switch.
   (For yes/no habits, `lower_floor`/`raise_target` are not yet hidden — see §4.5.)
 - **Commit button** — writes:
@@ -530,6 +895,15 @@ repository; all business logic stays in the domain layer.
   2. `ReflectionSession` record (`designBefore`, `designAfter`, `chosenAction`,
      `committedAt`).
   - After commit: navigate back to Dashboard; status light should have updated.
+
+### 6.5 Reference mockup — `mvp/habiquest-linear.html`
+
+A self-contained, theme-aware (light + dark) HTML mockup of all four surfaces in the
+§6.0 language, showing the improved recording UX (one-tap "+floor" / "✓", quick-add
+chips, progress-to-floor, collapsed time, computed day-states incl. `partial`, the
+engagement streak, the weekly-actual growth chart, the log-time reward, and the
+never-miss-twice save banner) with gamification rendered minimally. It is the visual
+source of truth for implementation and supersedes the old demo's look.
 
 ---
 
@@ -541,14 +915,14 @@ File: `src/domain/**/*.test.ts`
 
 | Test suite | Cases to cover |
 |---|---|
-| `classify.test.ts` | actual < floor → done; actual ≥ target → over; skip with reason; skip exception not a miss; blank undefined not a miss |
-| `score.test.ts` | count XP (base + target bonus + above-floor intensity + streak milestone); binary XP (base + decaying milestones); `milestoneBonusXP` decay / blank-forgiven / break-rebuild / idempotent; `levelForXP` boundaries; stat level = XP threshold lookup |
-| `streak.test.ts` | 0, 1, 2 consecutive misses; blank days do not break streak; exception skip does not count |
-| `diagnose.test.ts` | each of the 4 rules fires on exact threshold; rules below threshold do not fire; Rule 3 suppressed for binary habits; empty flags for healthy habit |
+| `classify.test.ts` | `classifyDay`: no rows → unknown; sum ≥ floor → done; sum ≥ target → over; `0 < sum < floor` → partial; only-skip → skip; **`done` precedes `over` and `over ⇒ done`; defensive `target <= floor` (and any binary target) → not `over`**; activity row overrides skip rows on the same day; `effectiveSkipReason` = latest skip **under the `(timestamp ASC, id ASC)` total order (equal-timestamp determinism; permutation-invariant)**; `isMissDay` (skip non-exception → miss; partial/blank/exception → not a miss); yes/no multiple "done" rows idempotent |
+| `score.test.ts` | count XP on day-sums (base + target bonus + above-floor intensity + streak milestone); partial day earns 0 floor XP; binary XP (base + decaying milestones, **once per day** for multiple done rows); `milestoneBonusXP` decay / blank-forgiven / break-rebuild / idempotent; `levelForXP` boundaries; stat level = XP threshold lookup; **`describeLogEffect` delta: floor-crossed / pushed-to-over / level-up / milestone / `showedUp` on partial / `savedAtRiskDay`** |
+| `streak.test.ts` | 0, 1, 2 consecutive misses; blank **and partial** days do not break streak; exception skip does not count; **`engagementStreak` counts done/over/partial (⊇ `computeStreak`); `atRiskToday` true iff `today−1` miss/break AND today unknown/partial; `showedUpDays`** |
+| `diagnose.test.ts` | each of the 4 rules fires on exact threshold; rules below threshold do not fire; Rule 3 suppressed for binary; **Rule 5 skip-reason attribution (cue/floor/identity thresholds; exception never counted; component dedup keeps higher severity)**; **min-sample guard: Rules 1 & 4 silent below `minEngagedDaysForRate`**; empty flags for healthy habit |
 | `recommend.test.ts` | priority order — critical cue > critical identity > floor warning > cue warning > stagnation; keep on empty flags |
-| `statusLight.test.ts` | Forming 🔴 at consecutive-miss threshold; Established 🔴 on declining trend; 🟡 on one flag; stable on healthy |
-| `lifecycle.test.ts` | Forming→Established at threshold; demotion path; Paused only on explicit action |
-| `heatLevel.test.ts` | binary done → full cell (4); non-exception skip → miss; exception / blank → neutral; count above-floor ramp regression |
+| `statusLight.test.ts` | Forming 🔴 at consecutive-miss threshold; **Established 🔴 on decline ONLY with latest week ≤ target (decline floor-guard); decline from a peak (all > target) → not 🔴**; 🟡 on one flag; **lifecycle-aware `personal_best` (Established = intensity best; Forming = consistency/streak best)**; `weeklyActualTotals` shape; stable on healthy |
+| `lifecycle.test.ts` | Forming→Established at threshold; **demotion uses the partial-excluded rate (blank→partial never demotes)**; Paused only on explicit action |
+| `heatLevel.test.ts` | binary done → full cell (4); non-exception skip → miss; exception / blank → neutral; **partial → distinct sub-floor shade (≠ blank, ≠ miss)**; count above-floor ramp regression |
 
 All tests must pass with `npm test` (Expo / Jest preset). The loop proof
 (`src/__tests__/loop.test.ts`) additionally covers a binary habit end-to-end
@@ -560,12 +934,18 @@ Perform on web (`npx expo start --web`) then on a native simulator:
 
 1. **Create** a habit: name "Pull-ups", stat Strength, floor 1, unit "reps". No
    cue or identity. Save.
-2. **Log** three entries on Today: actual=0 (skip, reason "cue"), actual=1 (done),
-   actual=3 (over). Verify heatmap on Dashboard updates.
-3. **Confirm** the habit's status light on Dashboard has turned 🔴 (after the skip).
+2. **Log (multi-entry, same day).** On Today, log Pull-ups **twice** — actual=1,
+   then actual=2. Verify the Today feed shows **two rows** but the Dashboard heatmap
+   shows a **single `done` cell** for today (sum 3 ≥ floor) — proving same-day
+   aggregation. Edit one row and delete the other; confirm the day reclassifies live.
+3. **Create the failure signal.** Backfill the previous **two** days as **skip
+   (reason "cue")** with no activity. The habit now has consecutive non-exception
+   misses and a low recent completion rate; with no cue set, its status light turns
+   🔴.
 4. **Tap the 🔴** → navigate to Reflection for that habit.
-5. **Verify diagnosis:** Rule 4 fires ("No cue set …") with evidence text visible.
-   Suggested action is `fill_cue`, pre-selected.
+5. **Verify diagnosis:** Rule 4 fires ("No cue set …") with evidence text visible;
+   suggested action is `fill_cue`, pre-selected. The mirror renders the distinct
+   day-states (today `done`, the two skip days as misses, other days blank).
 6. **Commit:** enter a cue ("After morning coffee"), keep action as `fill_cue`.
 7. **Verify** the habit's `cue` field in the repository is updated (check Habit
    Detail → Design box shows the new cue).
@@ -573,12 +953,69 @@ Perform on web (`npx expo start --web`) then on a native simulator:
 9. **Verify** the status light is no longer 🔴 (Rule 4 no longer fires once a cue
    is set, assuming completion rate recovers above threshold).
 
+**Partial check (optional).** Create a count habit with floor=5. Log two entries
+one day (actual=2, then actual=1 → sum 3). Verify the day renders as **`partial`**
+(a shade distinct from blank and from a skip), the streak is unaffected, and it is
+**not** counted as a miss — but it lowers the 28-day floor-completion rate.
+
 **Yes/No variant.** Create a yes/no habit (the floor / unit / target fields are
 hidden). Log it via "✓ Mark done" for 5 straight days → the stat XP jumps by the
 5-day milestone bonus and the level bar advances (proving XP → level). Log a miss,
 rebuild to 5 again → the re-achievement bonus is the decayed (×0.5) amount. The
 feed shows "✓ done" (not "1 time"); a healthy yes/no habit shows no stagnation
 flag.
+
+### 7.3 Recording subsystem — acceptance criteria
+
+Scenarios (assert against `classifyDay` / scoring) and invariants (properties that
+must hold for any entry set). Volume/performance is **not** a V1 criterion
+(entries-per-day is assumed small).
+
+**Scenarios** (count habit `floor = 5`, `target = 8` unless noted):
+
+| Given | Day entries | Expect |
+|---|---|---|
+| two activity rows | `actual: 2`, `actual: 4` | `done`, sum 6 |
+| activity reaches target | `actual: 5`, `actual: 4` | `over`, sum 9 |
+| positive but sub-floor | `actual: 2`, `actual: 1` | `partial`, sum 3 |
+| morning skip, evening done | `skip(cue)`, `actual: 5` | `done` (activity overrides skip) |
+| only skips, mixed reasons | `skip(cue)@09:00`, `skip(floor)@21:00` | `skip`, effective reason `floor` (latest) |
+| no rows | — | `unknown` |
+| binary, multiple dones | `actual: 1`, `actual: 1` | `done`; XP awarded once |
+| delete last row of a date | (was `done`, now 0 rows) | day → `unknown` |
+| corrupt `target <= floor` (defensive) | `floor 5, target 3`, `actual: 4` | `partial` (target ignored; sum 4 < floor, **not** `over`) |
+| same-noon backfilled skips | `skip(cue)@T12:00:00`, `skip(floor)@T12:00:01` | `skip`, effective reason `floor` (total order `timestamp ASC, id ASC`) |
+| below min-sample | 1 engaged day, `partial` | Rule 1 / Rule 4 **do not** fire ("gathering data") |
+| engagement vs floor streak | 10 straight `partial` days | `engagementStreak` = 10, `computeStreak` = 0, XP unchanged (partial = 0) |
+| at-risk save window | `today−1` = miss, today = blank | `atRiskToday` = true; a floor log today sets `describeLogEffect.savedAtRiskDay` |
+| decline from peak (guarded) | Established, weekly totals `12,11,10,9`, target 8 | **no 🔴** (all > target — decline floor-guard, C5) |
+| decline toward floor | Established, weekly totals `9,8,7,6`, target 8 | 🔴 intervention (latest ≤ target) |
+| skip-reason threshold (Rule 5) | 2 `cue` skips in 28d | cue-component warning fires |
+
+**Invariants:**
+- A day with **≥1 activity row (`actual > 0`)** never classifies as `skip`.
+- A `partial` or `unknown` day is **never** a miss (never breaks streak / never
+  increments `consecutiveMissCount`).
+- **Engagement ⊇ floor.** `engagementStreak` counts `done`/`over`/`partial`;
+  `computeStreak` counts `done`/`over` only — so `engagementStreak >= computeStreak`
+  always, and a `partial` day extends engagement but never XP or the floor-streak (C3).
+- **`over ⇒ done`** — an `over` day always met the floor. A **binary** habit has
+  `floor === 1` and no `target`, so its summed `actual: 1` rows can never emit `over`.
+- Binary XP for any single day is awarded **at most once**, regardless of row count.
+- **Scoped fairness (property).** Converting any single day `blank → partial` never
+  worsens a lifecycle **demotion** (§4.7) or a **🔴 intervention** (§4.6) outcome (a
+  🟡 caution may appear — it is an opportunity, not harm; §7.4).
+- **Total order.** A day's rows are ordered by `(timestamp ASC, then id ASC)`;
+  `classifyDay`, scoring, and streak are **invariant under any array permutation** of a
+  day's rows, and `effectiveSkipReason` is deterministic even under equal timestamps.
+- **Min-sample.** Rule 1 and Rule 4 do not fire until the window holds ≥
+  `TUNING.diagnosis.minEngagedDaysForRate` engaged days.
+- Day-state is a **pure function** of that day's stored rows (recomputable; no
+  stored `state`). Editing/deleting a row never requires touching another row.
+- `date` alone determines a row's day; changing `timestamp` within the same `date`
+  changes ordering only, never the day a row belongs to.
+- Every activity row satisfies `actual > 0`; every skip row satisfies
+  `actual === 0 && skipReason != null`.
 
 ---
 

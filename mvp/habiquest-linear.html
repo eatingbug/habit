@@ -1,0 +1,590 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Habiquest — 습관 형성 시스템 (기록 목업)</title>
+</head>
+<body>
+<style>
+  :root{
+    --bg:#FBFBFC; --surface:#FFFFFF; --surface-2:#F5F5F8; --inset:#F0F0F4;
+    --border:#E7E7EE; --border-strong:#D9D9E1;
+    --text:#1B1C20; --muted:#6E7079; --faint:#A2A4AE;
+    --accent:#5A63D8; --accent-ink:#4049C4; --accent-weak:rgba(90,99,216,.10);
+    --done:#3F9E72; --over:#2C875C; --partial:#C08A2E; --skip:#C25B54; --blank:#ECECF1;
+    --good:#3F9E72; --warn:#C08A2E; --crit:#C25B54;
+    --shadow:0 1px 2px rgba(24,24,48,.05),0 6px 22px rgba(24,24,48,.05);
+    --mono:ui-monospace,"SF Mono",SFMono-Regular,"Cascadia Code","Roboto Mono",Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI","Apple SD Gothic Neo","Malgun Gothic","Noto Sans KR",Roboto,sans-serif;
+    --r:10px; --r-sm:7px;
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --bg:#0D0E12; --surface:#15171C; --surface-2:#1B1D23; --inset:#1B1D24;
+      --border:#262933; --border-strong:#343845;
+      --text:#EBEBEF; --muted:#8C8F9B; --faint:#63666F;
+      --accent:#828BF5; --accent-ink:#9AA1F8; --accent-weak:rgba(130,139,245,.14);
+      --done:#54B487; --over:#41A472; --partial:#D3A24A; --skip:#D06B63; --blank:#20232B;
+      --good:#54B487; --warn:#D3A24A; --crit:#D06B63;
+      --shadow:0 1px 2px rgba(0,0,0,.32),0 8px 26px rgba(0,0,0,.30);
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#0D0E12; --surface:#15171C; --surface-2:#1B1D23; --inset:#1B1D24;
+    --border:#262933; --border-strong:#343845;
+    --text:#EBEBEF; --muted:#8C8F9B; --faint:#63666F;
+    --accent:#828BF5; --accent-ink:#9AA1F8; --accent-weak:rgba(130,139,245,.14);
+    --done:#54B487; --over:#41A472; --partial:#D3A24A; --skip:#D06B63; --blank:#20232B;
+    --good:#54B487; --warn:#D3A24A; --crit:#D06B63;
+    --shadow:0 1px 2px rgba(0,0,0,.32),0 8px 26px rgba(0,0,0,.30);
+  }
+
+  *{box-sizing:border-box}
+  body{margin:0}
+  .wrap{
+    font-family:var(--sans); background:var(--bg); color:var(--text);
+    min-height:100vh; padding:28px clamp(16px,4vw,48px) 72px;
+    -webkit-font-smoothing:antialiased; line-height:1.5;
+  }
+  .num{font-family:var(--mono); font-variant-numeric:tabular-nums; font-feature-settings:"tnum" 1}
+  .eyebrow{
+    font-family:var(--mono); font-size:10.5px; letter-spacing:.14em; text-transform:uppercase;
+    color:var(--faint); font-weight:500;
+  }
+
+  /* ---- top bar ---- */
+  .topbar{max-width:1220px; margin:0 auto 26px; display:flex; align-items:flex-end;
+    justify-content:space-between; gap:20px; flex-wrap:wrap;}
+  .brand{display:flex; align-items:baseline; gap:12px}
+  .logo{display:flex; align-items:center; gap:9px; font-weight:640; font-size:19px; letter-spacing:-.01em}
+  .logo .mark{width:20px;height:20px;border-radius:6px;background:var(--accent);
+    display:inline-grid;place-items:center;color:#fff;font-family:var(--mono);font-size:12px;font-weight:700}
+  .brand .tag{color:var(--muted); font-size:13px}
+  .topbar-right{display:flex; align-items:center; gap:16px; flex-wrap:wrap}
+  .legend{display:flex; gap:12px; align-items:center; flex-wrap:wrap}
+  .legend .li{display:flex; align-items:center; gap:6px; font-size:11.5px; color:var(--muted)}
+  .legend .sw{width:11px;height:11px;border-radius:3px;border:1px solid var(--border-strong)}
+  .toggle{
+    appearance:none; border:1px solid var(--border-strong); background:var(--surface);
+    color:var(--text); font-family:var(--mono); font-size:11.5px; letter-spacing:.02em;
+    padding:7px 12px; border-radius:999px; cursor:pointer; display:flex; align-items:center; gap:7px;
+  }
+  .toggle:hover{border-color:var(--accent); color:var(--accent-ink)}
+  .toggle:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+
+  /* ---- stage of frames ---- */
+  .stage{max-width:1220px; margin:0 auto; display:flex; flex-wrap:wrap; gap:26px; justify-content:center}
+  .frame{width:372px; max-width:100%; display:flex; flex-direction:column; gap:10px}
+  .frame > .flabel{display:flex; align-items:baseline; gap:8px}
+  .frame > .flabel b{font-size:13px; font-weight:600}
+  .frame > .flabel span{font-size:11.5px; color:var(--faint)}
+  .screen{
+    background:var(--surface); border:1px solid var(--border); border-radius:20px;
+    box-shadow:var(--shadow); overflow:hidden; display:flex; flex-direction:column;
+  }
+  .statusbar{display:flex; justify-content:space-between; align-items:center;
+    padding:9px 16px 0; color:var(--faint); font-size:10.5px; font-family:var(--mono)}
+  .statusbar .dots{display:flex; gap:3px}
+  .statusbar .dots i{width:4px;height:4px;border-radius:50%;background:var(--faint);opacity:.6}
+  .view{padding:14px 16px 18px; display:flex; flex-direction:column; gap:14px}
+  .view.tight{gap:11px}
+
+  h2.sh{font-size:16px; margin:0; letter-spacing:-.01em; font-weight:640}
+  .sub{color:var(--muted); font-size:12px}
+  .rowline{display:flex; align-items:center; justify-content:space-between; gap:10px}
+
+  /* ---- generic bits ---- */
+  .chip{display:inline-flex; align-items:center; gap:5px; font-size:11px; padding:3px 8px;
+    border-radius:999px; background:var(--surface-2); color:var(--muted); border:1px solid var(--border)}
+  .chip.stat{color:var(--accent-ink); background:var(--accent-weak); border-color:transparent; font-weight:550}
+  .chip.warnc{color:var(--warn); background:transparent; border-color:color-mix(in srgb,var(--warn) 40%,transparent)}
+  .dot{width:8px;height:8px;border-radius:50%;flex:none}
+  .dot.g{background:var(--good)} .dot.a{background:var(--warn)} .dot.r{background:var(--crit)}
+  .btn{appearance:none; font-family:var(--sans); font-size:12.5px; font-weight:550; cursor:pointer;
+    border-radius:var(--r-sm); padding:8px 12px; border:1px solid var(--border-strong);
+    background:var(--surface); color:var(--text); display:inline-flex; align-items:center; gap:6px; justify-content:center}
+  .btn:hover{border-color:var(--accent)}
+  .btn:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+  .btn.pri{background:var(--accent); border-color:var(--accent); color:#fff}
+  .btn.pri:hover{background:var(--accent-ink)}
+  .btn.ghost{background:transparent; border-color:var(--border); color:var(--muted); padding:6px 10px; font-size:11.5px}
+  .btn.ghost:hover{color:var(--accent-ink); border-color:var(--accent)}
+  .btn.block{width:100%}
+
+  /* ---- xp / stat cards ---- */
+  .stats{display:grid; grid-template-columns:repeat(3,1fr); gap:8px}
+  .statcard{border:1px solid var(--border); border-radius:var(--r); padding:10px; background:var(--surface-2); display:flex; flex-direction:column; gap:7px}
+  .statcard .top{display:flex; align-items:center; justify-content:space-between}
+  .statcard .name{font-size:11.5px; color:var(--muted); display:flex; align-items:center; gap:5px}
+  .statcard .lv{font-family:var(--mono); font-size:14px; font-weight:640; letter-spacing:-.01em}
+  .statcard .lv small{color:var(--faint); font-weight:500; font-size:10px}
+  .xpbar{height:4px; border-radius:3px; background:var(--inset); overflow:hidden}
+  .xpbar > i{display:block; height:100%; border-radius:3px; background:var(--accent)}
+  .statcard .to{font-size:10px; color:var(--faint); font-family:var(--mono)}
+
+  /* ---- quest rows ---- */
+  .quests{display:flex; flex-direction:column; gap:9px}
+  .quest{border:1px solid var(--border); border-radius:var(--r); padding:11px 12px; background:var(--surface); display:flex; flex-direction:column; gap:9px}
+  .quest .qtop{display:flex; align-items:center; gap:8px}
+  .quest .qname{font-weight:580; font-size:13.5px; letter-spacing:-.01em}
+  .quest .qcue{font-size:11px; color:var(--muted); margin-left:auto; max-width:120px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .quest .qmeta{display:flex; align-items:center; gap:10px}
+  .streak{font-family:var(--mono); font-size:11px; color:var(--muted); display:flex; align-items:center; gap:4px}
+  .ribbon{display:flex; gap:3px; flex:1; min-width:0}
+  .ribbon .cell{flex:1; aspect-ratio:1; border-radius:2.5px; background:var(--blank); border:1px solid transparent}
+  .cell.done{background:var(--done)} .cell.over{background:var(--over)}
+  .cell.partial{background:var(--partial)} .cell.skip{background:var(--skip)}
+  .cell.blank{background:var(--blank); border-color:var(--border)}
+  .qbottom{display:flex; align-items:center; gap:9px}
+  .qbottom .ribbon{margin-right:2px}
+
+  /* ---- banner / composer ---- */
+  .banner{display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:var(--r);
+    background:color-mix(in srgb,var(--warn) 12%,var(--surface)); border:1px solid color-mix(in srgb,var(--warn) 34%,transparent)}
+  .banner .bx{flex:1; font-size:11.5px; line-height:1.4}
+  .banner .bx b{color:var(--warn)}
+  .composer{border:1px solid var(--border-strong); border-radius:var(--r); background:var(--surface-2); padding:12px; display:flex; flex-direction:column; gap:11px}
+  .seg{display:flex; gap:4px; background:var(--inset); padding:3px; border-radius:8px}
+  .seg button{flex:1; appearance:none; border:0; background:transparent; color:var(--muted); font-family:var(--sans);
+    font-size:11.5px; padding:6px 4px; border-radius:6px; cursor:pointer; font-weight:520}
+  .seg button[aria-selected="true"]{background:var(--surface); color:var(--text); box-shadow:0 1px 2px rgba(0,0,0,.06); font-weight:600}
+  .seg button:focus-visible{outline:2px solid var(--accent); outline-offset:1px}
+  .qadd{display:flex; gap:6px; align-items:center}
+  .numfield{flex:none; width:56px; font-family:var(--mono); font-size:15px; font-weight:600; text-align:center;
+    border:1px solid var(--border-strong); border-radius:var(--r-sm); padding:7px 4px; background:var(--surface); color:var(--text)}
+  .unit{font-size:11.5px; color:var(--muted)}
+  .qchips{display:flex; gap:5px; margin-left:auto}
+  .qchips .btn{padding:6px 9px; font-size:11.5px; font-family:var(--mono)}
+  .progress{display:flex; flex-direction:column; gap:5px}
+  .progress .pl{display:flex; justify-content:space-between; font-size:11px; color:var(--muted); font-family:var(--mono)}
+  .ptrack{height:6px; border-radius:4px; background:var(--inset); overflow:hidden}
+  .ptrack > i{display:block; height:100%; background:var(--accent); border-radius:4px}
+  .ctrls{display:flex; align-items:center; gap:8px}
+  .time{font-family:var(--mono); font-size:11px; color:var(--muted); border:1px solid var(--border); border-radius:999px; padding:5px 10px; background:var(--surface); cursor:pointer}
+  .skiprow{display:flex; gap:5px; align-items:center; flex-wrap:wrap}
+  .skiprow .lbl{font-size:11px; color:var(--faint)}
+
+  /* ---- feed ---- */
+  .feed{display:flex; flex-direction:column; gap:2px}
+  .feeditem{display:flex; gap:10px; padding:9px 2px; border-bottom:1px solid var(--border)}
+  .feeditem:last-child{border-bottom:0}
+  .feeditem .ft{font-family:var(--mono); font-size:10.5px; color:var(--faint); width:38px; flex:none; padding-top:2px}
+  .feeditem .fb{flex:1; display:flex; flex-direction:column; gap:3px}
+  .feeditem .fh{display:flex; align-items:center; gap:7px}
+  .feeditem .fn{font-size:12.5px; font-weight:540}
+  .amt{font-family:var(--mono); font-size:11px; padding:2px 7px; border-radius:6px; background:var(--accent-weak); color:var(--accent-ink); font-weight:600}
+  .amt.plain{background:var(--surface-2); color:var(--muted)}
+  .feeditem .fnote{font-size:11.5px; color:var(--muted)}
+  .freelog{border-left:2px dashed var(--border-strong); padding-left:9px; margin-left:2px}
+  .rewardtag{font-size:10.5px; color:var(--good); font-family:var(--mono)}
+  .toast{display:flex; align-items:center; gap:9px; padding:9px 11px; border-radius:var(--r);
+    background:var(--text); color:var(--bg); font-size:11.5px; box-shadow:var(--shadow)}
+  .toast .rx{font-family:var(--mono); font-weight:600}
+  .toast .undo{margin-left:auto; font-weight:600; color:var(--accent); cursor:pointer; background:transparent; border:0; font-size:11.5px; font-family:var(--sans)}
+
+  /* ---- habit detail ---- */
+  .pills{display:flex; gap:7px; flex-wrap:wrap}
+  .pill{border:1px solid var(--border); border-radius:var(--r-sm); padding:7px 9px; background:var(--surface-2); display:flex; flex-direction:column; gap:2px; min-width:0; flex:1}
+  .pill .pk{font-size:9.5px; letter-spacing:.08em; text-transform:uppercase; color:var(--faint); font-family:var(--mono)}
+  .pill .pv{font-family:var(--mono); font-size:14px; font-weight:640; letter-spacing:-.01em}
+  .pill .pv small{font-size:10px; color:var(--faint); font-weight:500}
+
+  .chartcard{border:1px solid var(--border); border-radius:var(--r); padding:12px; background:var(--surface); display:flex; flex-direction:column; gap:10px}
+  .chartcard .ch-head{display:flex; align-items:baseline; justify-content:space-between}
+  .chart{position:relative; height:104px; display:flex; align-items:flex-end; gap:6px; padding-top:6px}
+  .refline{position:absolute; left:0; right:0; border-top:1px dashed var(--border-strong); display:flex; justify-content:flex-end}
+  .refline span{font-family:var(--mono); font-size:9px; color:var(--faint); transform:translateY(-50%); background:var(--surface); padding:0 3px}
+  .refline.target{border-top-color:color-mix(in srgb,var(--accent) 55%,transparent)}
+  .refline.target span{color:var(--accent-ink)}
+  .bar{flex:1; background:var(--inset); border-radius:3px 3px 0 0; position:relative; min-height:3px; display:flex; justify-content:center; align-items:flex-start}
+  .bar > i{position:absolute; left:0; right:0; bottom:0; background:var(--done); border-radius:3px 3px 0 0}
+  .bar.best > i{background:var(--accent)}
+  .bar .star{position:absolute; top:-15px; font-size:11px}
+  .bar .wk{position:absolute; bottom:-15px; font-family:var(--mono); font-size:8.5px; color:var(--faint)}
+  .chart{margin-bottom:16px}
+
+  .designbox{border:1px solid var(--border); border-radius:var(--r); overflow:hidden}
+  .designbox .dhead{display:flex; align-items:center; justify-content:space-between; padding:9px 12px; background:var(--surface-2); border-bottom:1px solid var(--border)}
+  .drow{display:flex; gap:10px; padding:9px 12px; border-bottom:1px solid var(--border)}
+  .drow:last-child{border-bottom:0}
+  .drow .dk{width:52px; flex:none; font-size:10px; letter-spacing:.06em; text-transform:uppercase; color:var(--faint); font-family:var(--mono); padding-top:2px}
+  .drow .dv{font-size:12.5px}
+  .drow .dv.empty{color:var(--crit); font-style:italic}
+
+  .journal{display:flex; flex-direction:column; gap:0}
+  .jday{display:flex; gap:10px; padding:9px 0; border-bottom:1px solid var(--border)}
+  .jday:last-child{border-bottom:0}
+  .jday .jd{width:52px; flex:none; font-family:var(--mono); font-size:10.5px; color:var(--muted); padding-top:2px}
+  .jday .jc{flex:1; display:flex; flex-direction:column; gap:4px}
+  .statechip{font-size:10px; padding:2px 7px; border-radius:5px; font-family:var(--mono); font-weight:600; align-self:flex-start}
+  .sc-done{background:color-mix(in srgb,var(--done) 16%,transparent); color:var(--done)}
+  .sc-over{background:color-mix(in srgb,var(--over) 18%,transparent); color:var(--over)}
+  .sc-partial{background:color-mix(in srgb,var(--partial) 18%,transparent); color:var(--partial)}
+  .sc-skip{background:color-mix(in srgb,var(--skip) 16%,transparent); color:var(--skip)}
+  .jrows{font-size:11px; color:var(--muted); font-family:var(--mono)}
+
+  /* ---- reflection ---- */
+  .mirror{display:flex; gap:6px; justify-content:space-between}
+  .mcell{flex:1; display:flex; flex-direction:column; align-items:center; gap:5px}
+  .mcell .mw{font-family:var(--mono); font-size:9.5px; color:var(--faint)}
+  .mcell .mv{width:100%; aspect-ratio:1; border-radius:6px; display:grid; place-items:center; font-family:var(--mono); font-size:10px; color:#fff; font-weight:600}
+  .mv.done{background:var(--done)} .mv.over{background:var(--over)} .mv.partial{background:var(--partial)}
+  .mv.skip{background:var(--skip)} .mv.blank{background:var(--blank); color:var(--faint); border:1px solid var(--border)}
+
+  .flag{border:1px solid var(--border); border-left-width:3px; border-radius:var(--r-sm); padding:11px 12px; display:flex; flex-direction:column; gap:6px; background:var(--surface)}
+  .flag.crit{border-left-color:var(--crit)} .flag.warn{border-left-color:var(--warn)}
+  .flag .fhd{display:flex; align-items:center; gap:8px}
+  .badge{font-size:9.5px; font-family:var(--mono); letter-spacing:.06em; text-transform:uppercase; padding:2px 6px; border-radius:5px; font-weight:600}
+  .badge.crit{color:var(--crit); background:color-mix(in srgb,var(--crit) 14%,transparent)}
+  .badge.warn{color:var(--warn); background:color-mix(in srgb,var(--warn) 16%,transparent)}
+  .flag .fmsg{font-size:12.5px; line-height:1.45}
+  .flag .fev{font-size:10.5px; color:var(--muted); font-family:var(--mono); background:var(--inset); border-radius:6px; padding:6px 8px}
+  .rec{border:1px solid var(--accent); background:var(--accent-weak); border-radius:var(--r); padding:12px; display:flex; flex-direction:column; gap:9px}
+  .rec .rhd{font-size:12px; font-weight:600; color:var(--accent-ink); display:flex; align-items:center; gap:6px}
+  .rec .rin{font-size:11.5px; color:var(--text); border:1px solid var(--border-strong); border-radius:var(--r-sm); padding:8px 10px; background:var(--surface)}
+  .rec .alts{display:flex; gap:5px; flex-wrap:wrap}
+  .footnote{font-size:10.5px; color:var(--faint); text-align:center}
+  .credit{max-width:1220px; margin:34px auto 0; color:var(--faint); font-size:11.5px; text-align:center; line-height:1.6}
+
+  @media (prefers-reduced-motion:no-preference){
+    .btn,.toggle,.seg button{transition:border-color .15s ease, background .15s ease, color .15s ease}
+  }
+  @media (max-width:440px){ .frame{width:100%} .wrap{padding-left:14px;padding-right:14px} }
+</style>
+
+<div class="wrap">
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo"><span class="mark">H</span>Habiquest</span>
+      <span class="tag">Build the Habit, Grow yourself</span>
+    </div>
+    <div class="topbar-right">
+      <div class="legend" aria-label="하루 상태 범례">
+        <span class="li"><span class="sw" style="background:var(--blank)"></span>미기록</span>
+        <span class="li"><span class="sw" style="background:var(--partial);border-color:transparent"></span>부분</span>
+        <span class="li"><span class="sw" style="background:var(--done);border-color:transparent"></span>달성</span>
+        <span class="li"><span class="sw" style="background:var(--over);border-color:transparent"></span>초과</span>
+        <span class="li"><span class="sw" style="background:var(--skip);border-color:transparent"></span>건너뜀</span>
+      </div>
+      <button class="toggle" id="themeBtn" type="button" aria-label="테마 전환">
+        <span id="themeIcon">◐</span><span id="themeTxt">테마</span>
+      </button>
+    </div>
+  </header>
+
+  <main class="stage">
+
+    <!-- ============ DASHBOARD ============ -->
+    <section class="frame">
+      <div class="flabel"><b>대시보드</b><span>캐릭터 시트 · 상태등 · 원탭 기록</span></div>
+      <div class="screen">
+        <div class="statusbar"><span>9:41</span><span class="dots"><i></i><i></i><i></i></span></div>
+        <div class="view">
+          <div class="rowline">
+            <div>
+              <div class="eyebrow">캐릭터</div>
+              <h2 class="sh">Lv.<span class="num">7</span> · 꾸준함</h2>
+            </div>
+            <span class="chip warnc">흔들리는 습관 · <span class="num">2</span></span>
+          </div>
+
+          <div class="stats">
+            <div class="statcard">
+              <div class="top"><span class="name">힘</span><span class="lv num">7</span></div>
+              <div class="xpbar"><i style="width:64%"></i></div>
+              <div class="to">다음까지 320 XP</div>
+            </div>
+            <div class="statcard">
+              <div class="top"><span class="name">지능</span><span class="lv num">5</span></div>
+              <div class="xpbar"><i style="width:38%"></i></div>
+              <div class="to">다음까지 740 XP</div>
+            </div>
+            <div class="statcard">
+              <div class="top"><span class="name">의지</span><span class="lv num">6</span></div>
+              <div class="xpbar"><i style="width:81%"></i></div>
+              <div class="to">다음까지 150 XP</div>
+            </div>
+          </div>
+
+          <div class="eyebrow">퀘스트 로그</div>
+          <div class="quests">
+            <div class="quest">
+              <div class="qtop">
+                <span class="dot g"></span><span class="qname">턱걸이</span>
+                <span class="chip stat">힘</span>
+                <span class="qcue">모닝커피 후</span>
+              </div>
+              <div class="qbottom">
+                <span class="streak">🔥<span class="num">14</span></span>
+                <span class="ribbon" aria-hidden="true">
+                  <span class="cell done"></span><span class="cell over"></span><span class="cell done"></span><span class="cell partial"></span><span class="cell done"></span><span class="cell blank"></span><span class="cell done"></span><span class="cell over"></span><span class="cell done"></span><span class="cell done"></span><span class="cell partial"></span><span class="cell done"></span><span class="cell over"></span><span class="cell done"></span>
+                </span>
+                <button class="btn ghost" type="button">+최소</button>
+              </div>
+            </div>
+
+            <div class="quest">
+              <div class="qtop">
+                <span class="dot a"></span><span class="qname">독서</span>
+                <span class="chip stat">지능</span>
+                <span class="qcue">점심 후 10p</span>
+              </div>
+              <div class="qbottom">
+                <span class="streak">🔥<span class="num">6</span></span>
+                <span class="ribbon" aria-hidden="true">
+                  <span class="cell done"></span><span class="cell partial"></span><span class="cell partial"></span><span class="cell done"></span><span class="cell blank"></span><span class="cell partial"></span><span class="cell done"></span><span class="cell done"></span><span class="cell partial"></span><span class="cell blank"></span><span class="cell done"></span><span class="cell partial"></span><span class="cell done"></span><span class="cell done"></span>
+                </span>
+                <button class="btn ghost" type="button">+최소</button>
+              </div>
+            </div>
+
+            <div class="quest">
+              <div class="qtop">
+                <span class="dot r"></span><span class="qname">명상</span>
+                <span class="chip stat">의지</span>
+                <span class="qcue" style="color:var(--crit)">신호 없음</span>
+              </div>
+              <div class="qbottom">
+                <span class="streak">—</span>
+                <span class="ribbon" aria-hidden="true">
+                  <span class="cell done"></span><span class="cell blank"></span><span class="cell done"></span><span class="cell blank"></span><span class="cell done"></span><span class="cell blank"></span><span class="cell blank"></span><span class="cell done"></span><span class="cell blank"></span><span class="cell done"></span><span class="cell blank"></span><span class="cell skip"></span><span class="cell skip"></span><span class="cell blank"></span>
+                </span>
+                <button class="btn ghost" type="button">✓ 완료</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ TODAY ============ -->
+    <section class="frame">
+      <div class="flabel"><b>오늘</b><span>통합 컴포저 · 로그 시점 보상</span></div>
+      <div class="screen">
+        <div class="statusbar"><span>9:41</span><span class="dots"><i></i><i></i><i></i></span></div>
+        <div class="view tight">
+          <div class="rowline">
+            <div>
+              <div class="eyebrow">7월 8일 화요일 · 14주차</div>
+              <h2 class="sh">오늘</h2>
+            </div>
+            <div class="sub num" style="text-align:right">퀘스트 2/3<br>+180 XP</div>
+          </div>
+
+          <div class="banner">
+            <span class="dot r"></span>
+            <span class="bx"><b>어제 명상을 놓쳤어요.</b> 오늘 한 번이면 흐름이 이어져요.</span>
+            <button class="btn pri" type="button" style="padding:6px 10px">✓ 완료</button>
+          </div>
+
+          <div class="composer">
+            <div class="seg" role="tablist" aria-label="기록 대상">
+              <button role="tab" aria-selected="false">자유 로그</button>
+              <button role="tab" aria-selected="true">독서</button>
+              <button role="tab" aria-selected="false">턱걸이</button>
+              <button role="tab" aria-selected="false">명상</button>
+            </div>
+
+            <div class="qadd">
+              <button class="btn pri" type="button" style="flex:1">✓ 최소 실행 (+10p)</button>
+              <input class="numfield" value="10" aria-label="기록 수치" inputmode="numeric" />
+              <span class="unit">p</span>
+            </div>
+            <div class="qadd">
+              <span class="skiprow"><span class="lbl">빠른 추가</span></span>
+              <span class="qchips">
+                <button class="btn" type="button">+1</button>
+                <button class="btn" type="button">+최소</button>
+                <button class="btn" type="button">직전 6</button>
+              </span>
+            </div>
+
+            <div class="progress">
+              <div class="pl"><span>오늘 6 / 10p</span><span>4p 남음 → 달성</span></div>
+              <div class="ptrack"><i style="width:60%"></i></div>
+            </div>
+
+            <div class="ctrls">
+              <button class="time" type="button">🕑 지금 14:20</button>
+              <span class="skiprow" style="margin-left:auto">
+                <span class="lbl">건너뛰기</span>
+                <button class="btn ghost" type="button">깜빡함</button>
+                <button class="btn ghost" type="button">너무 힘듦</button>
+                <button class="btn ghost" type="button">예외</button>
+              </span>
+            </div>
+          </div>
+
+          <div class="toast">
+            <span class="rx">기록됨 · +60 XP</span><span>바닥 달성 💪</span>
+            <button class="undo" type="button">실행취소</button>
+          </div>
+
+          <div class="eyebrow">오늘 기록</div>
+          <div class="feed">
+            <div class="feeditem">
+              <span class="ft">14:20</span>
+              <span class="fb">
+                <span class="fh"><span class="fn">독서</span><span class="amt">+4p</span></span>
+                <span class="rewardtag">→ 10/10 달성 · +60 XP</span>
+              </span>
+            </div>
+            <div class="feeditem">
+              <span class="ft">09:40</span>
+              <span class="fb"><span class="fh"><span class="fn">독서</span><span class="amt">+6p</span></span></span>
+            </div>
+            <div class="feeditem freelog">
+              <span class="ft">08:25</span>
+              <span class="fb">
+                <span class="fh"><span class="fn">🌤 기분</span></span>
+                <span class="fnote">아침 공기가 좋았다. 컨디션 맑음.</span>
+              </span>
+            </div>
+            <div class="feeditem">
+              <span class="ft">07:10</span>
+              <span class="fb"><span class="fh"><span class="fn">턱걸이</span><span class="amt">+5</span><span class="amt plain">바닥</span></span></span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ HABIT DETAIL ============ -->
+    <section class="frame">
+      <div class="flabel"><b>습관 상세</b><span>설계 · 주간 성장 · 저널</span></div>
+      <div class="screen">
+        <div class="statusbar"><span>9:41</span><span class="dots"><i></i><i></i><i></i></span></div>
+        <div class="view">
+          <div class="rowline">
+            <div style="display:flex;align-items:center;gap:8px">
+              <span class="dot g"></span><h2 class="sh">턱걸이</h2><span class="chip stat">힘</span>
+            </div>
+            <span class="chip">형성 중</span>
+          </div>
+
+          <div class="pills">
+            <div class="pill"><span class="pk">스트릭</span><span class="pv num">14<small>일</small></span></div>
+            <div class="pill"><span class="pk">나타남</span><span class="pv num">21<small>일</small></span></div>
+            <div class="pill"><span class="pk">완료율</span><span class="pv num">82<small>%</small></span></div>
+            <div class="pill"><span class="pk">주간 XP</span><span class="pv num">420</span></div>
+          </div>
+
+          <div class="chartcard">
+            <div class="ch-head"><span class="eyebrow">주간 실행량 (최근 8주)</span><span class="sub num">최고 62</span></div>
+            <div class="chart">
+              <div class="refline target" style="bottom:74%"><span>목표 10</span></div>
+              <div class="refline" style="bottom:40%"><span>바닥 5</span></div>
+              <div class="bar"><i style="height:46%"></i><span class="wk">6</span></div>
+              <div class="bar"><i style="height:58%"></i><span class="wk">5</span></div>
+              <div class="bar"><i style="height:52%"></i><span class="wk">4</span></div>
+              <div class="bar"><i style="height:70%"></i><span class="wk">3</span></div>
+              <div class="bar"><i style="height:66%"></i><span class="wk">2</span></div>
+              <div class="bar"><i style="height:84%"></i><span class="wk">1</span></div>
+              <div class="bar best"><i style="height:100%"></i><span class="star">⭐</span><span class="wk">이번</span></div>
+            </div>
+          </div>
+
+          <div class="designbox">
+            <div class="dhead"><span class="eyebrow">설계 · 현재 가설</span><button class="btn ghost" type="button">수정</button></div>
+            <div class="drow"><span class="dk">신호</span><span class="dv">모닝커피 후, 문틀 바에서</span></div>
+            <div class="drow"><span class="dk">바닥</span><span class="dv num">5회</span></div>
+            <div class="drow"><span class="dk">정체성</span><span class="dv">나는 매일 단련하는 사람이다</span></div>
+          </div>
+
+          <div class="eyebrow">저널</div>
+          <div class="journal">
+            <div class="jday"><span class="jd">7/8</span><span class="jc"><span class="statechip sc-done">달성 · 합 5</span><span class="jrows">07:10 +2 · 18:30 +3</span></span></div>
+            <div class="jday"><span class="jd">7/7</span><span class="jc"><span class="statechip sc-over">초과 · 합 12</span><span class="jrows">08:00 +12</span></span></div>
+            <div class="jday"><span class="jd">7/6</span><span class="jc"><span class="statechip sc-partial">부분 · 합 3</span><span class="jrows">07:20 +3 · 바닥 미달, 미스 아님</span></span></div>
+            <div class="jday"><span class="jd">7/5</span><span class="jc"><span class="statechip sc-skip">건너뜀 · 너무 힘듦</span><span class="jrows">메모: 어깨 뻐근함</span></span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ REFLECTION ============ -->
+    <section class="frame">
+      <div class="flabel"><b>회고</b><span>미러 · 진단(근거) · 추천 행동</span></div>
+      <div class="screen">
+        <div class="statusbar"><span>9:41</span><span class="dots"><i></i><i></i><i></i></span></div>
+        <div class="view">
+          <div class="rowline">
+            <div style="display:flex;align-items:center;gap:8px">
+              <span class="dot r"></span><h2 class="sh">명상 회고</h2>
+            </div>
+            <span class="chip">이번 주</span>
+          </div>
+
+          <div class="eyebrow">미러 — 이번 주 상태</div>
+          <div class="mirror">
+            <div class="mcell"><span class="mw">월</span><span class="mv done">✓</span></div>
+            <div class="mcell"><span class="mw">화</span><span class="mv blank">–</span></div>
+            <div class="mcell"><span class="mw">수</span><span class="mv done">✓</span></div>
+            <div class="mcell"><span class="mw">목</span><span class="mv skip">✕</span></div>
+            <div class="mcell"><span class="mw">금</span><span class="mv skip">✕</span></div>
+            <div class="mcell"><span class="mw">토</span><span class="mv blank">–</span></div>
+            <div class="mcell"><span class="mw">일</span><span class="mv blank">–</span></div>
+          </div>
+
+          <div class="eyebrow">진단</div>
+          <div class="flag crit">
+            <div class="fhd"><span class="badge crit">신호 · CUE</span><span class="dot r"></span></div>
+            <div class="fmsg">신호(cue)가 없어요 — 습관이 안 붙는 가장 큰 이유일 수 있어요.</div>
+            <div class="fev">최근 14일 완료율 40% · 신호(cue) 미설정</div>
+          </div>
+          <div class="flag warn">
+            <div class="fhd"><span class="badge warn">신호 · CUE</span><span class="dot a"></span></div>
+            <div class="fmsg">건너뛰기가 '깜빡함'에 몰려 있어요.</div>
+            <div class="fev">28일간 '깜빡함' 건너뛰기 3회 (Rule 5)</div>
+          </div>
+
+          <div class="rec">
+            <div class="rhd">✓ 추천: 신호 채우기</div>
+            <div class="sub" style="font-size:11px">언제·어디서 할지 정하면 완료율이 오릅니다. 확인만 하면 돼요.</div>
+            <div class="rin">예: “자기 전 양치 후, 침대 옆에서”</div>
+            <div class="alts">
+              <button class="btn ghost" type="button">바닥 낮추기</button>
+              <button class="btn ghost" type="button">잠시 멈춤</button>
+              <button class="btn ghost" type="button">유지</button>
+            </div>
+            <button class="btn pri block" type="button">적용하고 닫기</button>
+          </div>
+          <p class="footnote">모든 진단에는 근거가 함께 표시됩니다 — 무비판적 승인 방지.</p>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <p class="credit">
+    Habiquest — 습관 형성 시스템 · 기록 서브시스템 목업 (SPEC v3.1 / CONCEPT v3.3)<br>
+    적응형 라이트·다크 · 미니멀 게임화 · 하루 상태는 <span class="num">기록 합계</span>에서 계산됩니다 (미기록 ≠ 부분 ≠ 건너뜀)
+  </p>
+</div>
+
+<script>
+  (function(){
+    var root=document.documentElement, btn=document.getElementById('themeBtn');
+    var icon=document.getElementById('themeIcon'), txt=document.getElementById('themeTxt');
+    function label(){
+      var t=root.getAttribute('data-theme');
+      if(t==='dark'){icon.textContent='☾';txt.textContent='다크';}
+      else if(t==='light'){icon.textContent='☀';txt.textContent='라이트';}
+      else{icon.textContent='◐';txt.textContent='시스템';}
+    }
+    btn.addEventListener('click',function(){
+      var cur=root.getAttribute('data-theme');
+      var mqDark=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches;
+      // cycle: system -> opposite-of-system -> back toward system
+      if(!cur){ root.setAttribute('data-theme', mqDark?'light':'dark'); }
+      else if(cur==='dark'){ root.setAttribute('data-theme','light'); }
+      else { root.removeAttribute('data-theme'); }
+      label();
+    });
+    label();
+  })();
+</script>
+</body>
+</html>
