@@ -11,15 +11,15 @@
 import type { ReactNode } from 'react';
 import type { StyleProp, ViewStyle } from 'react-native';
 import type {
+  DayState,
   DiagnosisFlag as DiagnosisFlagData,
-  EntryState,
   Habit,
   LogType,
   ReflectionAction,
   SkipReason,
   StatusLight as StatusLightState,
 } from '@/models';
-import type { HeatLevel } from '@/theme/heatLevel';
+import type { HeatState } from '@/theme/heatLevel';
 
 // ── View-models (built by hooks, consumed by screens/components) ───────────────
 
@@ -40,7 +40,7 @@ export interface HabitRowData {
   cue?: string;
   streak: number;
   light: StatusLightState;
-  cells: HeatLevel[]; // most-recent-last, length === heatmap columns
+  cells: HeatState[]; // most-recent-last, length === heatmap columns
 }
 
 export interface TallyData {
@@ -58,14 +58,15 @@ export type FeedEntry =
       time: string; // 'HH:MM' local
       habitName: string;
       statName: string;
-      state: EntryState;
-      isMiss: boolean;
+      dayState: DayState; // the day's COMPUTED state (all rows of a habit's day share it)
+      isSkip: boolean; // this row is a skip (actual === 0)
+      isMiss: boolean; // the DAY is a diagnostic miss (non-exception skip, no activity)
       actual: number;
       unit: string;
       isBinary?: boolean; // yes/no habit → render "✓ done" instead of "N unit"
       note?: string;
-      skipReason?: SkipReason; // present when state === 'skip' (restores the skip picker on edit)
-      xp?: number; // XP earned by this entry (floor + over)
+      skipReason?: SkipReason; // present on skip rows (restores the skip picker on edit)
+      xp?: number; // the day's XP contribution — set only on the latest activity row
     }
   | {
       kind: 'log';
@@ -86,13 +87,14 @@ export interface JournalItem {
   id: string;
   date: string; // raw 'YYYY-MM-DD' (used to reopen the entry for editing)
   dateLabel: string; // 'Jun 07'
-  state: EntryState;
+  dayState: DayState; // the day's COMPUTED state
+  isSkip: boolean; // this row is a skip (actual === 0)
   actual: number;
   unit: string;
   isBinary?: boolean; // yes/no habit → drop the numeric count from the chip label
   note?: string;
-  skipReason?: SkipReason; // present when state === 'skip'
-  isMiss: boolean;
+  skipReason?: SkipReason; // present on skip rows
+  isMiss: boolean; // the DAY is a diagnostic miss
 }
 
 export interface ActionOption {
@@ -226,7 +228,7 @@ export interface StreakProps {
   count: number;
 }
 export interface HeatmapProps {
-  cells: HeatLevel[];
+  cells: HeatState[];
   onCellPress?: (index: number) => void;
   columns?: number; // default 20
 }

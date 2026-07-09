@@ -91,7 +91,7 @@ export default function HabitDetail() {
     setEditingEntryId(j.id);
     setBfAmount(j.isBinary ? '' : String(j.actual));
     setBfNote(j.note ?? '');
-    setBfSkip(j.state === 'skip');
+    setBfSkip(j.isSkip);
     setBfReason(j.skipReason ?? 'cue');
   };
   const saveBackfill = async () => {

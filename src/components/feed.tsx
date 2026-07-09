@@ -56,11 +56,15 @@ export function FeedItem({ item, onPress }: FeedItemProps) {
     );
   }
 
-  const chip = item.isMiss
-    ? { label: '놓침', bg: 'rgba(214,101,90,0.13)', color: color.red }
-    : item.state === 'over'
+  const chip = item.isSkip
+    ? item.isMiss
+      ? { label: '놓침', bg: 'rgba(214,101,90,0.13)', color: color.red }
+      : { label: '건너뜀', bg: 'rgba(232,228,216,0.08)', color: color.inkDim }
+    : item.dayState === 'over'
       ? { label: '초과 달성', bg: 'rgba(216,177,90,0.13)', color: color.gold }
-      : { label: '최소 달성', bg: 'rgba(116,214,138,0.12)', color: color.green4 };
+      : item.dayState === 'partial'
+        ? { label: '진행 중', bg: 'rgba(224,169,63,0.13)', color: color.amber }
+        : { label: '최소 달성', bg: 'rgba(116,214,138,0.12)', color: color.green4 };
 
   return (
     <View style={styles.fitem}>
@@ -72,9 +76,11 @@ export function FeedItem({ item, onPress }: FeedItemProps) {
           <Text style={[styles.ltype, { backgroundColor: chip.bg, color: chip.color }]}>
             {chip.label}
           </Text>
-          <Text style={[styles.ltype, styles.amountChip]}>
-            {item.isBinary ? '✓ 완료' : `${item.actual} ${item.unit}`}
-          </Text>
+          {!item.isSkip ? (
+            <Text style={[styles.ltype, styles.amountChip]}>
+              {item.isBinary ? '✓ 완료' : `${item.actual} ${item.unit}`}
+            </Text>
+          ) : null}
           {item.xp != null ? <Text style={styles.xpgain}>{`+${item.xp} XP`}</Text> : null}
         </View>
         {item.note ? <Text style={styles.body}>{item.note}</Text> : null}
@@ -86,15 +92,19 @@ export function FeedItem({ item, onPress }: FeedItemProps) {
 // ── JournalEntry ─────────────────────────────────────────────────────────────────
 
 export function JournalEntry({ item, onPress }: JournalEntryProps) {
-  const chip = item.isMiss
-    ? { label: '놓침', bg: 'rgba(214,101,90,0.13)', color: color.red }
-    : item.state === 'over'
+  const chip = item.isSkip
+    ? item.isMiss
+      ? { label: '놓침', bg: 'rgba(214,101,90,0.13)', color: color.red }
+      : { label: '건너뜀', bg: 'rgba(232,228,216,0.08)', color: color.inkDim }
+    : item.dayState === 'over'
       ? { label: `${item.actual} · 초과 달성`, bg: 'rgba(216,177,90,0.13)', color: color.gold }
-      : {
-          label: item.isBinary ? '완료' : `${item.actual} · 최소 달성`,
-          bg: 'rgba(116,214,138,0.12)',
-          color: color.green4,
-        };
+      : item.dayState === 'partial'
+        ? { label: `${item.actual} · 진행 중`, bg: 'rgba(224,169,63,0.13)', color: color.amber }
+        : {
+            label: item.isBinary ? '완료' : `${item.actual} · 최소 달성`,
+            bg: 'rgba(116,214,138,0.12)',
+            color: color.green4,
+          };
 
   const muted = item.isMiss || !item.note;
   const txt = muted ? '기록 없음 — 건너뜀.' : item.note;

@@ -23,7 +23,7 @@ function toInitial(f: FeedEntry): ComposerInitial {
     minute,
     count: f.isBinary ? '' : String(f.actual),
     note: f.note,
-    skipMode: f.state === 'skip',
+    skipMode: f.isSkip,
     skipReason: f.skipReason,
   };
 }

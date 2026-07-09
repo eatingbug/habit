@@ -1,40 +1,23 @@
 import { heatLevel } from './heatLevel';
-import type { Habit, HabitEntry } from '../models';
+import type { DayRecord } from '../domain/util';
 
-const countHabit: Pick<Habit, 'kind' | 'floor' | 'target'> = { kind: 'count', floor: 10, target: 30 };
-const binaryHabit: Pick<Habit, 'kind' | 'floor' | 'target'> = { kind: 'binary', floor: 1, target: undefined };
-
-function entry(state: HabitEntry['state'], actual: number, skipReason?: HabitEntry['skipReason']): HabitEntry {
-  return {
-    id: 'e',
-    habitId: 'h',
-    date: '2026-06-01',
-    timestamp: '2026-06-01T12:00:00.000Z',
-    actual,
-    state,
-    ...(skipReason ? { skipReason } : {}),
-  };
+/** Build a computed day record; override the fields under test. */
+function rec(over: Partial<DayRecord> & Pick<DayRecord, 'state'>): DayRecord {
+  return { date: '2026-06-01', sumActual: 0, ...over };
 }
 
-describe('heatLevel — shared', () => {
-  it('blank day -> 0', () => expect(heatLevel(undefined, countHabit)).toBe(0));
-  it('exception skip -> 0', () => expect(heatLevel(entry('skip', 0, 'exception'), countHabit)).toBe(0));
-  it('non-exception skip -> miss', () => expect(heatLevel(entry('skip', 0, 'cue'), countHabit)).toBe('miss'));
-});
+describe('heatLevel — flat day-state (facts-only)', () => {
+  it('undefined (no rows) → blank', () => expect(heatLevel(undefined)).toBe('blank'));
+  it('unknown → blank', () => expect(heatLevel(rec({ state: 'unknown' }))).toBe('blank'));
 
-describe('heatLevel — binary', () => {
-  it('done -> 4 (a full cell, no magnitude ramp)', () =>
-    expect(heatLevel(entry('done', 1), binaryHabit)).toBe(4));
-  it('non-exception skip -> miss', () =>
-    expect(heatLevel(entry('skip', 0, 'floor'), binaryHabit)).toBe('miss'));
-  it('exception skip -> 0', () =>
-    expect(heatLevel(entry('skip', 0, 'exception'), binaryHabit)).toBe(0));
-  it('blank -> 0', () => expect(heatLevel(undefined, binaryHabit)).toBe(0));
-});
+  it('partial → partial (distinct from blank and skip)', () =>
+    expect(heatLevel(rec({ state: 'partial', sumActual: 3 }))).toBe('partial'));
 
-describe('heatLevel — count (regression)', () => {
-  it('at floor -> 1', () => expect(heatLevel(entry('done', 10), countHabit)).toBe(1));
-  it('over target -> 4', () => expect(heatLevel(entry('over', 30), countHabit)).toBe(4));
-  it('two-thirds of the way -> 3', () => expect(heatLevel(entry('done', 24), countHabit)).toBe(3));
-  it('partway -> 2', () => expect(heatLevel(entry('done', 18), countHabit)).toBe(2));
+  it('done → done', () => expect(heatLevel(rec({ state: 'done', sumActual: 10 }))).toBe('done'));
+  it('over → over', () => expect(heatLevel(rec({ state: 'over', sumActual: 30 }))).toBe('over'));
+
+  it('non-exception skip → skip (a diagnostic miss)', () =>
+    expect(heatLevel(rec({ state: 'skip', effectiveSkipReason: 'cue' }))).toBe('skip'));
+  it('exception skip → blank (excused, never a miss)', () =>
+    expect(heatLevel(rec({ state: 'skip', effectiveSkipReason: 'exception' }))).toBe('blank'));
 });

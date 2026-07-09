@@ -7,7 +7,6 @@ import {
   startOfWeek,
   nthWeekWindow,
   isExceptionSkip,
-  metFloor,
   entriesInWindow,
   toDayRecords,
   countEngagedDays,
@@ -16,9 +15,9 @@ import {
 } from './util';
 
 /** Build a HabitEntry with sensible defaults; override per test. */
-function entry(over: Partial<HabitEntry> & Pick<HabitEntry, 'date' | 'state'>): HabitEntry {
+function entry(over: Partial<HabitEntry> & Pick<HabitEntry, 'date'>): HabitEntry {
   return {
-    id: `e-${over.date}-${over.state}`,
+    id: `e-${over.date}`,
     habitId: 'h1',
     timestamp: `${over.date}T12:00:00.000Z`,
     actual: 0,
@@ -26,15 +25,15 @@ function entry(over: Partial<HabitEntry> & Pick<HabitEntry, 'date' | 'state'>): 
   };
 }
 
-/** Facts-only helpers for the day-based helpers. `state` is a vestigial placeholder. */
+/** Facts-only helpers for the day-based helpers. */
 let seq = 0;
 function act(date: string, actual: number): HabitEntry {
   seq += 1;
-  return { id: `a${seq}`, habitId: 'h1', date, timestamp: `${date}T12:00:00.000Z`, actual, state: 'done' };
+  return { id: `a${seq}`, habitId: 'h1', date, timestamp: `${date}T12:00:00.000Z`, actual };
 }
 function skip(date: string, skipReason: SkipReason): HabitEntry {
   seq += 1;
-  return { id: `s${seq}`, habitId: 'h1', date, timestamp: `${date}T12:00:00.000Z`, actual: 0, skipReason, state: 'skip' };
+  return { id: `s${seq}`, habitId: 'h1', date, timestamp: `${date}T12:00:00.000Z`, actual: 0, skipReason };
 }
 
 const COUNT_HABIT = { floor: 10, target: 30, kind: 'count' as const };
@@ -169,42 +168,27 @@ describe('nthWeekWindow (weekStartsOn = 1, Monday)', () => {
 
 describe('isExceptionSkip (facts-only: reason === exception)', () => {
   it('is true for an exception skip', () => {
-    expect(isExceptionSkip(entry({ date: '2026-06-10', state: 'skip', skipReason: 'exception' }))).toBe(true);
+    expect(isExceptionSkip(entry({ date: '2026-06-10', skipReason: 'exception' }))).toBe(true);
   });
 
   it('is false for a skip with a different reason', () => {
-    expect(isExceptionSkip(entry({ date: '2026-06-10', state: 'skip', skipReason: 'floor' }))).toBe(false);
+    expect(isExceptionSkip(entry({ date: '2026-06-10', skipReason: 'floor' }))).toBe(false);
   });
 
   it('is false for an activity row (no reason)', () => {
-    expect(isExceptionSkip(entry({ date: '2026-06-10', state: 'done', actual: 5 }))).toBe(false);
-    expect(isExceptionSkip(entry({ date: '2026-06-10', state: 'over', actual: 50 }))).toBe(false);
-  });
-});
-
-describe('metFloor (legacy per-row, kept for UI)', () => {
-  it('is true for done', () => {
-    expect(metFloor(entry({ date: '2026-06-10', state: 'done', actual: 5 }))).toBe(true);
-  });
-
-  it('is true for over', () => {
-    expect(metFloor(entry({ date: '2026-06-10', state: 'over', actual: 50 }))).toBe(true);
-  });
-
-  it('is false for skip (any reason)', () => {
-    expect(metFloor(entry({ date: '2026-06-10', state: 'skip', skipReason: 'floor' }))).toBe(false);
-    expect(metFloor(entry({ date: '2026-06-10', state: 'skip', skipReason: 'exception' }))).toBe(false);
+    expect(isExceptionSkip(entry({ date: '2026-06-10', actual: 5 }))).toBe(false);
+    expect(isExceptionSkip(entry({ date: '2026-06-10', actual: 50 }))).toBe(false);
   });
 });
 
 describe('entriesInWindow', () => {
   const win: DateWindow = { from: '2026-06-10', to: '2026-06-12' };
   const entries: HabitEntry[] = [
-    entry({ date: '2026-06-09', state: 'done', actual: 5 }), // before
-    entry({ date: '2026-06-10', state: 'done', actual: 5 }), // on from bound
-    entry({ date: '2026-06-11', state: 'done', actual: 5 }), // inside
-    entry({ date: '2026-06-12', state: 'done', actual: 5 }), // on to bound
-    entry({ date: '2026-06-13', state: 'done', actual: 5 }), // after
+    entry({ date: '2026-06-09', actual: 5 }), // before
+    entry({ date: '2026-06-10', actual: 5 }), // on from bound
+    entry({ date: '2026-06-11', actual: 5 }), // inside
+    entry({ date: '2026-06-12', actual: 5 }), // on to bound
+    entry({ date: '2026-06-13', actual: 5 }), // after
   ];
 
   it('includes both boundary days and excludes outside days', () => {

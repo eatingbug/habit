@@ -12,7 +12,6 @@ function entry(date: string, actual: number, skipReason?: SkipReason): HabitEntr
     date,
     timestamp: `${date}T12:00:00.000Z`,
     actual,
-    state: skipReason ? 'skip' : 'done', // vestigial placeholder
     ...(skipReason ? { skipReason } : {}),
   };
 }

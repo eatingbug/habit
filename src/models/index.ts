@@ -49,19 +49,10 @@ export interface HabitEntry {
   date: string; // 'YYYY-MM-DD' (local calendar date) — authoritative for day grouping
   timestamp: string; // ISO-8601 UTC (when logged) — sort / tiebreak only
   actual: number; // 0 for skip; the logged amount otherwise
-  /**
-   * @deprecated Vestigial per-row state kept only for the not-yet-migrated UI layer.
-   * The domain IGNORES this field and computes day-state from facts (classifyDay).
-   * Removed in the UI-migration phase once hooks/components stop reading it.
-   */
-  state: EntryState;
   /** Present only on skip rows (actual === 0). Absent on activity rows. */
   skipReason?: SkipReason;
   note?: string;
 }
-
-// Kept for the vestigial HabitEntry.state above (UI-only). New code uses DayState.
-export type EntryState = 'done' | 'over' | 'skip';
 
 /**
  * Computed outcome of a single (habitId, date) — a pure function of that day's rows

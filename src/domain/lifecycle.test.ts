@@ -1,5 +1,5 @@
 import { evaluateLifecycle } from './lifecycle';
-import type { Habit, HabitEntry, EntryState, SkipReason } from '../models';
+import type { Habit, HabitEntry, SkipReason } from '../models';
 
 const TODAY = '2026-06-30';
 // windowFrom(TODAY, 30) → { from: '2026-06-01', to: '2026-06-30' }.
@@ -21,15 +21,14 @@ function habit(overrides: Partial<Habit> = {}): Habit {
 }
 
 let entryCounter = 0;
-function entry(date: string, state: EntryState, skipReason?: SkipReason): HabitEntry {
+function entry(date: string, kind: 'done' | 'skip', skipReason?: SkipReason): HabitEntry {
   entryCounter += 1;
   return {
     id: `e${entryCounter}`,
     habitId: 'h1',
     date,
     timestamp: `${date}T09:00:00.000Z`,
-    actual: state === 'skip' ? 0 : 5,
-    state,
+    actual: kind === 'skip' ? 0 : 5,
     ...(skipReason ? { skipReason } : {}),
   };
 }
@@ -47,7 +46,7 @@ function dataset(count: number, met: number): HabitEntry[] {
 /** A partial day: activity below the floor (actual 2 < floor 5). */
 function partial(date: string): HabitEntry {
   entryCounter += 1;
-  return { id: `p${entryCounter}`, habitId: 'h1', date, timestamp: `${date}T09:00:00.000Z`, actual: 2, state: 'done' };
+  return { id: `p${entryCounter}`, habitId: 'h1', date, timestamp: `${date}T09:00:00.000Z`, actual: 2 };
 }
 
 describe('evaluateLifecycle', () => {

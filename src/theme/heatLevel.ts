@@ -1,43 +1,25 @@
 /**
- * theme/heatLevel.ts — UI helper mapping a HabitEntry to a heatmap bucket.
+ * theme/heatLevel.ts — UI helper mapping a computed DayRecord to a heatmap day-state.
  *
  * This is a PRESENTATION concern, not domain logic, so it lives in theme/ (not src/domain).
- * Buckets mirror the demo's green ramp (green0..green4) plus a distinct `miss` cell.
+ * Facts-only: the cell reflects the day's COMPUTED state (classifyDay), never a stored
+ * per-row state. Five flat buckets (SPEC §6.0 / §6.1) — above-floor intensity is surfaced
+ * in the growth chart, not shaded into the heatmap:
  *
- *   0      — blank / exception skip (neutral, never a miss)
- *   1..4   — floor met, shaded by how far above the floor toward the target
- *   'miss' — a diagnostic miss (non-exception skip), rendered red-tinted
+ *   'blank'   — no rows (unknown) or an exception skip (excused; never a miss)
+ *   'partial' — activity below the floor (distinct from blank and from skip)
+ *   'done'    — floor met
+ *   'over'    — target met (implies done)
+ *   'skip'    — a diagnostic miss (non-exception skip)
  *
- * Binary (yes/no) habits have no magnitude, so a "done" day is always a full cell (4).
+ * The color for each state is chosen by the consumer (habitviz) from the active theme.
  */
-import type { Habit, HabitEntry } from '../models';
+import type { DayRecord } from '../domain/util';
 
-export type HeatLevel = 0 | 1 | 2 | 3 | 4 | 'miss';
+export type HeatState = 'blank' | 'partial' | 'done' | 'over' | 'skip';
 
-export function heatLevel(
-  entry: HabitEntry | undefined,
-  habit: Pick<Habit, 'kind' | 'floor' | 'target'>,
-): HeatLevel {
-  if (!entry) return 0; // blank day
-
-  if (entry.state === 'skip') {
-    // Exception skips are excluded from misses (CONCEPT §3.2) → render as neutral.
-    return entry.skipReason === 'exception' ? 0 : 'miss';
-  }
-
-  // Binary: no above-floor magnitude — a done day reads as a full cell.
-  if (habit.kind === 'binary') return 4;
-
-  // done / over: floor is met. Shade by progress above the floor.
-  if (entry.actual <= habit.floor) return 1;
-
-  // Scale the above-floor amount against the target band when a target exists,
-  // otherwise treat any above-floor work as the top of the ramp.
-  const target = habit.target;
-  if (target === undefined || target <= habit.floor) return 4;
-
-  const progress = (entry.actual - habit.floor) / (target - habit.floor);
-  if (progress >= 1) return 4;
-  if (progress >= 0.66) return 3;
-  return 2;
+export function heatLevel(rec: DayRecord | undefined): HeatState {
+  if (!rec || rec.state === 'unknown') return 'blank';
+  if (rec.state === 'skip') return rec.effectiveSkipReason === 'exception' ? 'blank' : 'skip';
+  return rec.state; // 'partial' | 'done' | 'over'
 }

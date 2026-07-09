@@ -11,8 +11,8 @@ import { useRepository } from '@/context/RepositoryContext';
 import { TUNING } from '@/config/tuning';
 import { computeStreak, computeXP, levelForXP } from '@/domain/score';
 import { aggregateStatusCount, deriveStatusLight } from '@/domain/statusLight';
-import { addDays } from '@/domain/util';
-import { heatLevel, type HeatLevel } from '@/theme/heatLevel';
+import { addDays, dayRecordMap } from '@/domain/util';
+import { heatLevel, type HeatState } from '@/theme/heatLevel';
 import { todayLocal } from '@/util/date';
 import type { Habit, HabitEntry } from '@/models';
 import type { HabitRowData, StatCardData } from '@/components/types';
@@ -20,13 +20,12 @@ import type { HabitRowData, StatCardData } from '@/components/types';
 const EPOCH = '1970-01-01';
 const HEAT_COLUMNS = 20;
 
-function buildHeatCells(habit: Habit, entries: HabitEntry[], today: string): HeatLevel[] {
-  const byDate = new Map<string, HabitEntry>();
-  for (const e of entries) byDate.set(e.date, e);
-  const cells: HeatLevel[] = [];
+function buildHeatCells(habit: Habit, entries: HabitEntry[], today: string): HeatState[] {
+  const recs = dayRecordMap(entries, habit);
+  const cells: HeatState[] = [];
   for (let col = 0; col < HEAT_COLUMNS; col += 1) {
     const date = addDays(today, -(HEAT_COLUMNS - 1 - col)); // oldest → most-recent-last
-    cells.push(heatLevel(byDate.get(date), habit));
+    cells.push(heatLevel(recs.get(date)));
   }
   return cells;
 }

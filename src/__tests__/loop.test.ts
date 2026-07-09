@@ -22,7 +22,7 @@ function makeRepo() {
 }
 
 function done(habitId: string, date: string): HabitEntry {
-  return { id: `e-${date}`, habitId, date, timestamp: `${date}T08:00:00.000Z`, actual: 1, state: 'done' };
+  return { id: `e-${date}`, habitId, date, timestamp: `${date}T08:00:00.000Z`, actual: 1 };
 }
 function skipCue(habitId: string, date: string): HabitEntry {
   return {
@@ -31,7 +31,6 @@ function skipCue(habitId: string, date: string): HabitEntry {
     date,
     timestamp: `${date}T22:00:00.000Z`,
     actual: 0,
-    state: 'skip',
     skipReason: 'cue',
   };
 }

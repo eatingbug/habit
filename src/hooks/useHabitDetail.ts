@@ -2,24 +2,27 @@
  * useHabitDetail — a single habit's design + stats + journal, with backfill (SPEC §6.3).
  *
  * Derives streak, 28-day floor-rate, this-week XP, the journal timeline, and a tappable
- * heatmap (each cell maps to a date for retroactive logging). Design edits and backfilled
- * entries write straight through the repository, then reload.
+ * heatmap (each cell maps to a date for retroactive logging). Entries are FACTS ONLY; the
+ * day-state shown per cell/journal row is COMPUTED (dayRecordMap). Design edits and
+ * backfilled entries write straight through the repository, then reload.
  */
 import { useCallback, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
 import { useRepository } from '@/context/RepositoryContext';
 import { TUNING } from '@/config/tuning';
-import { classifyEntry, isMiss } from '@/domain/classify';
 import { computeStreak } from '@/domain/score';
 import {
   addDays,
+  dayRecordMap,
   entriesInWindow,
   floorCompletionRate,
-  metFloor,
+  groupByDate,
   nthWeekWindow,
   windowFrom,
+  type DayRecord,
 } from '@/domain/util';
-import { heatLevel, type HeatLevel } from '@/theme/heatLevel';
+import { backfillTimestamp, dayXPContribution } from '@/domain/logging';
+import { heatLevel, type HeatState } from '@/theme/heatLevel';
 import { newId } from '@/util/id';
 import { formatShortDate, nowTimestamp, todayLocal } from '@/util/date';
 import type { Habit, HabitEntry, SkipReason } from '@/models';
@@ -28,12 +31,12 @@ import type { JournalItem } from '@/components/types';
 const EPOCH = '1970-01-01';
 const HEAT_COLUMNS = 20;
 
-function weekXP(entries: HabitEntry[], today: string): number {
+/** This week's XP = the sum of each day's XP contribution (SPEC §4.2; excludes lifetime milestones). */
+function weekXP(entries: HabitEntry[], today: string, habit: Habit): number {
   const week = entriesInWindow(entries, nthWeekWindow(today, 0, TUNING.weekStartsOn));
-  return week.reduce((sum, e) => {
-    if (!metFloor(e)) return sum;
-    return sum + TUNING.xpPerFloorCompletion + (e.state === 'over' ? TUNING.xpBonusTargetExceed : 0);
-  }, 0);
+  let xp = 0;
+  for (const dayEntries of groupByDate(week).values()) xp += dayXPContribution(dayEntries, habit);
+  return xp;
 }
 
 export interface HabitDetailData {
@@ -44,7 +47,7 @@ export interface HabitDetailData {
   floorRatePct: number;
   xpWeek: number;
   journal: JournalItem[];
-  cells: HeatLevel[];
+  cells: HeatState[];
   cellDates: string[];
   updateDesign: (patch: Partial<Habit>) => Promise<void>;
   logEntry: (date: string, actual: number, note?: string) => Promise<void>;
@@ -85,22 +88,30 @@ export function useHabitDetail(id: string): HabitDetailData {
     [repo, habit, load],
   );
 
+  /** Backfilled rows get a deterministic noon timestamp; today's get the real now (SPEC §6.3 / A4). */
+  const timestampFor = useCallback(
+    (date: string) => {
+      const today = todayLocal();
+      if (date === today) return nowTimestamp();
+      return backfillTimestamp(date, entries.filter((e) => e.date === date).length);
+    },
+    [entries],
+  );
+
   const logEntry = useCallback(
     async (date: string, actual: number, note?: string) => {
       if (!habit) return;
-      const state = classifyEntry(actual, habit.floor, habit.target);
       await repo.upsertEntry({
         id: newId(),
         habitId: habit.id,
         date,
-        timestamp: nowTimestamp(),
+        timestamp: timestampFor(date),
         actual,
-        state,
         note,
       });
       await load();
     },
-    [repo, habit, load],
+    [repo, habit, timestampFor, load],
   );
 
   const logSkip = useCallback(
@@ -110,15 +121,14 @@ export function useHabitDetail(id: string): HabitDetailData {
         id: newId(),
         habitId: habit.id,
         date,
-        timestamp: nowTimestamp(),
+        timestamp: timestampFor(date),
         actual: 0,
-        state: 'skip',
         skipReason,
         note,
       });
       await load();
     },
-    [repo, habit, load],
+    [repo, habit, timestampFor, load],
   );
 
   const editEntry = useCallback(
@@ -127,11 +137,10 @@ export function useHabitDetail(id: string): HabitDetailData {
       const orig = entries.find((e) => e.id === id);
       if (!orig) return;
       const updated: HabitEntry = fields.skip
-        ? { ...orig, actual: 0, state: 'skip', skipReason: fields.skipReason, note: fields.note }
+        ? { ...orig, actual: 0, skipReason: fields.skipReason, note: fields.note }
         : {
             ...orig,
             actual: fields.actual ?? orig.actual,
-            state: classifyEntry(fields.actual ?? orig.actual, habit.floor, habit.target),
             skipReason: undefined,
             note: fields.note,
           };
@@ -155,36 +164,39 @@ export function useHabitDetail(id: string): HabitDetailData {
   const floorRatePct = habit
     ? Math.round(floorCompletionRate(entries, windowFrom(today, TUNING.diagnosis.floorRateWindowDays), habit) * 100)
     : 0;
-  const xpWeek = habit ? weekXP(entries, today) : 0;
+  const xpWeek = habit ? weekXP(entries, today, habit) : 0;
 
-  const byDate = new Map<string, HabitEntry>();
-  for (const e of entries) byDate.set(e.date, e);
+  const recs = habit ? dayRecordMap(entries, habit) : new Map<string, DayRecord>();
 
-  const cells: HeatLevel[] = [];
+  const cells: HeatState[] = [];
   const cellDates: string[] = [];
   if (habit) {
     for (let col = 0; col < HEAT_COLUMNS; col += 1) {
       const date = addDays(today, -(HEAT_COLUMNS - 1 - col));
       cellDates.push(date);
-      cells.push(heatLevel(byDate.get(date), habit));
+      cells.push(heatLevel(recs.get(date)));
     }
   }
 
   const journal: JournalItem[] = habit
     ? [...entries]
         .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : b.timestamp.localeCompare(a.timestamp)))
-        .map((e) => ({
-          id: e.id,
-          date: e.date,
-          dateLabel: formatShortDate(e.date),
-          state: e.state,
-          actual: e.actual,
-          unit: habit.floorUnit,
-          isBinary: habit.kind === 'binary',
-          note: e.note,
-          skipReason: e.skipReason,
-          isMiss: isMiss(e),
-        }))
+        .map((e) => {
+          const rec = recs.get(e.date)!;
+          return {
+            id: e.id,
+            date: e.date,
+            dateLabel: formatShortDate(e.date),
+            dayState: rec.state,
+            isSkip: e.actual === 0,
+            actual: e.actual,
+            unit: habit.floorUnit,
+            isBinary: habit.kind === 'binary',
+            note: e.note,
+            skipReason: e.skipReason,
+            isMiss: rec.state === 'skip' && rec.effectiveSkipReason !== 'exception',
+          };
+        })
     : [];
 
   return {

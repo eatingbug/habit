@@ -25,23 +25,22 @@ function habit(overrides: Partial<Habit> = {}): Habit {
 }
 
 let idSeq = 0;
-function entry(date: string, state: HabitEntry['state'], actual: number, extra: Partial<HabitEntry> = {}): HabitEntry {
+function entry(date: string, actual: number, extra: Partial<HabitEntry> = {}): HabitEntry {
   return {
     id: `e${idSeq++}`,
     habitId: 'h1',
     date,
     timestamp: `${date}T12:00:00.000Z`,
     actual,
-    state,
     ...extra,
   };
 }
 
 function done(date: string, actual = 1): HabitEntry {
-  return entry(date, 'done', actual);
+  return entry(date, actual);
 }
 function miss(date: string): HabitEntry {
-  return entry(date, 'skip', 0, { skipReason: 'cue' });
+  return entry(date, 0, { skipReason: 'cue' });
 }
 
 describe('deriveStatusLight — intervention (forming, consecutive misses)', () => {

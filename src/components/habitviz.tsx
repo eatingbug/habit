@@ -13,14 +13,14 @@ import type {
   StreakProps,
 } from '@/components/types';
 import { color, font, fontSize, letterSpacing, radius, space } from '@/theme/tokens';
-import type { HeatLevel } from '@/theme/heatLevel';
+import type { HeatState } from '@/theme/heatLevel';
 
-const HEAT_COLORS: Record<Exclude<HeatLevel, 'miss'>, string> = {
-  0: color.green0,
-  1: color.green1,
-  2: color.green2,
-  3: color.green3,
-  4: color.green4,
+// Flat day-state colors (SPEC §6.1). `skip` renders as the tinted miss cell below.
+const HEAT_COLORS: Record<Exclude<HeatState, 'skip'>, string> = {
+  blank: color.green0,
+  partial: color.amber,
+  done: color.green3,
+  over: color.green4,
 };
 
 const MISS_BORDER = 'rgba(214,101,90,.3)';
@@ -72,14 +72,13 @@ export function Streak({ count }: StreakProps) {
 export function Heatmap({ cells, onCellPress, columns = 20 }: HeatmapProps) {
   return (
     <View style={styles.heat}>
-      {cells.map((level, index) => {
+      {cells.map((fill, index) => {
         const cellStyle = [
           styles.cell,
           { width: `${100 / columns}%` as const },
         ];
-        const fill: HeatLevel = level;
         const inner =
-          fill === 'miss' ? (
+          fill === 'skip' ? (
             <View style={[styles.cellInner, styles.cellMiss]} />
           ) : (
             <View style={[styles.cellInner, { backgroundColor: HEAT_COLORS[fill] }]} />
@@ -107,15 +106,16 @@ export function Heatmap({ cells, onCellPress, columns = 20 }: HeatmapProps) {
 export function HeatLegend(_: HeatLegendProps) {
   return (
     <View style={styles.legend}>
-      <Text style={styles.legendText}>적음</Text>
-      <View style={[styles.swatch, { backgroundColor: color.green0 }]} />
-      <View style={[styles.swatch, { backgroundColor: color.green1 }]} />
-      <View style={[styles.swatch, { backgroundColor: color.green2 }]} />
-      <View style={[styles.swatch, { backgroundColor: color.green3 }]} />
-      <View style={[styles.swatch, { backgroundColor: color.green4 }]} />
-      <Text style={styles.legendText}>많음</Text>
-      <View style={[styles.swatch, styles.swatchMiss, styles.swatchGap]} />
-      <Text style={styles.legendText}>놓침</Text>
+      <View style={[styles.swatch, { backgroundColor: HEAT_COLORS.blank }]} />
+      <Text style={styles.legendText}>미기록</Text>
+      <View style={[styles.swatch, { backgroundColor: HEAT_COLORS.partial }]} />
+      <Text style={styles.legendText}>부분</Text>
+      <View style={[styles.swatch, { backgroundColor: HEAT_COLORS.done }]} />
+      <Text style={styles.legendText}>달성</Text>
+      <View style={[styles.swatch, { backgroundColor: HEAT_COLORS.over }]} />
+      <Text style={styles.legendText}>초과</Text>
+      <View style={[styles.swatch, styles.swatchMiss]} />
+      <Text style={styles.legendText}>건너뜀</Text>
     </View>
   );
 }
@@ -178,8 +178,5 @@ const styles = StyleSheet.create({
     backgroundColor: color.heatMiss,
     borderWidth: 1,
     borderColor: MISS_BORDER,
-  },
-  swatchGap: {
-    marginLeft: space.xs,
   },
 });

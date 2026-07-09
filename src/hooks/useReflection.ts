@@ -9,10 +9,9 @@ import { useCallback, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
 import { useRepository } from '@/context/RepositoryContext';
 import { TUNING } from '@/config/tuning';
-import { isMiss } from '@/domain/classify';
 import { diagnose } from '@/domain/diagnose';
 import { suggestAction } from '@/domain/recommend';
-import { addDays, isExceptionSkip, metFloor, startOfWeek } from '@/domain/util';
+import { addDays, dayRecordMap, startOfWeek } from '@/domain/util';
 import { newId } from '@/util/id';
 import { nowTimestamp, todayLocal, weekdayLetter } from '@/util/date';
 import type { DiagnosisFlag, Habit, HabitDesignSnapshot, HabitEntry, ReflectionAction } from '@/models';
@@ -83,21 +82,26 @@ function actionsFor(habit: Habit, suggested: ReflectionAction): ActionOption[] {
   return ordered.map((action) => ({ action, ...ACTION_META[action] }));
 }
 
-function buildMirror(entries: HabitEntry[], today: string): MirrorDay[] {
-  const byDate = new Map<string, HabitEntry>();
-  for (const e of entries) byDate.set(e.date, e);
+function buildMirror(entries: HabitEntry[], today: string, habit: Habit): MirrorDay[] {
+  const recs = dayRecordMap(entries, habit);
   const weekStart = startOfWeek(today, TUNING.weekStartsOn);
   const days: MirrorDay[] = [];
   for (let col = 0; col < 7; col += 1) {
     const date = addDays(weekStart, col);
-    const entry = byDate.get(date);
+    const rec = recs.get(date);
     let state: MirrorDay['state'] = 'blank';
     let value = '–';
-    if (entry && !isExceptionSkip(entry)) {
-      if (isMiss(entry)) state = 'miss';
-      else if (entry.state === 'over') state = 'over';
-      else if (metFloor(entry)) state = 'ok';
-      if (metFloor(entry)) value = String(entry.actual);
+    if (rec) {
+      if (rec.state === 'over') {
+        state = 'over';
+        value = String(rec.sumActual);
+      } else if (rec.state === 'done') {
+        state = 'ok';
+        value = String(rec.sumActual);
+      } else if (rec.state === 'skip' && rec.effectiveSkipReason !== 'exception') {
+        state = 'miss';
+      }
+      // partial / unknown / exception-skip → blank
     }
     days.push({ weekday: weekdayLetter(date), state, value });
   }
@@ -172,7 +176,7 @@ export function useReflection(id: string): ReflectionData {
     loading,
     habit,
     statName: habit ? (TUNING.stats.find((s) => s.id === habit.statId)?.name ?? habit.statId) : '',
-    mirror: habit ? buildMirror(entries, today) : [],
+    mirror: habit ? buildMirror(entries, today, habit) : [],
     flags,
     suggestedAction,
     actions: habit && suggestedAction ? actionsFor(habit, suggestedAction) : [],

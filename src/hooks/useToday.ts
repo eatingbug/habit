@@ -2,24 +2,19 @@
  * useToday — the Today feed + tally + composer submit (SPEC §6.2, CONCEPT §9).
  *
  * Merges today's habit entries and free logs into one chronological feed, computes the
- * day's tally, and converts a ComposerSubmit into the right stored record (classifying
- * habit entries, routing skips). Free logs never touch XP/streak (CONCEPT §9.1).
+ * day's tally, and converts a ComposerSubmit into the right stored record (facts only —
+ * the day-state is computed, never stored). Free logs never touch XP/streak (CONCEPT §9.1).
  */
 import { useCallback, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
 import { useRepository } from '@/context/RepositoryContext';
 import { TUNING } from '@/config/tuning';
-import { classifyEntry, isMiss } from '@/domain/classify';
-import { metFloor } from '@/domain/util';
+import { classifyDay, compareEntries, isMissDay } from '@/domain/classify';
+import { dayXPContribution } from '@/domain/logging';
 import { newId } from '@/util/id';
 import { formatClock, timestampFromLocalTime, todayLocal } from '@/util/date';
-import type { Habit, HabitEntry } from '@/models';
+import type { Habit } from '@/models';
 import type { ComposerSubmit, FeedEntry, TallyData } from '@/components/types';
-
-function entryXP(entry: HabitEntry): number {
-  if (!metFloor(entry)) return 0;
-  return TUNING.xpPerFloorCompletion + (entry.state === 'over' ? TUNING.xpBonusTargetExceed : 0);
-}
 
 export interface TodayData {
   loading: boolean;
@@ -46,50 +41,58 @@ export function useToday(): TodayData {
     const statName = (statId: string) =>
       TUNING.stats.find((s) => s.id === statId)?.name ?? statId;
 
-    const todaysEntries: { habit: Habit; entry: HabitEntry }[] = [];
+    const items: FeedEntry[] = [];
+    let questsDone = 0;
+    let xpToday = 0;
+
     await Promise.all(
       allHabits.map(async (h) => {
-        const entries = await repo.getEntries(h.id, today, today);
-        for (const e of entries) todaysEntries.push({ habit: h, entry: e });
+        const es = await repo.getEntries(h.id, today, today);
+        if (es.length === 0) return;
+        const target = h.kind === 'binary' ? undefined : h.target;
+        const dayState = classifyDay(es, h.floor, target);
+        const miss = isMissDay(es, h.floor, target);
+        const dayXP = dayXPContribution(es, h);
+        if (dayState === 'done' || dayState === 'over') questsDone += 1;
+        xpToday += dayXP;
+        // The day's XP contribution is attributed to its latest activity row (SPEC §4.1).
+        const activity = es.filter((e) => e.actual > 0).sort(compareEntries);
+        const latestActivityId = activity.length ? activity[activity.length - 1].id : null;
+        for (const e of es) {
+          items.push({
+            kind: 'habit',
+            id: e.id,
+            habitId: h.id,
+            timestamp: e.timestamp,
+            time: formatClock(e.timestamp),
+            habitName: h.name,
+            statName: statName(h.statId),
+            dayState,
+            isSkip: e.actual === 0,
+            isMiss: miss,
+            actual: e.actual,
+            unit: h.floorUnit,
+            isBinary: h.kind === 'binary',
+            note: e.note,
+            skipReason: e.skipReason,
+            xp: e.id === latestActivityId && dayXP > 0 ? dayXP : undefined,
+          });
+        }
       }),
     );
+
     const logs = await repo.getFreeLogs(today, today);
-
-    const items: FeedEntry[] = [
-      ...todaysEntries.map(({ habit, entry }): FeedEntry => {
-        const xp = entryXP(entry);
-        return {
-          kind: 'habit',
-          id: entry.id,
-          habitId: habit.id,
-          timestamp: entry.timestamp,
-          time: formatClock(entry.timestamp),
-          habitName: habit.name,
-          statName: statName(habit.statId),
-          state: entry.state,
-          isMiss: isMiss(entry),
-          actual: entry.actual,
-          unit: habit.floorUnit,
-          isBinary: habit.kind === 'binary',
-          note: entry.note,
-          skipReason: entry.skipReason,
-          xp: xp > 0 ? xp : undefined,
-        };
-      }),
-      ...logs.map(
-        (l): FeedEntry => ({
-          kind: 'log',
-          id: l.id,
-          timestamp: l.timestamp,
-          time: formatClock(l.timestamp),
-          type: l.type,
-          text: l.text,
-        }),
-      ),
-    ].sort((a, b) => a.timestamp.localeCompare(b.timestamp));
-
-    const questsDone = todaysEntries.filter(({ entry }) => metFloor(entry)).length;
-    const xpToday = todaysEntries.reduce((sum, { entry }) => sum + entryXP(entry), 0);
+    for (const l of logs) {
+      items.push({
+        kind: 'log',
+        id: l.id,
+        timestamp: l.timestamp,
+        time: formatClock(l.timestamp),
+        type: l.type,
+        text: l.text,
+      });
+    }
+    items.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
 
     setHabits(allHabits);
     setFeed(items);
@@ -102,7 +105,7 @@ export function useToday(): TodayData {
       const today = todayLocal();
       const timestamp = timestampFromLocalTime(today, s.hour, s.minute);
       if (s.kind === 'log') {
-        await repo.upsertFreeLog({ id: newId(), timestamp, type: s.type, text: s.text });
+        await repo.upsertFreeLog({ id: newId(), date: today, timestamp, type: s.type, text: s.text });
       } else if (s.kind === 'skip') {
         await repo.upsertEntry({
           id: newId(),
@@ -110,27 +113,22 @@ export function useToday(): TodayData {
           date: today,
           timestamp,
           actual: 0,
-          state: 'skip',
           skipReason: s.skipReason,
           note: s.note,
         });
       } else {
-        const habit = habits.find((h) => h.id === s.habitId);
-        if (!habit) return;
-        const state = classifyEntry(s.actual, habit.floor, habit.target);
         await repo.upsertEntry({
           id: newId(),
           habitId: s.habitId,
           date: today,
           timestamp,
           actual: s.actual,
-          state,
           note: s.note,
         });
       }
       await load();
     },
-    [repo, habits, load],
+    [repo, load],
   );
 
   const update = useCallback(
@@ -138,7 +136,7 @@ export function useToday(): TodayData {
       const today = todayLocal();
       const timestamp = timestampFromLocalTime(today, s.hour, s.minute);
       if (s.kind === 'log') {
-        await repo.upsertFreeLog({ id, timestamp, type: s.type, text: s.text });
+        await repo.upsertFreeLog({ id, date: today, timestamp, type: s.type, text: s.text });
       } else if (s.kind === 'skip') {
         await repo.upsertEntry({
           id,
@@ -146,27 +144,22 @@ export function useToday(): TodayData {
           date: today,
           timestamp,
           actual: 0,
-          state: 'skip',
           skipReason: s.skipReason,
           note: s.note,
         });
       } else {
-        const habit = habits.find((h) => h.id === s.habitId);
-        if (!habit) return;
-        const state = classifyEntry(s.actual, habit.floor, habit.target);
         await repo.upsertEntry({
           id,
           habitId: s.habitId,
           date: today,
           timestamp,
           actual: s.actual,
-          state,
           note: s.note,
         });
       }
       await load();
     },
-    [repo, habits, load],
+    [repo, load],
   );
 
   useFocusEffect(

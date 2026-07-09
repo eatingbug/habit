@@ -76,14 +76,6 @@ export function isExceptionSkip(entry: HabitEntry): boolean {
   return entry.skipReason === 'exception';
 }
 
-/**
- * @deprecated Legacy per-row "met floor" (reads the vestigial `state`) kept for the UI.
- * The domain decides floor-completion per DAY via `classifyDay` / `DayRecord.state`.
- */
-export function metFloor(entry: HabitEntry): boolean {
-  return entry.state === 'done' || entry.state === 'over';
-}
-
 /** Entries whose date falls within [window.from, window.to] (inclusive). */
 export function entriesInWindow(entries: HabitEntry[], window: DateWindow): HabitEntry[] {
   return entries.filter((e) => e.date >= window.from && e.date <= window.to);

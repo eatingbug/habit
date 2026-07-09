@@ -2,11 +2,9 @@
  * domain/classify.ts — day-state classification + the miss predicate (SPEC §4.1).
  *
  * The domain computes a day's outcome from that day's FACTS (rows), never a stored
- * per-row state. `classifyDay` / `effectiveSkipReason` / `isMissDay` are the day-level
- * API. `classifyEntry` / `isMiss` below are the legacy per-row helpers kept only for the
- * not-yet-migrated UI layer.
+ * per-row state. `classifyDay` / `effectiveSkipReason` / `isMissDay` are the day-level API.
  */
-import type { DayState, EntryState, HabitEntry, SkipReason } from '../models';
+import type { DayState, HabitEntry, SkipReason } from '../models';
 
 /**
  * Total order over a day's rows: `timestamp` ASC, then `id` ASC (SPEC §4.1 / A4).
@@ -62,26 +60,4 @@ export function effectiveSkipReason(dayEntries: HabitEntry[]): SkipReason | unde
 export function isMissDay(dayEntries: HabitEntry[], floor: number, target?: number): boolean {
   if (classifyDay(dayEntries, floor, target) !== 'skip') return false;
   return effectiveSkipReason(dayEntries) !== 'exception';
-}
-
-/**
- * @deprecated Legacy per-row classifier kept only for the not-yet-migrated UI composer.
- * Throws on sub-floor input (the old `EntryState` has no `partial`). New code classifies
- * whole days via `classifyDay`.
- */
-export function classifyEntry(actual: number, floor: number, target?: number): EntryState {
-  if (target !== undefined && actual >= target) return 'over';
-  if (actual >= floor) return 'done';
-  throw new RangeError(
-    `actual ${actual} is below floor ${floor}; sub-floor amounts must be logged as skip(floor), not a real entry`,
-  );
-}
-
-/**
- * @deprecated Legacy per-row miss predicate (reads the vestigial `state`) kept for the UI.
- * New code uses `isMissDay`.
- */
-export function isMiss(entry: HabitEntry | undefined): boolean {
-  if (!entry) return false;
-  return entry.state === 'skip' && entry.skipReason !== 'exception';
 }

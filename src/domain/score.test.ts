@@ -1,4 +1,4 @@
-import type { Habit, HabitEntry, EntryState, SkipReason } from '../models';
+import type { Habit, HabitEntry, SkipReason } from '../models';
 import { TUNING } from '../config/tuning';
 import { computeStreak, computeXP, computeStatLevel, levelForXP, milestoneBonusXP } from './score';
 
@@ -15,27 +15,21 @@ const habit: Habit = {
 };
 
 let seq = 0;
-function entry(
-  date: string,
-  state: EntryState,
-  actual: number,
-  skipReason?: SkipReason,
-): HabitEntry {
+function entry(date: string, actual: number, skipReason?: SkipReason): HabitEntry {
   return {
     id: `e${seq++}`,
     habitId: 'h1',
     date,
     timestamp: `${date}T12:00:00.000Z`,
     actual,
-    state, // vestigial placeholder — the domain classifies from `actual`
     ...(skipReason ? { skipReason } : {}),
   };
 }
 
-const done = (date: string, actual = 10) => entry(date, 'done', actual);
-const over = (date: string, actual = 30) => entry(date, 'over', actual);
-const part = (date: string, actual = 3) => entry(date, 'done', actual); // 0 < actual < floor → partial
-const skip = (date: string, reason: SkipReason) => entry(date, 'skip', 0, reason);
+const done = (date: string, actual = 10) => entry(date, actual);
+const over = (date: string, actual = 30) => entry(date, actual);
+const part = (date: string, actual = 3) => entry(date, actual); // 0 < actual < floor → partial
+const skip = (date: string, reason: SkipReason) => entry(date, 0, reason);
 
 /** Build a run of consecutive done days starting at `start` for `n` days. */
 function doneRun(start: string, n: number): HabitEntry[] {
@@ -94,7 +88,7 @@ describe('computeStreak', () => {
 
   it('sums multiple activity rows on one day to meet the floor', () => {
     // 06-23 has two rows summing to 12 (>= floor 10) → one done day
-    const entries = [done('2026-06-22'), entry('2026-06-23', 'done', 6), entry('2026-06-23', 'done', 6)];
+    const entries = [done('2026-06-22'), entry('2026-06-23', 6), entry('2026-06-23', 6)];
     expect(computeStreak(entries, '2026-06-23', habit)).toBe(2);
   });
 
@@ -126,7 +120,7 @@ describe('computeXP', () => {
 
   it('above-floor intensity is per DAY (multiple rows summed)', () => {
     // one day, two rows of 20 → sum 40: over (>= target 30), above-floor 30.
-    const entries = [entry('2026-06-01', 'done', 20), entry('2026-06-01', 'done', 20)];
+    const entries = [entry('2026-06-01', 20), entry('2026-06-01', 20)];
     expect(computeXP(entries, habit)).toBe(
       1 * TUNING.xpPerFloorCompletion +
         1 * TUNING.xpBonusTargetExceed +
@@ -225,8 +219,8 @@ describe('computeXP — binary habit', () => {
   it('multiple done rows on one day count once (idempotent)', () => {
     // 06-01 has two done rows (one done day) + 4 more days → run of 5
     const entries = [
-      entry('2026-06-01', 'done', 1),
-      entry('2026-06-01', 'done', 1),
+      entry('2026-06-01', 1),
+      entry('2026-06-01', 1),
       ...doneRun('2026-06-02', 4),
     ];
     expect(computeXP(entries, binaryHabit)).toBe(

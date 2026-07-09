@@ -28,7 +28,6 @@ function makeEntry(over: Partial<HabitEntry> = {}): HabitEntry {
     date: "2026-06-10",
     timestamp: "2026-06-10T08:00:00.000Z",
     actual: 5,
-    state: "done",
     ...over,
   };
 }

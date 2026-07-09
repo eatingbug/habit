@@ -23,17 +23,17 @@ function habit(over: Partial<Habit> = {}): Habit {
 
 let seq = 0;
 function done(date: string, actual = 5): HabitEntry {
-  return { id: `e${seq++}`, habitId: 'h1', date, timestamp: `${date}T12:00:00.000Z`, actual, state: 'done' };
+  return { id: `e${seq++}`, habitId: 'h1', date, timestamp: `${date}T12:00:00.000Z`, actual };
 }
 function over(date: string, actual: number): HabitEntry {
-  return { id: `e${seq++}`, habitId: 'h1', date, timestamp: `${date}T12:00:00.000Z`, actual, state: 'over' };
+  return { id: `e${seq++}`, habitId: 'h1', date, timestamp: `${date}T12:00:00.000Z`, actual };
 }
 function part(date: string, actual = 2): HabitEntry {
   // 0 < actual < floor (5) → partial
-  return { id: `e${seq++}`, habitId: 'h1', date, timestamp: `${date}T12:00:00.000Z`, actual, state: 'done' };
+  return { id: `e${seq++}`, habitId: 'h1', date, timestamp: `${date}T12:00:00.000Z`, actual };
 }
 function skip(date: string, reason: SkipReason): HabitEntry {
-  return { id: `e${seq++}`, habitId: 'h1', date, timestamp: `${date}T12:00:00.000Z`, actual: 0, state: 'skip', skipReason: reason };
+  return { id: `e${seq++}`, habitId: 'h1', date, timestamp: `${date}T12:00:00.000Z`, actual: 0, skipReason: reason };
 }
 
 describe('diagnose — Rule 1 floor too high', () => {
