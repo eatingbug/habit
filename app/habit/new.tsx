@@ -18,11 +18,13 @@ import {
 import { TUNING } from '@/config/tuning';
 import { newId } from '@/util/id';
 import { nowTimestamp } from '@/util/date';
-import { color, font, fontSize, space } from '@/theme/tokens';
+import { font, fontSize, space, weight, type ColorTheme } from '@/theme/tokens';
+import { useThemedStyles } from '@/theme/useThemedStyles';
 
 export default function NewHabit() {
   const router = useRouter();
   const repo = useRepository();
+  const styles = useThemedStyles(makeStyles);
 
   const [name, setName] = useState('');
   const [statId, setStatId] = useState<string>(TUNING.stats[0]?.id ?? '');
@@ -137,6 +139,7 @@ function Field({
   children: React.ReactNode;
   style?: object;
 }) {
+  const styles = useThemedStyles(makeStyles);
   return (
     <View style={[styles.field, style]}>
       <Text style={styles.label}>{label}</Text>
@@ -145,27 +148,28 @@ function Field({
   );
 }
 
-const styles = StyleSheet.create({
-  head: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: space.lg },
-  title: { fontFamily: font.serifBlack, fontSize: fontSize.detail, color: color.ink },
-  close: { fontFamily: font.mono, fontSize: fontSize.meta, color: color.inkDim },
-  field: { marginBottom: space.md },
-  label: { fontFamily: font.mono, fontSize: fontSize.tag, color: color.inkFaint, textTransform: 'uppercase', marginBottom: 6 },
-  row: { flexDirection: 'row', gap: space.md },
-  col: { flex: 1 },
-  actions: { marginTop: space.sm },
-  typeRow: { flexDirection: 'row', gap: space.sm },
-  typeChip: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: color.line,
-    backgroundColor: color.panel,
-    borderRadius: 20,
-    paddingVertical: 9,
-    alignItems: 'center',
-  },
-  typeChipOn: { borderColor: color.gold, backgroundColor: 'rgba(216,177,90,0.1)' },
-  typeChipText: { fontFamily: font.mono, fontSize: fontSize.micro, color: color.inkDim },
-  typeChipTextOn: { color: color.gold },
-  typeHint: { fontFamily: font.serifItalic, fontStyle: 'italic', color: color.inkFaint, fontSize: fontSize.small, marginBottom: space.md },
-});
+const makeStyles = (c: ColorTheme) =>
+  StyleSheet.create({
+    head: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: space.lg },
+    title: { fontFamily: font.sans, fontWeight: weight.bold, fontSize: fontSize.title, color: c.text },
+    close: { fontFamily: font.mono, fontSize: fontSize.meta, color: c.muted },
+    field: { marginBottom: space.md },
+    label: { fontFamily: font.mono, fontSize: fontSize.tag, color: c.faint, textTransform: 'uppercase', marginBottom: 6 },
+    row: { flexDirection: 'row', gap: space.md },
+    col: { flex: 1 },
+    actions: { marginTop: space.sm },
+    typeRow: { flexDirection: 'row', gap: space.sm },
+    typeChip: {
+      flex: 1,
+      borderWidth: 1,
+      borderColor: c.border,
+      backgroundColor: c.surface,
+      borderRadius: 20,
+      paddingVertical: 9,
+      alignItems: 'center',
+    },
+    typeChipOn: { borderColor: c.accent, backgroundColor: c.accentWeak },
+    typeChipText: { fontFamily: font.mono, fontSize: fontSize.micro, color: c.muted },
+    typeChipTextOn: { color: c.accent },
+    typeHint: { fontFamily: font.sans, fontStyle: 'italic', color: c.faint, fontSize: fontSize.small, marginBottom: space.md },
+  });

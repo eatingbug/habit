@@ -20,14 +20,15 @@ import {
   Toast,
   Wrap,
 } from '@/components';
-import { Gradient } from '@/theme/Gradient';
-import { color, font, fontSize, letterSpacing, space } from '@/theme/tokens';
+import { font, fontSize, letterSpacing, radius, space, weight, type ColorTheme } from '@/theme/tokens';
+import { useThemedStyles } from '@/theme/useThemedStyles';
 import type { ReflectionAction } from '@/models';
 
 export default function Reflection() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const r = useReflection(id);
+  const styles = useThemedStyles(makeStyles);
 
   const [chosen, setChosen] = useState<ReflectionAction | null>(null);
   const [cue, setCue] = useState('');
@@ -104,7 +105,7 @@ export default function Reflection() {
         <Text style={styles.back}>← 뒤로</Text>
       </Pressable>
 
-      <Gradient preset="refHero" style={styles.hero}>
+      <View style={styles.hero}>
         <Text style={styles.eyebrow}>{r.habit.name} · 주간 회고</Text>
         <Text style={styles.heroTitle}>앞으로 나아가기 전에 돌아보기</Text>
         <Text style={styles.heroBody}>
@@ -114,7 +115,7 @@ export default function Reflection() {
         <View style={styles.mirror}>
           <MirrorWeek days={r.mirror} />
         </View>
-      </Gradient>
+      </View>
 
       <Panel
         title="데이터가 짚어주는 것"
@@ -164,20 +165,35 @@ export default function Reflection() {
   );
 }
 
-const styles = StyleSheet.create({
-  back: { fontFamily: font.mono, fontSize: fontSize.meta, color: color.inkDim, marginBottom: space.md },
-  hero: { borderWidth: 1, borderColor: color.line, borderRadius: 14, padding: space.xl, marginBottom: space.lg },
-  eyebrow: {
-    fontFamily: font.mono,
-    fontSize: fontSize.label,
-    color: color.gold,
-    textTransform: 'uppercase',
-    letterSpacing: letterSpacing.label,
-  },
-  heroTitle: { fontFamily: font.serifBlack, fontSize: fontSize.refHero, color: color.ink, marginVertical: 6 },
-  heroBody: { fontFamily: font.sans, fontSize: fontSize.small, color: color.inkDim, maxWidth: 560 },
-  mirror: { marginTop: space.lg },
-  panel: { marginBottom: space.lg },
-  input: { marginTop: space.md },
-  commit: { flexDirection: 'row', alignItems: 'center', gap: space.md, flexWrap: 'wrap', marginTop: space.md },
-});
+const makeStyles = (c: ColorTheme) =>
+  StyleSheet.create({
+    back: { fontFamily: font.mono, fontSize: fontSize.meta, color: c.muted, marginBottom: space.md },
+    hero: {
+      backgroundColor: c.surface,
+      borderWidth: 1,
+      borderColor: c.border,
+      borderRadius: radius.r,
+      padding: space.xl,
+      marginBottom: space.lg,
+      ...c.shadow,
+    },
+    eyebrow: {
+      fontFamily: font.mono,
+      fontSize: fontSize.label,
+      color: c.accent,
+      textTransform: 'uppercase',
+      letterSpacing: letterSpacing.label,
+    },
+    heroTitle: {
+      fontFamily: font.sans,
+      fontWeight: weight.bold,
+      fontSize: fontSize.title,
+      color: c.text,
+      marginVertical: 6,
+    },
+    heroBody: { fontFamily: font.sans, fontSize: fontSize.small, color: c.muted, maxWidth: 560 },
+    mirror: { marginTop: space.lg },
+    panel: { marginBottom: space.lg },
+    input: { marginTop: space.md },
+    commit: { flexDirection: 'row', alignItems: 'center', gap: space.md, flexWrap: 'wrap', marginTop: space.md },
+  });

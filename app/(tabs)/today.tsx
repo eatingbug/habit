@@ -7,7 +7,8 @@ import { StyleSheet, Text, View } from 'react-native';
 import { useToday } from '@/hooks/useToday';
 import { Composer, EmptyState, FeedItem, Tally, Wrap } from '@/components';
 import type { ComposerInitial, FeedEntry } from '@/components/types';
-import { color, font, fontSize, letterSpacing, space } from '@/theme/tokens';
+import { font, fontSize, letterSpacing, space, weight, type ColorTheme } from '@/theme/tokens';
+import { useThemedStyles } from '@/theme/useThemedStyles';
 import { formatShortDate, formatWeekday } from '@/util/date';
 
 /** Turn a feed row back into composer pre-fill values for editing. */
@@ -32,6 +33,7 @@ export default function Today() {
   const { date, tally, feed, habits, submit, update } = useToday();
   const [editing, setEditing] = useState<FeedEntry | null>(null);
   const editingId = editing?.id ?? null;
+  const styles = useThemedStyles(makeStyles);
 
   return (
     <Wrap>
@@ -66,29 +68,32 @@ export default function Today() {
   );
 }
 
-const styles = StyleSheet.create({
-  head: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    justifyContent: 'space-between',
-    flexWrap: 'wrap',
-    gap: space.md,
-    marginBottom: space.lg,
-  },
-  eyebrow: {
-    fontFamily: font.mono,
-    fontSize: fontSize.micro,
-    color: color.gold,
-    textTransform: 'uppercase',
-    letterSpacing: letterSpacing.label,
-    marginBottom: 4,
-  },
-  date: {
-    fontFamily: font.serifBlack,
-    fontSize: fontSize.detail,
-    color: color.ink,
-  },
-  feed: {
-    marginTop: space.lg,
-  },
-});
+const makeStyles = (c: ColorTheme) =>
+  StyleSheet.create({
+    head: {
+      flexDirection: 'row',
+      alignItems: 'flex-end',
+      justifyContent: 'space-between',
+      flexWrap: 'wrap',
+      gap: space.md,
+      marginBottom: space.lg,
+    },
+    eyebrow: {
+      fontFamily: font.mono,
+      fontSize: fontSize.micro,
+      color: c.accent,
+      textTransform: 'uppercase',
+      letterSpacing: letterSpacing.label,
+      marginBottom: 4,
+    },
+    date: {
+      fontFamily: font.sans,
+      fontWeight: weight.bold,
+      fontSize: fontSize.title,
+      color: c.text,
+      fontVariant: ['tabular-nums'],
+    },
+    feed: {
+      marginTop: space.lg,
+    },
+  });

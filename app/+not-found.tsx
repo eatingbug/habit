@@ -1,9 +1,11 @@
 /** Fallback route for unmatched paths. */
 import { Link, Stack } from 'expo-router';
 import { StyleSheet, Text, View } from 'react-native';
-import { color, font, fontSize } from '@/theme/tokens';
+import { font, fontSize, weight, type ColorTheme } from '@/theme/tokens';
+import { useThemedStyles } from '@/theme/useThemedStyles';
 
 export default function NotFound() {
+  const styles = useThemedStyles(makeStyles);
   return (
     <>
       <Stack.Screen options={{ title: '찾을 수 없음' }} />
@@ -17,8 +19,9 @@ export default function NotFound() {
   );
 }
 
-const styles = StyleSheet.create({
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 12 },
-  title: { fontFamily: font.serifSemiBold, fontSize: fontSize.panelTitle, color: color.ink },
-  link: { fontFamily: font.mono, fontSize: fontSize.bodySm, color: color.gold },
-});
+const makeStyles = (c: ColorTheme) =>
+  StyleSheet.create({
+    center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 12 },
+    title: { fontFamily: font.sans, fontWeight: weight.semibold, fontSize: fontSize.title, color: c.text },
+    link: { fontFamily: font.mono, fontSize: fontSize.small, color: c.accent },
+  });

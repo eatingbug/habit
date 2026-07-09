@@ -1,14 +1,15 @@
 /**
- * components/primitives.tsx — presentational building blocks.
+ * components/primitives.tsx — presentational building blocks (SPEC §6.0).
  *
- * Translations of the demo's .wrap / .panel / .section-label / .tag / .pill /
- * .btn.primary / .toast / .empty / header.app primitives (mvp/habiquest-demo_2.html).
- * Pure presentation: render the props handed in, no app data.
+ * Wrap / Panel / SectionLabel / Tag / Pill / PrimaryButton / Toast / EmptyState /
+ * BrandHeader. Adaptive: colored styles are built per-theme via `useThemedStyles`.
+ * Depth is a hairline border + one faint shadow (no gradients/glows).
  */
 import React from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { AppBackground, Gradient } from '@/theme/Gradient';
-import { color, font, fontSize, letterSpacing, radius, space, layout } from '@/theme/tokens';
+import { font, fontSize, letterSpacing, radius, space, layout, weight, type ColorTheme } from '@/theme/tokens';
+import { useThemedStyles } from '@/theme/useThemedStyles';
+import { useTheme } from '@/theme/ThemeProvider';
 import { LevelRing } from '@/components/progress';
 import type {
   BrandHeaderProps,
@@ -22,13 +23,12 @@ import type {
   WrapProps,
 } from '@/components/types';
 
-// ── Wrap (.wrap) ───────────────────────────────────────────────────────────────
-// Each screen paints its own OPAQUE background (dark base + glow) and fills the scene,
-// so the active screen fully covers the inactive one when switching tabs/routes — no
-// transparent-scene overlap. The page body itself never scrolls horizontally.
+// ── Wrap ─────────────────────────────────────────────────────────────────────────
+// Each screen paints its own OPAQUE themed background and fills the scene.
 export function Wrap({ children, scroll }: WrapProps) {
+  const styles = useThemedStyles(makeStyles);
   return (
-    <AppBackground>
+    <View style={styles.root}>
       {scroll === false ? (
         <View style={styles.wrapContent}>{children}</View>
       ) : (
@@ -36,12 +36,13 @@ export function Wrap({ children, scroll }: WrapProps) {
           {children}
         </ScrollView>
       )}
-    </AppBackground>
+    </View>
   );
 }
 
-// ── Panel (.panel) ───────────────────────────────────────────────────────────────
+// ── Panel ─────────────────────────────────────────────────────────────────────────
 export function Panel({ title, sub, children, style }: PanelProps) {
+  const styles = useThemedStyles(makeStyles);
   return (
     <View style={[styles.panel, style]}>
       {title ? <Text style={styles.panelTitle}>{title}</Text> : null}
@@ -51,13 +52,15 @@ export function Panel({ title, sub, children, style }: PanelProps) {
   );
 }
 
-// ── SectionLabel (.section-label) ────────────────────────────────────────────────
+// ── SectionLabel ────────────────────────────────────────────────────────────────
 export function SectionLabel({ children }: SectionLabelProps) {
+  const styles = useThemedStyles(makeStyles);
   return <Text style={styles.sectionLabel}>{children}</Text>;
 }
 
-// ── Tag (.tag) ───────────────────────────────────────────────────────────────────
+// ── Tag ─────────────────────────────────────────────────────────────────────────
 export function Tag({ children }: TagProps) {
+  const styles = useThemedStyles(makeStyles);
   return (
     <View style={styles.tag}>
       <Text style={styles.tagText}>{children}</Text>
@@ -65,8 +68,9 @@ export function Tag({ children }: TagProps) {
   );
 }
 
-// ── Pill (.pill) ─────────────────────────────────────────────────────────────────
+// ── Pill ────────────────────────────────────────────────────────────────────────
 export function Pill({ n, label }: PillProps) {
+  const styles = useThemedStyles(makeStyles);
   return (
     <View style={styles.pill}>
       <Text style={styles.pillNumber}>{n}</Text>
@@ -75,29 +79,37 @@ export function Pill({ n, label }: PillProps) {
   );
 }
 
-// ── PrimaryButton (.btn.primary) ─────────────────────────────────────────────────
+// ── PrimaryButton — flat accent (no gradient) ─────────────────────────────────────
 export function PrimaryButton({ label, onPress, disabled }: PrimaryButtonProps) {
+  const styles = useThemedStyles(makeStyles);
   return (
-    <Pressable onPress={onPress} disabled={disabled} style={disabled ? styles.btnDisabled : undefined}>
-      <Gradient preset="goldButton" style={styles.btn}>
-        <Text style={styles.btnLabel}>{label}</Text>
-      </Gradient>
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      style={({ pressed }) => [styles.btn, pressed && styles.btnPressed, disabled && styles.btnDisabled]}
+    >
+      <Text style={styles.btnLabel}>{label}</Text>
     </Pressable>
   );
 }
 
-// ── Toast (.toast) ───────────────────────────────────────────────────────────────
+// ── Toast — subtle positive confirmation ──────────────────────────────────────────
 export function Toast({ message, visible }: ToastProps) {
+  const styles = useThemedStyles(makeStyles);
   return <Text style={[styles.toast, { opacity: visible ? 1 : 0 }]}>{message}</Text>;
 }
 
-// ── EmptyState (.empty) ──────────────────────────────────────────────────────────
+// ── EmptyState ────────────────────────────────────────────────────────────────────
 export function EmptyState({ children }: EmptyStateProps) {
+  const styles = useThemedStyles(makeStyles);
   return <Text style={styles.empty}>{children}</Text>;
 }
 
-// ── BrandHeader (header.app / .brand / .lvl-badge) ───────────────────────────────
+// ── BrandHeader (with the light/dark toggle) ──────────────────────────────────────
 export function BrandHeader({ level, role, name }: BrandHeaderProps) {
+  const styles = useThemedStyles(makeStyles);
+  const { pref, cycle } = useTheme();
+  const toggleIcon = pref === 'system' ? '◐' : pref === 'dark' ? '☾' : '☀';
   return (
     <View style={styles.header}>
       <View style={styles.brand}>
@@ -106,178 +118,203 @@ export function BrandHeader({ level, role, name }: BrandHeaderProps) {
         </Text>
         <Text style={styles.slogan}>습관을 쌓고, 나를 키우다</Text>
       </View>
-      {level !== undefined ? (
-        <View style={styles.lvlBadge}>
-          <LevelRing value={level} />
-          <View>
-            {role ? <Text style={styles.badgeRole}>{role}</Text> : null}
-            {name ? <Text style={styles.badgeName}>{name}</Text> : null}
+      <View style={styles.headerRight}>
+        <Pressable onPress={cycle} hitSlop={8} style={styles.themeToggle}>
+          <Text style={styles.themeToggleText}>{toggleIcon}</Text>
+        </Pressable>
+        {level !== undefined ? (
+          <View style={styles.lvlBadge}>
+            <LevelRing value={level} />
+            <View>
+              {role ? <Text style={styles.badgeRole}>{role}</Text> : null}
+              {name ? <Text style={styles.badgeName}>{name}</Text> : null}
+            </View>
           </View>
-        </View>
-      ) : null}
+        ) : null}
+      </View>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  scroll: { flex: 1 },
-  // .wrap
-  wrapContent: {
-    width: '100%',
-    maxWidth: layout.maxWidth,
-    alignSelf: 'center',
-    paddingHorizontal: space.xl,
-    paddingTop: space.xxl,
-    paddingBottom: 80,
-  },
-  // .panel
-  panel: {
-    backgroundColor: color.panel,
-    borderWidth: 1,
-    borderColor: color.line,
-    borderRadius: radius.card,
-    padding: space.lg,
-  },
-  panelTitle: {
-    fontFamily: font.serifSemiBold,
-    fontSize: fontSize.panelTitle,
-    color: color.ink,
-  },
-  panelSub: {
-    fontFamily: font.sans,
-    color: color.inkFaint,
-    fontSize: fontSize.meta,
-    marginBottom: space.md,
-  },
-  // .section-label
-  sectionLabel: {
-    fontFamily: font.mono,
-    fontSize: fontSize.label,
-    color: color.inkFaint,
-    textTransform: 'uppercase',
-    letterSpacing: letterSpacing.label,
-    marginVertical: space.xs,
-  },
-  // .tag
-  tag: {
-    alignSelf: 'flex-start',
-    borderWidth: 1,
-    borderColor: color.line,
-    borderRadius: radius.sm,
-    paddingVertical: 2,
-    paddingHorizontal: 7,
-  },
-  tagText: {
-    fontFamily: font.mono,
-    fontSize: fontSize.tag,
-    textTransform: 'uppercase',
-    letterSpacing: letterSpacing.tag,
-    color: color.inkDim,
-  },
-  // .pill
-  pill: {
-    backgroundColor: color.panel2,
-    borderWidth: 1,
-    borderColor: color.line,
-    borderRadius: radius.lg,
-    paddingVertical: space.sm,
-    paddingHorizontal: space.lg,
-    alignItems: 'center',
-  },
-  pillNumber: {
-    fontFamily: font.serifBlack,
-    fontSize: fontSize.pillNumber,
-    color: color.gold,
-  },
-  pillLabel: {
-    fontFamily: font.mono,
-    fontSize: fontSize.tag,
-    textTransform: 'uppercase',
-    color: color.inkFaint,
-  },
-  // .btn.primary
-  btn: {
-    borderRadius: radius.lg,
-    paddingVertical: 12,
-    paddingHorizontal: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  btnLabel: {
-    fontFamily: font.sansSemiBold,
-    fontSize: fontSize.bodySm,
-    color: '#1a1304',
-  },
-  btnDisabled: {
-    opacity: 0.4,
-  },
-  // .toast
-  toast: {
-    fontFamily: font.mono,
-    fontSize: fontSize.meta,
-    color: color.green4,
-  },
-  // .empty
-  empty: {
-    fontFamily: font.serifItalic,
-    fontStyle: 'italic',
-    color: color.inkFaint,
-    fontSize: fontSize.small,
-    paddingVertical: space.sm,
-  },
-  // header.app
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    flexWrap: 'wrap',
-    gap: 16,
-    marginBottom: 26,
-  },
-  // .brand
-  brand: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    gap: space.md,
-    flexWrap: 'wrap',
-  },
-  brandTitle: {
-    fontFamily: font.serifBlack,
-    fontSize: fontSize.brand,
-    letterSpacing: letterSpacing.tight,
-    color: color.ink,
-  },
-  brandMark: {
-    color: color.gold,
-  },
-  slogan: {
-    fontFamily: font.serifItalic,
-    fontStyle: 'italic',
-    color: color.inkFaint,
-    fontSize: fontSize.bodySm,
-  },
-  // .lvl-badge
-  lvlBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
-    backgroundColor: color.panel,
-    borderWidth: 1,
-    borderColor: color.line,
-    borderRadius: radius.card,
-    paddingVertical: space.sm,
-    paddingHorizontal: space.lg,
-  },
-  badgeRole: {
-    fontFamily: font.mono,
-    textTransform: 'uppercase',
-    fontSize: fontSize.label,
-    color: color.inkFaint,
-    letterSpacing: letterSpacing.label,
-  },
-  badgeName: {
-    fontFamily: font.sansSemiBold,
-    color: color.ink,
-    fontSize: fontSize.bodySm,
-  },
-});
+const makeStyles = (c: ColorTheme) =>
+  StyleSheet.create({
+    root: { flex: 1, backgroundColor: c.bg },
+    scroll: { flex: 1 },
+    wrapContent: {
+      width: '100%',
+      maxWidth: layout.maxWidth,
+      alignSelf: 'center',
+      paddingHorizontal: space.xl,
+      paddingTop: space.xxl,
+      paddingBottom: 80,
+    },
+    // Panel
+    panel: {
+      backgroundColor: c.surface,
+      borderWidth: 1,
+      borderColor: c.border,
+      borderRadius: radius.r,
+      padding: space.lg,
+      ...c.shadow,
+    },
+    panelTitle: {
+      fontFamily: font.sans,
+      fontWeight: weight.semibold,
+      fontSize: fontSize.title,
+      color: c.text,
+    },
+    panelSub: {
+      fontFamily: font.sans,
+      color: c.faint,
+      fontSize: fontSize.meta,
+      marginBottom: space.md,
+    },
+    // SectionLabel
+    sectionLabel: {
+      fontFamily: font.mono,
+      fontSize: fontSize.label,
+      color: c.faint,
+      textTransform: 'uppercase',
+      letterSpacing: letterSpacing.label,
+      marginVertical: space.xs,
+    },
+    // Tag
+    tag: {
+      alignSelf: 'flex-start',
+      borderWidth: 1,
+      borderColor: c.border,
+      borderRadius: radius.sm,
+      paddingVertical: 2,
+      paddingHorizontal: 7,
+    },
+    tagText: {
+      fontFamily: font.mono,
+      fontSize: fontSize.tag,
+      textTransform: 'uppercase',
+      letterSpacing: letterSpacing.tag,
+      color: c.muted,
+    },
+    // Pill
+    pill: {
+      backgroundColor: c.surface2,
+      borderWidth: 1,
+      borderColor: c.border,
+      borderRadius: radius.r,
+      paddingVertical: space.sm,
+      paddingHorizontal: space.lg,
+      alignItems: 'center',
+    },
+    pillNumber: {
+      fontFamily: font.sans,
+      fontWeight: weight.bold,
+      fontSize: fontSize.title,
+      color: c.text,
+      fontVariant: ['tabular-nums'],
+    },
+    pillLabel: {
+      fontFamily: font.mono,
+      fontSize: fontSize.tag,
+      textTransform: 'uppercase',
+      color: c.faint,
+    },
+    // PrimaryButton
+    btn: {
+      backgroundColor: c.accent,
+      borderRadius: radius.r,
+      paddingVertical: 12,
+      paddingHorizontal: 22,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    btnPressed: { backgroundColor: c.accentInk },
+    btnLabel: {
+      fontFamily: font.sans,
+      fontWeight: weight.semibold,
+      fontSize: fontSize.small,
+      color: '#ffffff',
+    },
+    btnDisabled: { opacity: 0.4 },
+    // Toast
+    toast: {
+      fontFamily: font.mono,
+      fontSize: fontSize.meta,
+      color: c.done,
+    },
+    // EmptyState
+    empty: {
+      fontFamily: font.sans,
+      fontStyle: 'italic',
+      color: c.faint,
+      fontSize: fontSize.small,
+      paddingVertical: space.sm,
+    },
+    // BrandHeader
+    header: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      flexWrap: 'wrap',
+      gap: 16,
+      marginBottom: 26,
+    },
+    brand: {
+      flexDirection: 'row',
+      alignItems: 'baseline',
+      gap: space.md,
+      flexWrap: 'wrap',
+    },
+    brandTitle: {
+      fontFamily: font.sans,
+      fontWeight: weight.bold,
+      fontSize: fontSize.title,
+      letterSpacing: letterSpacing.tight,
+      color: c.text,
+    },
+    brandMark: { color: c.accent },
+    slogan: {
+      fontFamily: font.sans,
+      fontStyle: 'italic',
+      color: c.faint,
+      fontSize: fontSize.small,
+    },
+    headerRight: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: space.md,
+    },
+    themeToggle: {
+      width: 34,
+      height: 34,
+      borderRadius: radius.sm,
+      borderWidth: 1,
+      borderColor: c.border,
+      backgroundColor: c.surface,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    themeToggleText: { fontSize: fontSize.body, color: c.muted },
+    lvlBadge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 14,
+      backgroundColor: c.surface,
+      borderWidth: 1,
+      borderColor: c.border,
+      borderRadius: radius.r,
+      paddingVertical: space.sm,
+      paddingHorizontal: space.lg,
+    },
+    badgeRole: {
+      fontFamily: font.mono,
+      textTransform: 'uppercase',
+      fontSize: fontSize.label,
+      color: c.faint,
+      letterSpacing: letterSpacing.label,
+    },
+    badgeName: {
+      fontFamily: font.sans,
+      fontWeight: weight.semibold,
+      color: c.text,
+      fontSize: fontSize.small,
+    },
+  });

@@ -7,10 +7,12 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useDashboard } from '@/hooks/useDashboard';
 import { BrandHeader, EmptyState, HabitRow, HeatLegend, Panel, StatCard, Wrap } from '@/components';
-import { color, font, fontSize, space } from '@/theme/tokens';
+import { font, fontSize, radius, space, type ColorTheme } from '@/theme/tokens';
+import { useThemedStyles } from '@/theme/useThemedStyles';
 
 export default function Dashboard() {
   const { loading, stats, habits, shaky } = useDashboard();
+  const styles = useThemedStyles(makeStyles);
   const router = useRouter();
   const topLevel = stats.reduce((m, s) => Math.max(m, s.level), 0);
   const shakyTotal = shaky.caution + shaky.intervention;
@@ -58,34 +60,40 @@ export default function Dashboard() {
   );
 }
 
-const styles = StyleSheet.create({
-  statsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: space.lg,
-    marginBottom: space.lg,
-  },
-  statCell: {
-    flexGrow: 1,
-    flexBasis: '30%',
-    minWidth: 150,
-  },
-  questHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: space.sm,
-  },
-  shaky: {
-    fontFamily: font.mono,
-    fontSize: fontSize.micro,
-    color: color.amber,
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-  },
-  newQuest: {
-    fontFamily: font.mono,
-    fontSize: fontSize.bodySm,
-    color: color.gold,
-  },
-});
+const makeStyles = (c: ColorTheme) =>
+  StyleSheet.create({
+    statsGrid: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: space.lg,
+      marginBottom: space.lg,
+    },
+    statCell: {
+      flexGrow: 1,
+      flexBasis: '30%',
+      minWidth: 150,
+    },
+    questHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginBottom: space.sm,
+    },
+    shaky: {
+      fontFamily: font.mono,
+      fontSize: fontSize.micro,
+      color: c.warn,
+      backgroundColor: c.partialWeak,
+      borderRadius: radius.sm,
+      paddingVertical: 2,
+      paddingHorizontal: 7,
+      textTransform: 'uppercase',
+      letterSpacing: 1,
+      fontVariant: ['tabular-nums'],
+    },
+    newQuest: {
+      fontFamily: font.mono,
+      fontSize: fontSize.small,
+      color: c.accent,
+    },
+  });

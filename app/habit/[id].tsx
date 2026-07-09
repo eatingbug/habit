@@ -21,7 +21,8 @@ import {
   TextField,
   Wrap,
 } from '@/components';
-import { color, font, fontSize, space } from '@/theme/tokens';
+import { font, fontSize, space, weight, type ColorTheme } from '@/theme/tokens';
+import { useThemedStyles } from '@/theme/useThemedStyles';
 import { formatShortDate } from '@/util/date';
 import type { SkipReason } from '@/models';
 import type { JournalItem } from '@/components/types';
@@ -30,6 +31,7 @@ export default function HabitDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const d = useHabitDetail(id);
+  const styles = useThemedStyles(makeStyles);
 
   const [editing, setEditing] = useState(false);
   const [cue, setCue] = useState('');
@@ -222,28 +224,30 @@ export default function HabitDetail() {
 }
 
 function FieldLabel({ children }: { children: React.ReactNode }) {
+  const styles = useThemedStyles(makeStyles);
   return <Text style={styles.fieldLabel}>{children}</Text>;
 }
 
-const styles = StyleSheet.create({
-  back: { fontFamily: font.mono, fontSize: fontSize.meta, color: color.inkDim, marginBottom: space.md },
-  head: { flexDirection: 'row', justifyContent: 'space-between', flexWrap: 'wrap', gap: space.lg, marginBottom: space.lg },
-  headLeft: { flexShrink: 1 },
-  titleRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm, flexWrap: 'wrap' },
-  title: { fontFamily: font.serifBlack, fontSize: fontSize.detail, color: color.ink },
-  sub: { fontFamily: font.sans, fontSize: fontSize.meta, color: color.inkFaint, marginTop: 6 },
-  pillset: { flexDirection: 'row', gap: space.lg },
-  designHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  journalHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: space.lg },
-  edit: { fontFamily: font.mono, fontSize: fontSize.meta, color: color.gold },
-  editBox: { gap: space.sm, marginBottom: space.lg },
-  editRow: { flexDirection: 'row', gap: space.md },
-  editCol: { flex: 1 },
-  fieldLabel: { fontFamily: font.mono, fontSize: fontSize.tag, color: color.inkFaint, textTransform: 'uppercase', marginTop: space.xs },
-  backfill: { gap: space.sm, marginTop: space.md, padding: space.md, backgroundColor: color.panel2, borderRadius: 12, borderWidth: 1, borderColor: color.line },
-  backfillTitle: { fontFamily: font.sansSemiBold, fontSize: fontSize.bodySm, color: color.ink },
-  backfillActions: { flexDirection: 'row', alignItems: 'center', gap: space.md },
-  toggle: { fontFamily: font.mono, fontSize: fontSize.micro, color: color.inkDim },
-  binaryHint: { fontFamily: font.serifItalic, fontStyle: 'italic', fontSize: fontSize.small, color: color.green4 },
-  journalList: { marginTop: space.lg, gap: 0 },
-});
+const makeStyles = (c: ColorTheme) =>
+  StyleSheet.create({
+    back: { fontFamily: font.mono, fontSize: fontSize.meta, color: c.muted, marginBottom: space.md },
+    head: { flexDirection: 'row', justifyContent: 'space-between', flexWrap: 'wrap', gap: space.lg, marginBottom: space.lg },
+    headLeft: { flexShrink: 1 },
+    titleRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm, flexWrap: 'wrap' },
+    title: { fontFamily: font.sans, fontWeight: weight.bold, fontSize: fontSize.title, color: c.text },
+    sub: { fontFamily: font.sans, fontSize: fontSize.meta, color: c.faint, marginTop: 6 },
+    pillset: { flexDirection: 'row', gap: space.lg },
+    designHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+    journalHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: space.lg },
+    edit: { fontFamily: font.mono, fontSize: fontSize.meta, color: c.accent },
+    editBox: { gap: space.sm, marginBottom: space.lg },
+    editRow: { flexDirection: 'row', gap: space.md },
+    editCol: { flex: 1 },
+    fieldLabel: { fontFamily: font.mono, fontSize: fontSize.tag, color: c.faint, textTransform: 'uppercase', marginTop: space.xs },
+    backfill: { gap: space.sm, marginTop: space.md, padding: space.md, backgroundColor: c.surface2, borderRadius: 12, borderWidth: 1, borderColor: c.border },
+    backfillTitle: { fontFamily: font.sans, fontWeight: weight.semibold, fontSize: fontSize.small, color: c.text },
+    backfillActions: { flexDirection: 'row', alignItems: 'center', gap: space.md },
+    toggle: { fontFamily: font.mono, fontSize: fontSize.micro, color: c.muted },
+    binaryHint: { fontFamily: font.sans, fontStyle: 'italic', fontSize: fontSize.small, color: c.done },
+    journalList: { marginTop: space.lg, gap: 0 },
+  });

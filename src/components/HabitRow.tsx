@@ -11,10 +11,12 @@ import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Tag } from '@/components/primitives';
 import { Heatmap, Streak, StatusLight } from '@/components/habitviz';
-import { color, font, fontSize, space } from '@/theme/tokens';
+import { font, fontSize, space, weight, type ColorTheme } from '@/theme/tokens';
+import { useThemedStyles } from '@/theme/useThemedStyles';
 import type { HabitRowProps } from '@/components/types';
 
 export function HabitRow({ data, onPress, onLightPress }: HabitRowProps) {
+  const styles = useThemedStyles(makeStyles);
   return (
     <View style={styles.row}>
       <StatusLight light={data.light} onPress={onLightPress} />
@@ -33,14 +35,15 @@ export function HabitRow({ data, onPress, onLightPress }: HabitRowProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: ColorTheme) =>
+  StyleSheet.create({
   // .habit-row (with the light pulled out as a leading sibling)
   row: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: space.md,
     borderTopWidth: 1,
-    borderTopColor: color.line,
+    borderTopColor: c.border,
   },
   body: {
     flex: 1,
@@ -61,16 +64,17 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
   },
   title: {
-    fontFamily: font.sansSemiBold,
-    fontSize: fontSize.body,
-    color: color.ink,
+    fontFamily: font.sans,
+    fontWeight: weight.semibold,
+    fontSize: fontSize.small,
+    color: c.text,
   },
   // .habit-row .info .cue
   cue: {
     fontFamily: font.sans,
     fontSize: fontSize.micro,
-    color: color.inkFaint,
+    color: c.faint,
     marginTop: space.xs,
     lineHeight: 16,
   },
-});
+  });

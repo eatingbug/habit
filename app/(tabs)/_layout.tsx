@@ -6,26 +6,28 @@
  */
 import { Tabs } from 'expo-router';
 import { Text, type ColorValue } from 'react-native';
-import { color, font } from '@/theme/tokens';
+import { font, weight } from '@/theme/tokens';
+import { useTheme } from '@/theme/ThemeProvider';
 
 function tabIcon(emoji: string) {
   return ({ color: c }: { color: ColorValue }) => <Text style={{ fontSize: 18, color: c }}>{emoji}</Text>;
 }
 
 export default function TabsLayout() {
+  const { colors: c } = useTheme();
   return (
     <Tabs
       screenOptions={{
         headerShown: false,
-        sceneStyle: { backgroundColor: color.bg },
-        tabBarActiveTintColor: color.gold,
-        tabBarInactiveTintColor: color.inkDim,
+        sceneStyle: { backgroundColor: c.bg },
+        tabBarActiveTintColor: c.accent,
+        tabBarInactiveTintColor: c.muted,
         tabBarStyle: {
-          backgroundColor: color.panel,
-          borderTopColor: color.line,
+          backgroundColor: c.surface,
+          borderTopColor: c.border,
           borderTopWidth: 1,
         },
-        tabBarLabelStyle: { fontFamily: font.sansSemiBold, fontSize: 12 },
+        tabBarLabelStyle: { fontFamily: font.sans, fontWeight: weight.semibold, fontSize: 12 },
       }}
     >
       <Tabs.Screen name="index" options={{ title: '대시보드', tabBarIcon: tabIcon('🛡') }} />

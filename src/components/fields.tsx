@@ -9,7 +9,9 @@ import { Picker } from '@react-native-picker/picker';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { TUNING } from '@/config/tuning';
 import type { LogType, SkipReason } from '@/models';
-import { color, font, fontSize, radius } from '@/theme/tokens';
+import { font, fontSize, radius, weight, type ColorTheme } from '@/theme/tokens';
+import { useThemedStyles } from '@/theme/useThemedStyles';
+import { useTheme } from '@/theme/ThemeProvider';
 import { HOUR_OPTIONS, MINUTE_OPTIONS } from '@/util/date';
 import type {
   NumberFieldProps,
@@ -30,13 +32,15 @@ export function TextField({
   multiline,
   grow,
 }: TextFieldProps) {
+  const styles = useThemedStyles(makeStyles);
+  const { colors: c } = useTheme();
   const [focused, setFocused] = useState(false);
   return (
     <TextInput
       value={value}
       onChangeText={onChangeText}
       placeholder={placeholder}
-      placeholderTextColor={color.inkFaint}
+      placeholderTextColor={c.faint}
       onSubmitEditing={onSubmitEditing}
       autoFocus={autoFocus}
       multiline={multiline}
@@ -60,13 +64,15 @@ export function NumberField({
   onSubmitEditing,
   autoFocus,
 }: NumberFieldProps) {
+  const styles = useThemedStyles(makeStyles);
+  const { colors: c } = useTheme();
   const [focused, setFocused] = useState(false);
   return (
     <TextInput
       value={value}
       onChangeText={onChangeText}
       placeholder={placeholder}
-      placeholderTextColor={color.inkFaint}
+      placeholderTextColor={c.faint}
       onSubmitEditing={onSubmitEditing}
       autoFocus={autoFocus}
       keyboardType="numeric"
@@ -79,11 +85,13 @@ export function NumberField({
 
 // ── StatPicker (.csel) ────────────────────────────────────────────────────────────
 export function StatPicker({ value, onValueChange }: StatPickerProps) {
+  const styles = useThemedStyles(makeStyles);
+  const { colors: c } = useTheme();
   return (
     <View style={styles.sel}>
-      <Picker selectedValue={value} onValueChange={onValueChange} style={styles.picker} dropdownIconColor={color.ink}>
+      <Picker selectedValue={value} onValueChange={onValueChange} style={styles.picker} dropdownIconColor={c.text}>
         {TUNING.stats.map((s) => (
-          <Picker.Item key={s.id} label={`${s.icon} ${s.name}`} value={s.id} color={color.ink} />
+          <Picker.Item key={s.id} label={`${s.icon} ${s.name}`} value={s.id} color={c.text} />
         ))}
       </Picker>
     </View>
@@ -92,20 +100,22 @@ export function StatPicker({ value, onValueChange }: StatPickerProps) {
 
 // ── TimePicker (.timepick) ────────────────────────────────────────────────────────
 export function TimePicker({ hour, minute, onHourChange, onMinuteChange }: TimePickerProps) {
+  const styles = useThemedStyles(makeStyles);
+  const { colors: c } = useTheme();
   return (
     <View style={styles.timepick}>
       <View style={styles.timeSel}>
-        <Picker selectedValue={hour} onValueChange={onHourChange} style={styles.picker} dropdownIconColor={color.ink}>
+        <Picker selectedValue={hour} onValueChange={onHourChange} style={styles.picker} dropdownIconColor={c.text}>
           {HOUR_OPTIONS.map((h) => (
-            <Picker.Item key={h} label={h} value={h} color={color.ink} />
+            <Picker.Item key={h} label={h} value={h} color={c.text} />
           ))}
         </Picker>
       </View>
       <Text style={styles.colon}>:</Text>
       <View style={styles.timeSel}>
-        <Picker selectedValue={minute} onValueChange={onMinuteChange} style={styles.picker} dropdownIconColor={color.ink}>
+        <Picker selectedValue={minute} onValueChange={onMinuteChange} style={styles.picker} dropdownIconColor={c.text}>
           {MINUTE_OPTIONS.map((m) => (
-            <Picker.Item key={m} label={m} value={m} color={color.ink} />
+            <Picker.Item key={m} label={m} value={m} color={c.text} />
           ))}
         </Picker>
       </View>
@@ -114,28 +124,31 @@ export function TimePicker({ hour, minute, onHourChange, onMinuteChange }: TimeP
 }
 
 // ── TypeChips (.ctypes / .ctype) ──────────────────────────────────────────────────
-const CHIPS: { type: LogType; label: string; on: string; tint: string }[] = [
-  { type: 'note', label: '📝 메모', on: color.ink, tint: 'rgba(232,228,216,.06)' },
-  { type: 'win', label: '🏆 성취', on: color.gold, tint: 'rgba(216,177,90,.1)' },
-  { type: 'mood', label: '🌤 기분', on: color.blue, tint: 'rgba(107,155,216,.1)' },
-  { type: 'idea', label: '💡 아이디어', on: color.green4, tint: 'rgba(116,214,138,.1)' },
+// Emoji carries type identity — a single accent styles the selected chip (no per-type hues).
+const CHIPS: { type: LogType; label: string }[] = [
+  { type: 'note', label: '📝 메모' },
+  { type: 'win', label: '🏆 성취' },
+  { type: 'mood', label: '🌤 기분' },
+  { type: 'idea', label: '💡 아이디어' },
 ];
 
 export function TypeChips({ value, onChange }: TypeChipsProps) {
+  const styles = useThemedStyles(makeStyles);
+  const { colors: c } = useTheme();
   return (
     <View style={styles.ctypes}>
-      {CHIPS.map((c) => {
-        const selected = value === c.type;
+      {CHIPS.map((chip) => {
+        const selected = value === chip.type;
         return (
           <Pressable
-            key={c.type}
-            onPress={() => onChange(c.type)}
+            key={chip.type}
+            onPress={() => onChange(chip.type)}
             style={[
               styles.ctype,
-              selected && { borderColor: c.on, backgroundColor: c.tint },
+              selected && { borderColor: c.accent, backgroundColor: c.accentWeak },
             ]}
           >
-            <Text style={[styles.ctypeText, { color: selected ? c.on : color.inkDim }]}>{c.label}</Text>
+            <Text style={[styles.ctypeText, { color: selected ? c.accentInk : c.muted }]}>{chip.label}</Text>
           </Pressable>
         );
       })}
@@ -152,89 +165,94 @@ const SKIP_REASONS: { value: SkipReason; label: string }[] = [
 ];
 
 export function SkipReasonPicker({ value, onValueChange }: SkipReasonPickerProps) {
+  const styles = useThemedStyles(makeStyles);
+  const { colors: c } = useTheme();
   return (
     <View style={styles.sel}>
-      <Picker selectedValue={value} onValueChange={onValueChange} style={styles.picker} dropdownIconColor={color.ink}>
+      <Picker selectedValue={value} onValueChange={onValueChange} style={styles.picker} dropdownIconColor={c.text}>
         {SKIP_REASONS.map((r) => (
-          <Picker.Item key={r.value} label={r.label} value={r.value} color={color.ink} />
+          <Picker.Item key={r.value} label={r.label} value={r.value} color={c.text} />
         ))}
       </Picker>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  input: {
-    backgroundColor: color.bg,
-    borderWidth: 1,
-    borderColor: color.line,
-    borderRadius: radius.lg,
-    color: color.ink,
-    fontFamily: font.sans,
-    fontSize: fontSize.bodySm,
-    paddingVertical: 11,
-    paddingHorizontal: 14,
-  },
-  grow: { flex: 1 },
-  multiline: { minHeight: 72, textAlignVertical: 'top' },
-  focused: { borderColor: color.goldDeep },
-  count: {
-    width: 90,
-    backgroundColor: color.bg,
-    borderWidth: 1,
-    borderColor: color.line,
-    borderRadius: radius.lg,
-    color: color.ink,
-    fontFamily: font.mono,
-    fontSize: fontSize.bodySm,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-  },
-  sel: {
-    backgroundColor: color.bg,
-    borderWidth: 1,
-    borderColor: color.line,
-    borderRadius: radius.lg,
-    overflow: 'hidden',
-  },
-  picker: {
-    color: color.ink,
-    fontFamily: font.mono,
-    fontSize: fontSize.small,
-    backgroundColor: 'transparent',
-    borderWidth: 0,
-  },
-  timepick: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  timeSel: {
-    backgroundColor: color.bg,
-    borderWidth: 1,
-    borderColor: color.line,
-    borderRadius: radius.lg,
-    overflow: 'hidden',
-  },
-  colon: {
-    fontFamily: font.monoBold,
-    color: color.inkDim,
-  },
-  ctypes: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 7,
-  },
-  ctype: {
-    borderWidth: 1,
-    borderColor: color.line,
-    backgroundColor: color.panel,
-    borderRadius: 20,
-    paddingVertical: 5,
-    paddingHorizontal: 13,
-  },
-  ctypeText: {
-    fontFamily: font.mono,
-    fontSize: fontSize.micro,
-  },
-});
+const makeStyles = (c: ColorTheme) =>
+  StyleSheet.create({
+    input: {
+      backgroundColor: c.bg,
+      borderWidth: 1,
+      borderColor: c.border,
+      borderRadius: radius.r,
+      color: c.text,
+      fontFamily: font.sans,
+      fontSize: fontSize.small,
+      paddingVertical: 11,
+      paddingHorizontal: 14,
+    },
+    grow: { flex: 1 },
+    multiline: { minHeight: 72, textAlignVertical: 'top' },
+    focused: { borderColor: c.accent },
+    count: {
+      width: 90,
+      backgroundColor: c.bg,
+      borderWidth: 1,
+      borderColor: c.border,
+      borderRadius: radius.r,
+      color: c.text,
+      fontFamily: font.mono,
+      fontSize: fontSize.small,
+      fontVariant: ['tabular-nums'],
+      paddingVertical: 10,
+      paddingHorizontal: 12,
+    },
+    sel: {
+      backgroundColor: c.bg,
+      borderWidth: 1,
+      borderColor: c.border,
+      borderRadius: radius.r,
+      overflow: 'hidden',
+    },
+    picker: {
+      color: c.text,
+      fontFamily: font.mono,
+      fontSize: fontSize.small,
+      backgroundColor: 'transparent',
+      borderWidth: 0,
+    },
+    timepick: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+    },
+    timeSel: {
+      backgroundColor: c.bg,
+      borderWidth: 1,
+      borderColor: c.border,
+      borderRadius: radius.r,
+      overflow: 'hidden',
+    },
+    colon: {
+      fontFamily: font.mono,
+      fontWeight: weight.bold,
+      color: c.muted,
+    },
+    ctypes: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 7,
+    },
+    ctype: {
+      borderWidth: 1,
+      borderColor: c.border,
+      backgroundColor: c.surface2,
+      borderRadius: 20,
+      paddingVertical: 5,
+      paddingHorizontal: 13,
+    },
+    ctypeText: {
+      fontFamily: font.mono,
+      fontSize: fontSize.micro,
+    },
+  });

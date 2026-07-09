@@ -6,14 +6,14 @@
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "habiquest",
-    "userInterfaceStyle": "dark",
-    "backgroundColor": "#0c0f16",
+    "userInterfaceStyle": "automatic",
+    "backgroundColor": "#FBFBFC",
     "ios": {
       "supportsTablet": true
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#0c0f16",
+        "backgroundColor": "#FBFBFC",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
@@ -24,7 +24,7 @@
       "bundler": "metro",
       "output": "static",
       "favicon": "./assets/images/favicon.png",
-      "backgroundColor": "#0c0f16"
+      "backgroundColor": "#FBFBFC"
     },
     "plugins": [
       "expo-router",
@@ -34,7 +34,11 @@
         {
           "image": "./assets/images/splash-icon.png",
           "resizeMode": "contain",
-          "backgroundColor": "#0c0f16"
+          "backgroundColor": "#FBFBFC",
+          "dark": {
+            "image": "./assets/images/splash-icon.png",
+            "backgroundColor": "#0D0E12"
+          }
         }
       ]
     ],

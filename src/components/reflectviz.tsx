@@ -14,11 +14,26 @@ import type {
   MirrorWeekProps,
 } from '@/components/types';
 import type { Severity } from '@/models';
-import { color, font, fontSize, letterSpacing, radius, space } from '@/theme/tokens';
+import { font, fontSize, letterSpacing, radius, space, weight, type ColorTheme } from '@/theme/tokens';
+import { useThemedStyles } from '@/theme/useThemedStyles';
+import { useTheme } from '@/theme/ThemeProvider';
 
 // ── MirrorWeek (.mirror / .day / .dot) ─────────────────────────────────────────
 
 export function MirrorWeek({ days }: MirrorWeekProps) {
+  const styles = useThemedStyles(makeStyles);
+  const dotStyles = {
+    over: styles.dotOver,
+    ok: styles.dotOk,
+    miss: styles.dotMiss,
+    blank: styles.dotBlank,
+  };
+  const dotTextStyles = {
+    over: styles.dotTextFilled,
+    ok: styles.dotTextFilled,
+    miss: styles.dotTextFilled,
+    blank: styles.dotTextBlank,
+  };
   return (
     <View style={styles.mirror}>
       {days.map((day, i) => (
@@ -35,18 +50,6 @@ export function MirrorWeek({ days }: MirrorWeekProps) {
 
 // ── DiagnosisFlag (.flag) ──────────────────────────────────────────────────────
 
-const severityAccent: Record<Severity, string> = {
-  warning: color.amber,
-  critical: color.red,
-  ok: color.green3,
-};
-
-const severityBadge: Record<Severity, { backgroundColor: string; color: string }> = {
-  warning: { backgroundColor: 'rgba(224,169,63,.14)', color: color.amber },
-  critical: { backgroundColor: 'rgba(214,101,90,.15)', color: color.red },
-  ok: { backgroundColor: 'rgba(70,160,100,.15)', color: color.green4 },
-};
-
 const SEVERITY_LABEL: Record<Severity, string> = {
   warning: '경고',
   critical: '심각',
@@ -61,6 +64,18 @@ const COMPONENT_LABEL: Record<string, string> = {
 };
 
 export function DiagnosisFlag({ flag }: DiagnosisFlagProps) {
+  const { colors: c } = useTheme();
+  const styles = useThemedStyles(makeStyles);
+  const severityAccent: Record<Severity, string> = {
+    warning: c.warn,
+    critical: c.crit,
+    ok: c.good,
+  };
+  const severityBadge: Record<Severity, { backgroundColor: string; color: string }> = {
+    warning: { backgroundColor: c.partialWeak, color: c.warn },
+    critical: { backgroundColor: c.skipWeak, color: c.crit },
+    ok: { backgroundColor: c.doneWeak, color: c.good },
+  };
   return (
     <View style={[styles.flag, { borderLeftColor: severityAccent[flag.severity] }]}>
       <View style={[styles.badge, { backgroundColor: severityBadge[flag.severity].backgroundColor }]}>
@@ -80,6 +95,7 @@ export function DiagnosisFlag({ flag }: DiagnosisFlagProps) {
 // ── ActionCard (.act) ──────────────────────────────────────────────────────────
 
 export function ActionCard({ icon, title, desc, selected, onPress }: ActionCardProps) {
+  const styles = useThemedStyles(makeStyles);
   return (
     <Pressable onPress={onPress} style={[styles.act, selected && styles.actSelected]}>
       <Text style={styles.actIcon}>{icon}</Text>
@@ -94,6 +110,7 @@ export function ActionCard({ icon, title, desc, selected, onPress }: ActionCardP
 // ── ActionGrid (.act-grid) ─────────────────────────────────────────────────────
 
 export function ActionGrid({ actions, selected, onSelect }: ActionGridProps) {
+  const styles = useThemedStyles(makeStyles);
   return (
     <View style={styles.actGrid}>
       {actions.map((action) => (
@@ -111,147 +128,141 @@ export function ActionGrid({ actions, selected, onSelect }: ActionGridProps) {
   );
 }
 
-const styles = StyleSheet.create({
-  // mirror
-  mirror: {
-    flexDirection: 'row',
-    gap: space.sm,
-    marginVertical: space.lg,
-  },
-  day: {
-    flex: 1,
-    backgroundColor: color.panel,
-    borderWidth: 1,
-    borderColor: color.line,
-    borderRadius: radius.lg,
-    paddingVertical: space.md,
-    paddingHorizontal: space.sm,
-    alignItems: 'center',
-  },
-  weekday: {
-    fontFamily: font.mono,
-    fontSize: 10,
-    letterSpacing: letterSpacing.tag,
-    textTransform: 'uppercase',
-    color: color.inkFaint,
-  },
-  dot: {
-    width: 26,
-    height: 26,
-    borderRadius: radius.md,
-    marginTop: space.sm,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  dotText: {
-    fontFamily: font.monoBold,
-    fontSize: 11,
-  },
+const makeStyles = (c: ColorTheme) =>
+  StyleSheet.create({
+    // mirror
+    mirror: {
+      flexDirection: 'row',
+      gap: space.sm,
+      marginVertical: space.lg,
+    },
+    day: {
+      flex: 1,
+      backgroundColor: c.surface,
+      borderWidth: 1,
+      borderColor: c.border,
+      borderRadius: radius.r,
+      paddingVertical: space.md,
+      paddingHorizontal: space.sm,
+      alignItems: 'center',
+    },
+    weekday: {
+      fontFamily: font.mono,
+      fontSize: 10,
+      letterSpacing: letterSpacing.tag,
+      textTransform: 'uppercase',
+      color: c.faint,
+    },
+    dot: {
+      width: 26,
+      height: 26,
+      borderRadius: radius.sm,
+      marginTop: space.sm,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    dotText: {
+      fontFamily: font.mono,
+      fontWeight: weight.bold,
+      fontSize: 11,
+      fontVariant: ['tabular-nums'],
+    },
+    dotOver: { backgroundColor: c.over },
+    dotOk: { backgroundColor: c.done },
+    dotMiss: { backgroundColor: c.skip },
+    dotBlank: { backgroundColor: c.blank, borderWidth: 1, borderColor: c.border },
+    dotTextFilled: { color: '#fff' },
+    dotTextBlank: { color: c.faint },
 
-  // flag
-  flag: {
-    flexDirection: 'row',
-    gap: space.md,
-    alignItems: 'flex-start',
-    backgroundColor: color.panel,
-    borderWidth: 1,
-    borderColor: color.line,
-    borderLeftWidth: 3,
-    borderRadius: radius.lg,
-    paddingVertical: 15,
-    paddingHorizontal: 17,
-    marginBottom: 11,
-  },
-  badge: {
-    borderRadius: radius.sm,
-    paddingVertical: 3,
-    paddingHorizontal: space.sm,
-  },
-  badgeText: {
-    fontFamily: font.monoBold,
-    fontSize: fontSize.tag,
-    letterSpacing: letterSpacing.tag,
-    textTransform: 'uppercase',
-  },
-  flagBody: {
-    flex: 1,
-  },
-  comp: {
-    fontFamily: font.mono,
-    fontSize: fontSize.micro,
-    letterSpacing: letterSpacing.tag,
-    textTransform: 'uppercase',
-    color: color.inkFaint,
-  },
-  msg: {
-    fontFamily: font.sans,
-    fontSize: fontSize.bodySm,
-    color: color.ink,
-    marginVertical: space.xs,
-    lineHeight: 20,
-  },
-  ev: {
-    fontFamily: font.mono,
-    fontSize: fontSize.meta,
-    color: color.inkFaint,
-  },
+    // flag
+    flag: {
+      flexDirection: 'row',
+      gap: space.md,
+      alignItems: 'flex-start',
+      backgroundColor: c.surface,
+      borderWidth: 1,
+      borderColor: c.border,
+      borderLeftWidth: 3,
+      borderRadius: radius.r,
+      paddingVertical: 15,
+      paddingHorizontal: 17,
+      marginBottom: 11,
+    },
+    badge: {
+      borderRadius: radius.sm,
+      paddingVertical: 3,
+      paddingHorizontal: space.sm,
+    },
+    badgeText: {
+      fontFamily: font.mono,
+      fontWeight: weight.bold,
+      fontSize: fontSize.tag,
+      letterSpacing: letterSpacing.tag,
+      textTransform: 'uppercase',
+    },
+    flagBody: {
+      flex: 1,
+    },
+    comp: {
+      fontFamily: font.mono,
+      fontSize: fontSize.micro,
+      letterSpacing: letterSpacing.tag,
+      textTransform: 'uppercase',
+      color: c.faint,
+    },
+    msg: {
+      fontFamily: font.sans,
+      fontSize: fontSize.small,
+      color: c.text,
+      marginVertical: space.xs,
+      lineHeight: 20,
+    },
+    ev: {
+      fontFamily: font.mono,
+      fontSize: fontSize.meta,
+      color: c.faint,
+      fontVariant: ['tabular-nums'],
+    },
 
-  // act
-  act: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: space.md,
-    backgroundColor: color.panel,
-    borderWidth: 1,
-    borderColor: color.line,
-    borderRadius: radius.xl,
-    paddingVertical: 13,
-    paddingHorizontal: 15,
-  },
-  actSelected: {
-    borderColor: color.gold,
-    backgroundColor: 'rgba(216,177,90,.07)',
-  },
-  actIcon: {
-    fontSize: 18,
-  },
-  actBody: {
-    flex: 1,
-  },
-  actTitle: {
-    fontFamily: font.sansSemiBold,
-    fontSize: fontSize.bodySm,
-    color: color.ink,
-  },
-  actDesc: {
-    fontFamily: font.mono,
-    fontSize: fontSize.micro,
-    color: color.inkFaint,
-  },
-  actGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-  },
-  actGridCell: {
-    width: '48%',
-  },
-});
-
-const dotStyles = StyleSheet.create({
-  ok: { backgroundColor: color.green2 },
-  over: { backgroundColor: color.gold },
-  miss: {
-    backgroundColor: color.mirrorMiss,
-    borderWidth: 1,
-    borderColor: 'rgba(214,101,90,.4)',
-  },
-  blank: { backgroundColor: color.panel2 },
-});
-
-const dotTextStyles = StyleSheet.create({
-  ok: { color: '#04210f' },
-  over: { color: '#1a1304' },
-  miss: { color: color.red },
-  blank: { color: color.inkFaint },
-});
+    // act
+    act: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: space.md,
+      backgroundColor: c.surface,
+      borderWidth: 1,
+      borderColor: c.border,
+      borderRadius: radius.r,
+      paddingVertical: 13,
+      paddingHorizontal: 15,
+    },
+    actSelected: {
+      borderColor: c.accent,
+      backgroundColor: c.accentWeak,
+    },
+    actIcon: {
+      fontSize: 18,
+    },
+    actBody: {
+      flex: 1,
+    },
+    actTitle: {
+      fontFamily: font.sans,
+      fontWeight: weight.semibold,
+      fontSize: fontSize.small,
+      color: c.text,
+    },
+    actDesc: {
+      fontFamily: font.mono,
+      fontSize: fontSize.micro,
+      color: c.faint,
+    },
+    actGrid: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 10,
+    },
+    actGridCell: {
+      width: '48%',
+    },
+  });

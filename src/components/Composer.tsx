@@ -9,14 +9,17 @@ import { useState } from 'react';
 import { Picker } from '@react-native-picker/picker';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import type { LogType, SkipReason } from '@/models';
-import { Gradient } from '@/theme/Gradient';
-import { color, font, fontSize, letterSpacing, radius, space } from '@/theme/tokens';
+import { font, fontSize, letterSpacing, radius, space, weight, type ColorTheme } from '@/theme/tokens';
+import { useThemedStyles } from '@/theme/useThemedStyles';
+import { useTheme } from '@/theme/ThemeProvider';
 import { nowHourMinute } from '@/util/date';
 import { NumberField, SkipReasonPicker, TextField, TimePicker, TypeChips } from '@/components/fields';
 import { PrimaryButton } from '@/components/primitives';
 import type { ComposerProps, ComposerSubmit } from '@/components/types';
 
 export function Composer({ habits, onSubmit, initial, editing, onCancel }: ComposerProps) {
+  const styles = useThemedStyles(makeStyles);
+  const { colors: c } = useTheme();
   const clock = nowHourMinute();
   const [target, setTarget] = useState<string>(initial?.target ?? 'free');
   const [hour, setHour] = useState(initial?.hour ?? clock.hour);
@@ -64,7 +67,7 @@ export function Composer({ habits, onSubmit, initial, editing, onCancel }: Compo
   const buttonLabel = editing ? '수정' : '기록';
 
   return (
-    <Gradient preset="composer" style={styles.composer}>
+    <View style={styles.composer}>
       <Text style={styles.clabel}>오늘을 기록하세요 — 습관이든 무엇이든</Text>
 
       <View style={styles.ctop}>
@@ -75,11 +78,11 @@ export function Composer({ habits, onSubmit, initial, editing, onCancel }: Compo
             onValueChange={setTarget}
             enabled={!editing}
             style={styles.picker}
-            dropdownIconColor={color.ink}
+            dropdownIconColor={c.text}
           >
-            <Picker.Item label="자유 로그 (그냥 오늘 기록)" value="free" color={color.ink} />
+            <Picker.Item label="자유 로그 (그냥 오늘 기록)" value="free" color={c.text} />
             {habits.map((h) => (
-              <Picker.Item key={h.id} label={`🎯 ${h.name}`} value={h.id} color={color.ink} />
+              <Picker.Item key={h.id} label={`🎯 ${h.name}`} value={h.id} color={c.text} />
             ))}
           </Picker>
         </View>
@@ -145,16 +148,18 @@ export function Composer({ habits, onSubmit, initial, editing, onCancel }: Compo
           자유 로그는 그냥 하루 기록이에요 — XP 없음. 습관 기록은 XP를 얻고 히트맵을 갱신합니다.
         </Text>
       )}
-    </Gradient>
+    </View>
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: ColorTheme) =>
+  StyleSheet.create({
   // .composer
   composer: {
+    backgroundColor: c.surface2,
     borderWidth: 1,
-    borderColor: color.line,
-    borderRadius: radius.card,
+    borderColor: c.borderStrong,
+    borderRadius: radius.r,
     paddingVertical: 16,
     paddingHorizontal: space.lg,
   },
@@ -164,7 +169,7 @@ const styles = StyleSheet.create({
     fontSize: fontSize.label,
     textTransform: 'uppercase',
     letterSpacing: letterSpacing.label,
-    color: color.inkFaint,
+    color: c.faint,
     marginBottom: 10,
   },
   // .crow.ctop
@@ -177,16 +182,16 @@ const styles = StyleSheet.create({
   // .csel.grow
   targetSel: {
     flex: 1,
-    backgroundColor: color.bg,
+    backgroundColor: c.bg,
     borderWidth: 1,
-    borderColor: color.line,
-    borderRadius: radius.lg,
+    borderColor: c.border,
+    borderRadius: radius.r,
     overflow: 'hidden',
   },
   picker: {
-    color: color.ink,
+    color: c.text,
     fontFamily: font.sans,
-    fontSize: fontSize.bodySm,
+    fontSize: fontSize.small,
     backgroundColor: 'transparent',
     borderWidth: 0,
   },
@@ -212,27 +217,29 @@ const styles = StyleSheet.create({
   cunit: {
     fontFamily: font.mono,
     fontSize: fontSize.meta,
-    color: color.inkDim,
+    color: c.muted,
   },
   // binary "mark done" label (replaces the count field for yes/no habits)
   binaryDone: {
-    fontFamily: font.sansSemiBold,
-    fontSize: fontSize.bodySm,
-    color: color.green4,
+    fontFamily: font.sans,
+    fontWeight: weight.semibold,
+    fontSize: fontSize.small,
+    color: c.done,
     paddingVertical: 8,
   },
   // .cfloorhint
   cfloorhint: {
     fontFamily: font.mono,
     fontSize: fontSize.micro,
-    color: color.inkFaint,
+    color: c.faint,
     marginLeft: 'auto',
+    fontVariant: ['tabular-nums'],
   },
   // .chip toggle
   toggleChip: {
     borderWidth: 1,
-    borderColor: color.line,
-    backgroundColor: color.panel,
+    borderColor: c.border,
+    backgroundColor: c.surface,
     borderRadius: 20,
     paddingVertical: 5,
     paddingHorizontal: 13,
@@ -240,13 +247,13 @@ const styles = StyleSheet.create({
   toggleText: {
     fontFamily: font.mono,
     fontSize: fontSize.micro,
-    color: color.inkDim,
+    color: c.muted,
   },
   // .composer .hint
   hint: {
     fontFamily: font.mono,
     fontSize: fontSize.tag,
-    color: color.inkFaint,
+    color: c.faint,
     marginTop: 9,
   },
   cancelBtn: {
@@ -256,6 +263,6 @@ const styles = StyleSheet.create({
   cancelText: {
     fontFamily: font.mono,
     fontSize: fontSize.meta,
-    color: color.inkDim,
+    color: c.muted,
   },
 });

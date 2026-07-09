@@ -12,7 +12,9 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Tag } from '@/components/primitives';
 import type { DesignBoxProps, FeedItemProps, JournalEntryProps } from '@/components/types';
 import type { LogType } from '@/models';
-import { color, font, fontSize, letterSpacing, radius, space } from '@/theme/tokens';
+import { font, fontSize, letterSpacing, radius, space, weight, type ColorTheme } from '@/theme/tokens';
+import { useThemedStyles } from '@/theme/useThemedStyles';
+import { useTheme } from '@/theme/ThemeProvider';
 
 const LOG_ICON: Record<LogType, string> = {
   note: '📝',
@@ -28,25 +30,18 @@ const LOG_LABEL: Record<LogType, string> = {
   idea: '아이디어',
 };
 
-/** .ltype tint per log type (lifted from the demo). */
-const LTYPE_TINT: Record<LogType, { bg: string; color: string }> = {
-  note: { bg: 'rgba(232,228,216,0.08)', color: color.inkDim },
-  win: { bg: 'rgba(216,177,90,0.13)', color: color.gold },
-  mood: { bg: 'rgba(107,155,216,0.13)', color: color.blue },
-  idea: { bg: 'rgba(116,214,138,0.12)', color: color.green4 },
-};
-
 // ── FeedItem ───────────────────────────────────────────────────────────────────
 
 export function FeedItem({ item, onPress }: FeedItemProps) {
+  const styles = useThemedStyles(makeStyles);
+  const { colors: c } = useTheme();
   if (item.kind === 'log') {
-    const tint = LTYPE_TINT[item.type];
     return (
       <View style={styles.fitem}>
         <Text style={styles.time}>{`${item.time} · ${LOG_ICON[item.type]} 로그`}</Text>
         <Pressable onPress={onPress} disabled={!onPress} style={[styles.fcard, styles.fcardLog]}>
           <View style={styles.top}>
-            <Text style={[styles.ltype, { backgroundColor: tint.bg, color: tint.color }]}>
+            <Text style={[styles.ltype, { backgroundColor: c.surface2, color: c.muted }]}>
               {LOG_LABEL[item.type]}
             </Text>
           </View>
@@ -58,13 +53,13 @@ export function FeedItem({ item, onPress }: FeedItemProps) {
 
   const chip = item.isSkip
     ? item.isMiss
-      ? { label: '놓침', bg: 'rgba(214,101,90,0.13)', color: color.red }
-      : { label: '건너뜀', bg: 'rgba(232,228,216,0.08)', color: color.inkDim }
+      ? { label: '놓침', bg: c.skipWeak, color: c.crit }
+      : { label: '건너뜀', bg: c.surface2, color: c.muted }
     : item.dayState === 'over'
-      ? { label: '초과 달성', bg: 'rgba(216,177,90,0.13)', color: color.gold }
+      ? { label: '초과 달성', bg: c.overWeak, color: c.over }
       : item.dayState === 'partial'
-        ? { label: '진행 중', bg: 'rgba(224,169,63,0.13)', color: color.amber }
-        : { label: '최소 달성', bg: 'rgba(116,214,138,0.12)', color: color.green4 };
+        ? { label: '진행 중', bg: c.partialWeak, color: c.partial }
+        : { label: '최소 달성', bg: c.doneWeak, color: c.done };
 
   return (
     <View style={styles.fitem}>
@@ -92,18 +87,20 @@ export function FeedItem({ item, onPress }: FeedItemProps) {
 // ── JournalEntry ─────────────────────────────────────────────────────────────────
 
 export function JournalEntry({ item, onPress }: JournalEntryProps) {
+  const styles = useThemedStyles(makeStyles);
+  const { colors: c } = useTheme();
   const chip = item.isSkip
     ? item.isMiss
-      ? { label: '놓침', bg: 'rgba(214,101,90,0.13)', color: color.red }
-      : { label: '건너뜀', bg: 'rgba(232,228,216,0.08)', color: color.inkDim }
+      ? { label: '놓침', bg: c.skipWeak, color: c.crit }
+      : { label: '건너뜀', bg: c.surface2, color: c.muted }
     : item.dayState === 'over'
-      ? { label: `${item.actual} · 초과 달성`, bg: 'rgba(216,177,90,0.13)', color: color.gold }
+      ? { label: `${item.actual} · 초과 달성`, bg: c.overWeak, color: c.over }
       : item.dayState === 'partial'
-        ? { label: `${item.actual} · 진행 중`, bg: 'rgba(224,169,63,0.13)', color: color.amber }
+        ? { label: `${item.actual} · 진행 중`, bg: c.partialWeak, color: c.partial }
         : {
             label: item.isBinary ? '완료' : `${item.actual} · 최소 달성`,
-            bg: 'rgba(116,214,138,0.12)',
-            color: color.green4,
+            bg: c.doneWeak,
+            color: c.done,
           };
 
   const muted = item.isMiss || !item.note;
@@ -126,6 +123,7 @@ export function JournalEntry({ item, onPress }: JournalEntryProps) {
 // ── DesignBox ────────────────────────────────────────────────────────────────────
 
 function Cell({ k, value, muted }: { k: string; value: string; muted?: boolean }) {
+  const styles = useThemedStyles(makeStyles);
   return (
     <View style={styles.cell}>
       <Text style={styles.cellKey}>{k}</Text>
@@ -135,6 +133,7 @@ function Cell({ k, value, muted }: { k: string; value: string; muted?: boolean }
 }
 
 export function DesignBox({ cue, floor, floorUnit, identity, kind, onEdit }: DesignBoxProps) {
+  const styles = useThemedStyles(makeStyles);
   return (
     <View>
       <View style={styles.designBox}>
@@ -154,157 +153,166 @@ export function DesignBox({ cue, floor, floorUnit, identity, kind, onEdit }: Des
   );
 }
 
-const styles = StyleSheet.create({
-  // FeedItem
-  fitem: {
-    paddingBottom: space.lg,
-  },
-  time: {
-    fontFamily: font.mono,
-    fontSize: fontSize.micro,
-    color: color.inkFaint,
-  },
-  fcard: {
-    backgroundColor: color.panel,
-    borderWidth: 1,
-    borderColor: color.line,
-    borderRadius: radius.xl,
-    paddingVertical: space.md,
-    paddingHorizontal: space.lg,
-    marginTop: space.xs,
-  },
-  fcardLog: {
-    backgroundColor: 'transparent',
-    borderStyle: 'dashed',
-  },
-  top: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: space.sm,
-  },
-  name: {
-    fontFamily: font.sansSemiBold,
-    fontSize: fontSize.bodySm,
-    color: color.ink,
-  },
-  ltype: {
-    fontFamily: font.mono,
-    fontSize: fontSize.tag,
-    letterSpacing: letterSpacing.tag,
-    paddingVertical: 2,
-    paddingHorizontal: 7,
-    borderRadius: radius.sm,
-    overflow: 'hidden',
-  },
-  amountChip: {
-    backgroundColor: 'rgba(232,228,216,0.08)',
-    color: color.inkDim,
-  },
-  xpgain: {
-    fontFamily: font.mono,
-    fontSize: fontSize.micro,
-    color: color.gold,
-    marginLeft: 'auto',
-  },
-  body: {
-    fontFamily: font.sans,
-    fontSize: fontSize.small,
-    color: color.ink,
-    marginTop: space.xs,
-    lineHeight: 20,
-  },
+const makeStyles = (c: ColorTheme) =>
+  StyleSheet.create({
+    // FeedItem
+    fitem: {
+      paddingBottom: space.lg,
+    },
+    time: {
+      fontFamily: font.mono,
+      fontSize: fontSize.micro,
+      color: c.faint,
+      fontVariant: ['tabular-nums'],
+    },
+    fcard: {
+      backgroundColor: c.surface,
+      borderWidth: 1,
+      borderColor: c.border,
+      borderRadius: radius.r,
+      paddingVertical: space.md,
+      paddingHorizontal: space.lg,
+      marginTop: space.xs,
+    },
+    fcardLog: {
+      backgroundColor: 'transparent',
+      borderStyle: 'dashed',
+    },
+    top: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      flexWrap: 'wrap',
+      gap: space.sm,
+    },
+    name: {
+      fontFamily: font.sans,
+      fontWeight: weight.semibold,
+      fontSize: fontSize.small,
+      color: c.text,
+    },
+    ltype: {
+      fontFamily: font.mono,
+      fontSize: fontSize.tag,
+      letterSpacing: letterSpacing.tag,
+      paddingVertical: 2,
+      paddingHorizontal: 7,
+      borderRadius: radius.sm,
+      overflow: 'hidden',
+    },
+    amountChip: {
+      backgroundColor: c.surface2,
+      color: c.muted,
+      fontVariant: ['tabular-nums'],
+    },
+    xpgain: {
+      fontFamily: font.mono,
+      fontSize: fontSize.micro,
+      color: c.accent,
+      marginLeft: 'auto',
+      fontVariant: ['tabular-nums'],
+    },
+    body: {
+      fontFamily: font.sans,
+      fontSize: fontSize.small,
+      color: c.text,
+      marginTop: space.xs,
+      lineHeight: 20,
+    },
 
-  // JournalEntry
-  jentry: {
-    borderLeftWidth: 2,
-    borderLeftColor: color.line,
-    paddingLeft: space.lg,
-    paddingBottom: space.lg,
-    position: 'relative',
-  },
-  jdot: {
-    position: 'absolute',
-    left: -5,
-    top: 3,
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: color.gold,
-  },
-  jdotMiss: {
-    backgroundColor: color.red,
-  },
-  jrow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: space.sm,
-  },
-  jdate: {
-    fontFamily: font.mono,
-    fontSize: fontSize.micro,
-    color: color.inkDim,
-  },
-  jchip: {
-    fontFamily: font.mono,
-    fontSize: fontSize.tag,
-    paddingVertical: 1,
-    paddingHorizontal: 6,
-    borderRadius: radius.xs,
-    overflow: 'hidden',
-  },
-  jtxt: {
-    fontFamily: font.sans,
-    fontSize: fontSize.bodySm,
-    color: color.ink,
-    marginTop: space.xs,
-  },
-  jtxtMuted: {
-    color: color.inkFaint,
-    fontFamily: font.serifItalic,
-  },
+    // JournalEntry
+    jentry: {
+      borderLeftWidth: 2,
+      borderLeftColor: c.border,
+      paddingLeft: space.lg,
+      paddingBottom: space.lg,
+      position: 'relative',
+    },
+    jdot: {
+      position: 'absolute',
+      left: -5,
+      top: 3,
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+      backgroundColor: c.accent,
+    },
+    jdotMiss: {
+      backgroundColor: c.crit,
+    },
+    jrow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: space.sm,
+    },
+    jdate: {
+      fontFamily: font.mono,
+      fontSize: fontSize.micro,
+      color: c.muted,
+      fontVariant: ['tabular-nums'],
+    },
+    jchip: {
+      fontFamily: font.mono,
+      fontSize: fontSize.tag,
+      paddingVertical: 1,
+      paddingHorizontal: 6,
+      borderRadius: radius.cell,
+      overflow: 'hidden',
+      fontVariant: ['tabular-nums'],
+    },
+    jtxt: {
+      fontFamily: font.sans,
+      fontSize: fontSize.small,
+      color: c.text,
+      marginTop: space.xs,
+    },
+    jtxtMuted: {
+      color: c.faint,
+      fontFamily: font.sans,
+      fontStyle: 'italic',
+    },
 
-  // DesignBox
-  designBox: {
-    flexDirection: 'row',
-    backgroundColor: color.line,
-    borderWidth: 1,
-    borderColor: color.line,
-    borderRadius: radius.pill,
-    overflow: 'hidden',
-    gap: 1,
-  },
-  cell: {
-    flex: 1,
-    backgroundColor: color.panel,
-    paddingVertical: space.md,
-    paddingHorizontal: space.lg,
-  },
-  cellKey: {
-    fontFamily: font.mono,
-    fontSize: fontSize.micro,
-    textTransform: 'uppercase',
-    letterSpacing: letterSpacing.tag,
-    color: color.inkFaint,
-    marginBottom: space.xs,
-  },
-  cellValue: {
-    fontFamily: font.sans,
-    fontSize: fontSize.small,
-    color: color.ink,
-    lineHeight: 20,
-  },
-  cellValueMuted: {
-    color: color.inkFaint,
-    fontFamily: font.serifItalic,
-  },
-  editBtn: {
-    alignSelf: 'flex-end',
-    marginTop: space.sm,
-  },
-  editText: {
-    fontFamily: font.mono,
-    fontSize: fontSize.micro,
-    color: color.gold,
-  },
-});
+    // DesignBox
+    designBox: {
+      flexDirection: 'row',
+      backgroundColor: c.border,
+      borderWidth: 1,
+      borderColor: c.border,
+      borderRadius: radius.pill,
+      overflow: 'hidden',
+      gap: 1,
+    },
+    cell: {
+      flex: 1,
+      backgroundColor: c.surface,
+      paddingVertical: space.md,
+      paddingHorizontal: space.lg,
+    },
+    cellKey: {
+      fontFamily: font.mono,
+      fontSize: fontSize.micro,
+      textTransform: 'uppercase',
+      letterSpacing: letterSpacing.tag,
+      color: c.faint,
+      marginBottom: space.xs,
+    },
+    cellValue: {
+      fontFamily: font.sans,
+      fontSize: fontSize.small,
+      color: c.text,
+      lineHeight: 20,
+    },
+    cellValueMuted: {
+      color: c.faint,
+      fontFamily: font.sans,
+      fontStyle: 'italic',
+    },
+    editBtn: {
+      alignSelf: 'flex-end',
+      marginTop: space.sm,
+    },
+    editText: {
+      fontFamily: font.mono,
+      fontSize: fontSize.micro,
+      color: c.accent,
+    },
+  });

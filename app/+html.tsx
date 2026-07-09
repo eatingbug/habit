@@ -1,8 +1,9 @@
 /**
  * Web-only root HTML shell (expo-router). Runs on the server during static web export.
  *
- * Sets the document background to the app's dark base so there is no white flash before
- * React mounts, and disables body scrolling so the RN ScrollViews own scrolling.
+ * Sets the document background to the app's base (adaptive via prefers-color-scheme) so
+ * there is no flash before React mounts, and disables body scrolling so the RN
+ * ScrollViews own scrolling.
  */
 import { ScrollViewStyleReset } from 'expo-router/html';
 import { type PropsWithChildren } from 'react';
@@ -23,6 +24,7 @@ export default function Root({ children }: PropsWithChildren) {
 }
 
 const rootStyle = `
-html, body { background-color: #0c0f16; }
+html, body { background-color: #FBFBFC; }
+@media (prefers-color-scheme: dark) { html, body { background-color: #0D0E12; } }
 body { overscroll-behavior: none; }
 `;
