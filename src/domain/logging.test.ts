@@ -122,18 +122,24 @@ describe('previewLog', () => {
 
 describe('describeDeleteConsequence', () => {
   const TODAY = '2026-06-10';
-  it('a non-last activity row is inconsequential → null (delete immediately)', () => {
+  it('deleting a non-last activity row that flips the day below floor warns of the streak drop', () => {
+    // two 6-rep rows → sum 12 done (streak 1); deleting one → sum 6 partial → streak 0.
     const entries = [erow('a', '2026-06-10', 6), erow('b', '2026-06-10', 6)];
-    expect(describeDeleteConsequence(entries, 'a', HABIT, TODAY)).toBeNull();
+    const msg = describeDeleteConsequence(entries, 'a', HABIT, TODAY);
+    expect(msg).toContain('스트릭');
   });
-  it('deleting the last row of a done day warns + notes the streak break', () => {
+  it('deleting the last row of a done day warns + notes the streak change', () => {
     const entries = [erow('a', '2026-06-09', 10), erow('b', '2026-06-10', 10)];
     const msg = describeDeleteConsequence(entries, 'b', HABIT, TODAY);
     expect(msg).toContain('비워집니다');
-    expect(msg).toContain('2일 스트릭이 끊깁니다');
+    expect(msg).toContain('스트릭');
   });
-  it('deleting a miss-bearing skip warns (even when the day has other rows)', () => {
+  it('deleting a skip on a day that ALSO has activity is inconsequential → null (day is not a miss)', () => {
     const entries = [erow('a', '2026-06-10', 10), erow('b', '2026-06-10', 0, 'floor')];
-    expect(describeDeleteConsequence(entries, 'b', HABIT, TODAY)).toContain('놓침');
+    expect(describeDeleteConsequence(entries, 'b', HABIT, TODAY)).toBeNull();
+  });
+  it('deleting one skip of a miss-day (multiple skips) warns it erases a 놓침', () => {
+    const entries = [erow('a', '2026-06-10', 0, 'floor'), erow('b', '2026-06-10', 0, 'cue')];
+    expect(describeDeleteConsequence(entries, 'a', HABIT, TODAY)).toContain('놓침');
   });
 });

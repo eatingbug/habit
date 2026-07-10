@@ -6,7 +6,7 @@
  * log-time preview, and the delete guard join here in the B-tier UX phase.)
  */
 import type { DayState, Habit, HabitEntry } from '../models';
-import { classifyDay } from './classify';
+import { classifyDay, isMissDay } from './classify';
 import { computeStreak } from './score';
 import { TUNING } from '../config/tuning';
 
@@ -100,9 +100,14 @@ export function previewLog(currentSum: number, staged: number, habit: HabitShape
 
 /**
  * Consequence of a DELIBERATE delete (B6). Returns a confirm message when the delete is
- * consequential — the last row of a date (the day goes blank) or a miss-bearing skip —
- * else null (delete immediately). Appends a streak-break note when removing the row drops
- * the current streak.
+ * consequential — the last row of a date (the day goes blank), a delete that erases a
+ * miss on a miss-day, or one that drops the current streak — else null (delete now).
+ *
+ * The miss note is gated on the DAY's computed state (isMissDay), not the deleted row's
+ * own skipReason: a skip row on a day that also has activity is not a miss (activity wins),
+ * so deleting it must not claim a "놓침" is being erased. The streak diff is ALWAYS checked
+ * (even for a non-last activity row), so a delete that flips a day done → partial and
+ * shortens the streak still warns.
  */
 export function describeDeleteConsequence(
   entries: HabitEntry[],
@@ -112,14 +117,14 @@ export function describeDeleteConsequence(
 ): string | null {
   const target = entries.find((e) => e.id === entryId);
   if (!target) return null;
-  const isLastRowOfDay = entries.filter((e) => e.date === target.date).length === 1;
-  const isMissSkip =
-    target.actual === 0 && target.skipReason !== undefined && target.skipReason !== 'exception';
-  if (!isLastRowOfDay && !isMissSkip) return null;
+  const t = habit.kind === 'binary' ? undefined : habit.target;
+  const dayRows = entries.filter((e) => e.date === target.date);
+  const isLastRowOfDay = dayRows.length === 1;
+  const dayIsMiss = isMissDay(dayRows, habit.floor, t);
 
   const parts: string[] = [];
   if (isLastRowOfDay) parts.push('이 날의 기록이 비워집니다');
-  else if (isMissSkip) parts.push("이 날의 '놓침' 기록이 지워집니다");
+  else if (dayIsMiss && target.actual === 0) parts.push("이 날의 '놓침' 기록이 지워집니다");
 
   const before = computeStreak(entries, today, habit);
   const after = computeStreak(
@@ -127,6 +132,8 @@ export function describeDeleteConsequence(
     today,
     habit,
   );
-  if (after < before) parts.push(`${before}일 스트릭이 끊깁니다`);
-  return parts.join(' · ');
+  if (after < before) {
+    parts.push(after === 0 ? `${before}일 스트릭이 끊깁니다` : `스트릭이 ${before}→${after}일로 줄어듭니다`);
+  }
+  return parts.length ? parts.join(' · ') : null;
 }

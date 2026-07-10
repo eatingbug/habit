@@ -54,10 +54,15 @@ export function Composer({
   const isBinary = habit?.kind === 'binary';
   const daySum = habit ? (todaySumByHabit?.[habit.id] ?? 0) : 0;
 
-  // B2: prefill the count with a smart default when a count habit is picked (not while editing).
+  // On target change (not while editing): clamp an out-of-range date and prefill the count
+  // with a smart default (B2). Runs only on [target] so stepping the date won't clobber input.
   useEffect(() => {
-    if (editing || !habit || habit.kind === 'binary') return;
-    setCount(String(smartDefaultAmount(daySum, habit.floor, lastAmountByHabit?.[habit.id])));
+    if (editing) return;
+    const lb = habit ? habit.createdAt.slice(0, 10) : shiftDate(today, -365);
+    if (date < lb) setDate(today);
+    if (!habit || habit.kind === 'binary') return;
+    const sum = date === today ? daySum : 0; // a past date's running sum isn't known here
+    setCount(String(smartDefaultAmount(sum, habit.floor, lastAmountByHabit?.[habit.id])));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [target]);
 
@@ -162,9 +167,13 @@ export function Composer({
           {skipMode ? (
             <View style={styles.skipWrap}>
               <SkipReasonChips value={editing ? skipReason : undefined} onPick={pickSkip} />
-              <Pressable onPress={() => setSkipMode(false)} style={styles.toggleChip}>
-                <Text style={styles.toggleText}>수치 입력으로</Text>
-              </Pressable>
+              <TextField grow value={note} onChangeText={setNote} placeholder="메모 (선택)" />
+              <View style={styles.crow}>
+                {editing ? <PrimaryButton label="수정" onPress={submit} /> : null}
+                <Pressable onPress={() => setSkipMode(false)} style={styles.toggleChip}>
+                  <Text style={styles.toggleText}>수치 입력으로</Text>
+                </Pressable>
+              </View>
             </View>
           ) : (
             <>

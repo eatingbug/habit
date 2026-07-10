@@ -6,7 +6,7 @@
  * habits" count. One-tap logging (B1) and long-press skip (B5) write + reload. Reloads on
  * focus so a commit elsewhere is reflected when you return.
  */
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
 import { useRepository } from '@/context/RepositoryContext';
 import { TUNING } from '@/config/tuning';
@@ -53,6 +53,7 @@ export function useDashboard(): DashboardData {
   const [habitRows, setHabitRows] = useState<HabitRowData[]>([]);
   const [rawHabits, setRawHabits] = useState<Habit[]>([]);
   const [shaky, setShaky] = useState({ caution: 0, intervention: 0 });
+  const busy = useRef(false); // guards one-tap writes against rapid double-taps
 
   const load = useCallback(async () => {
     const today = todayLocal();
@@ -111,6 +112,7 @@ export function useDashboard(): DashboardData {
 
   const quickLog = useCallback(
     async (habitId: string): Promise<QuickResult | null> => {
+      if (busy.current) return null;
       const habit = rawHabits.find((h) => h.id === habitId);
       const row = habitRows.find((r) => r.id === habitId);
       if (!habit || !row) return null;
@@ -118,35 +120,46 @@ export function useDashboard(): DashboardData {
         row.todayState === 'partial' || row.todayState === 'done' || row.todayState === 'over';
       const action = oneTapAction(habit, hasActivity);
       if (action.disabled) return null;
-      const id = newId();
-      await repo.upsertEntry({
-        id,
-        habitId,
-        date: todayLocal(),
-        timestamp: nowTimestamp(),
-        actual: action.amount,
-      });
-      await load();
-      return { id, amount: action.amount, unit: habit.floorUnit, isBinary: habit.kind === 'binary' };
+      busy.current = true;
+      try {
+        const id = newId();
+        await repo.upsertEntry({
+          id,
+          habitId,
+          date: todayLocal(),
+          timestamp: nowTimestamp(),
+          actual: action.amount,
+        });
+        await load();
+        return { id, amount: action.amount, unit: habit.floorUnit, isBinary: habit.kind === 'binary' };
+      } finally {
+        busy.current = false;
+      }
     },
     [rawHabits, habitRows, repo, load],
   );
 
   const quickSkip = useCallback(
     async (habitId: string, reason: SkipReason): Promise<{ id: string } | null> => {
+      if (busy.current) return null;
       const habit = rawHabits.find((h) => h.id === habitId);
       if (!habit) return null;
-      const id = newId();
-      await repo.upsertEntry({
-        id,
-        habitId,
-        date: todayLocal(),
-        timestamp: nowTimestamp(),
-        actual: 0,
-        skipReason: reason,
-      });
-      await load();
-      return { id };
+      busy.current = true;
+      try {
+        const id = newId();
+        await repo.upsertEntry({
+          id,
+          habitId,
+          date: todayLocal(),
+          timestamp: nowTimestamp(),
+          actual: 0,
+          skipReason: reason,
+        });
+        await load();
+        return { id };
+      } finally {
+        busy.current = false;
+      }
     },
     [rawHabits, repo, load],
   );

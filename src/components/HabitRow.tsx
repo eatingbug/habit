@@ -33,7 +33,7 @@ export function HabitRow({ data, onPress, onLightPress, onQuickLog, onCellLongPr
           {data.cue ? <Text style={styles.cue}>{data.cue}</Text> : null}
           <Streak count={data.streak} />
         </View>
-        <Heatmap cells={data.cells} onCellLongPress={onCellLongPress} />
+        <Heatmap cells={data.cells} onCellPress={onCellLongPress ? onPress : undefined} onCellLongPress={onCellLongPress} />
       </Pressable>
       {onQuickLog ? (
         <Pressable

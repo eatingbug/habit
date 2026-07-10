@@ -102,7 +102,7 @@ export default function HabitDetail() {
     let n = 0;
     if (!bfSkip && habit.kind !== 'binary') {
       n = parseInt(bfAmount, 10);
-      if (!Number.isFinite(n) || n < habit.floor) return;
+      if (!Number.isFinite(n) || n <= 0) return; // sub-floor is a valid partial; only 0/blank is a skip
     }
     if (editingEntryId) {
       if (bfSkip) {
