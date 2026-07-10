@@ -41,6 +41,13 @@ export interface HabitRowData {
   streak: number;
   light: StatusLightState;
   cells: HeatState[]; // most-recent-last, length === heatmap columns
+  // one-tap logging (B1) + long-press skip (B5)
+  floor: number;
+  target?: number;
+  kind: 'count' | 'binary';
+  floorUnit: string;
+  todayState: DayState; // computed state of today's rows (drives the one-tap label/disabled)
+  lastAmount?: number; // most-recent activity amount (for smart defaults)
 }
 
 export interface TallyData {
@@ -107,6 +114,7 @@ export interface ActionOption {
 /** Pre-fill values handed to the composer when reopening a record for editing. */
 export interface ComposerInitial {
   target: string; // 'free' or a habitId
+  date?: string; // 'YYYY-MM-DD' the record belongs to (defaults to today)
   hour: string;
   minute: string;
   logType?: LogType;
@@ -118,10 +126,11 @@ export interface ComposerInitial {
 
 /** What the unified composer emits; the Today screen converts it to a stored record. */
 export type ComposerSubmit =
-  | { kind: 'log'; type: LogType; text: string; hour: string; minute: string }
-  | { kind: 'entry'; habitId: string; actual: number; note?: string; hour: string; minute: string }
+  | { kind: 'log'; date: string; type: LogType; text: string; hour: string; minute: string }
+  | { kind: 'entry'; date: string; habitId: string; actual: number; note?: string; hour: string; minute: string }
   | {
       kind: 'skip';
+      date: string;
       habitId: string;
       skipReason: SkipReason;
       note?: string;
@@ -203,6 +212,10 @@ export interface SkipReasonPickerProps {
   value: SkipReason;
   onValueChange: (reason: SkipReason) => void;
 }
+export interface SkipReasonChipsProps {
+  onPick: (reason: SkipReason) => void; // tapping a chip logs the skip (B5)
+  value?: SkipReason; // optional highlight (edit mode)
+}
 
 export interface LevelRingProps {
   value: number;
@@ -230,6 +243,7 @@ export interface StreakProps {
 export interface HeatmapProps {
   cells: HeatState[];
   onCellPress?: (index: number) => void;
+  onCellLongPress?: (index: number) => void; // long-press the last cell → skip chips (B5)
   columns?: number; // default 20
 }
 export type HeatLegendProps = Record<string, never>;
@@ -237,6 +251,8 @@ export interface HabitRowProps {
   data: HabitRowData;
   onPress: () => void;
   onLightPress: () => void;
+  onQuickLog?: () => void; // one-tap +floor / ✓ (B1)
+  onCellLongPress?: (index: number) => void; // long-press today's cell → skip (B5)
 }
 
 export interface MirrorWeekProps {
@@ -279,6 +295,9 @@ export interface ComposerProps {
   habits: Habit[];
   onSubmit: (submission: ComposerSubmit) => void;
   initial?: ComposerInitial; // pre-fill for editing an existing record
-  editing?: boolean; // edit mode: lock the target, show "수정" + cancel
+  editing?: boolean; // edit mode: lock the target, show "수정" + cancel + delete
   onCancel?: () => void;
+  onDelete?: () => void; // edit mode: delete this record (B6)
+  todaySumByHabit?: Record<string, number>; // running day sums (B2 default, C7a progress)
+  lastAmountByHabit?: Record<string, number>; // last-used amount per habit (B2 chip)
 }

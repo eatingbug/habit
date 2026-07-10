@@ -12,6 +12,7 @@ import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
 import { RepositoryProvider } from '@/context/RepositoryContext';
+import { ToastProvider } from '@/context/ToastContext';
 import { ThemeProvider, useTheme } from '@/theme/ThemeProvider';
 
 SplashScreen.preventAutoHideAsync();
@@ -24,7 +25,9 @@ export default function RootLayout() {
   return (
     <ThemeProvider>
       <RepositoryProvider>
-        <Shell />
+        <ToastProvider>
+          <Shell />
+        </ToastProvider>
       </RepositoryProvider>
     </ThemeProvider>
   );

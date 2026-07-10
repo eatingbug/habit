@@ -3,7 +3,7 @@
  * OR free log), and a chronological feed interleaving the day's entries and logs.
  */
 import { useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Alert, StyleSheet, Text, View } from 'react-native';
 import { useToday } from '@/hooks/useToday';
 import { Composer, EmptyState, FeedItem, Tally, Wrap } from '@/components';
 import type { ComposerInitial, FeedEntry } from '@/components/types';
@@ -30,10 +30,24 @@ function toInitial(f: FeedEntry): ComposerInitial {
 }
 
 export default function Today() {
-  const { date, tally, feed, habits, submit, update } = useToday();
+  const { date, tally, feed, habits, submit, update, requestDelete, todaySumByHabit, lastAmountByHabit } =
+    useToday();
   const [editing, setEditing] = useState<FeedEntry | null>(null);
   const editingId = editing?.id ?? null;
   const styles = useThemedStyles(makeStyles);
+
+  const handleDelete = async (id: string) => {
+    const req = await requestDelete(id);
+    if (req.message) {
+      Alert.alert('기록 삭제', req.message, [
+        { text: '취소', style: 'cancel' },
+        { text: '삭제', style: 'destructive', onPress: () => req.confirm().then(() => setEditing(null)) },
+      ]);
+    } else {
+      await req.confirm();
+      setEditing(null);
+    }
+  };
 
   return (
     <Wrap>
@@ -51,6 +65,9 @@ export default function Today() {
         initial={editing ? toInitial(editing) : undefined}
         editing={!!editing}
         onCancel={() => setEditing(null)}
+        onDelete={editingId ? () => handleDelete(editingId) : undefined}
+        todaySumByHabit={todaySumByHabit}
+        lastAmountByHabit={lastAmountByHabit}
         onSubmit={(s) => {
           if (editingId) update(editingId, s).then(() => setEditing(null));
           else submit(s);

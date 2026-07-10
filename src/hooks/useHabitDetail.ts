@@ -21,12 +21,13 @@ import {
   windowFrom,
   type DayRecord,
 } from '@/domain/util';
-import { backfillTimestamp, dayXPContribution } from '@/domain/logging';
+import { backfillTimestamp, dayXPContribution, describeDeleteConsequence } from '@/domain/logging';
 import { heatLevel, type HeatState } from '@/theme/heatLevel';
 import { newId } from '@/util/id';
 import { formatShortDate, nowTimestamp, todayLocal } from '@/util/date';
 import type { Habit, HabitEntry, SkipReason } from '@/models';
 import type { JournalItem } from '@/components/types';
+import type { DeleteRequest } from '@/hooks/useToday';
 
 const EPOCH = '1970-01-01';
 const HEAT_COLUMNS = 20;
@@ -53,6 +54,7 @@ export interface HabitDetailData {
   logEntry: (date: string, actual: number, note?: string) => Promise<void>;
   logSkip: (date: string, skipReason: HabitEntry['skipReason'], note?: string) => Promise<void>;
   editEntry: (id: string, fields: EditEntryFields) => Promise<void>;
+  requestDelete: (id: string) => Promise<DeleteRequest>;
   reload: () => void;
 }
 
@@ -150,6 +152,18 @@ export function useHabitDetail(id: string): HabitDetailData {
     [repo, habit, entries, load],
   );
 
+  const requestDelete = useCallback(
+    async (entryId: string): Promise<DeleteRequest> => {
+      const confirm = async () => {
+        await repo.deleteEntry(entryId);
+        await load();
+      };
+      if (!habit) return { message: null, confirm };
+      return { message: describeDeleteConsequence(entries, entryId, habit, todayLocal()), confirm };
+    },
+    [repo, habit, entries, load],
+  );
+
   useFocusEffect(
     useCallback(() => {
       load();
@@ -213,6 +227,7 @@ export function useHabitDetail(id: string): HabitDetailData {
     logEntry,
     logSkip,
     editEntry,
+    requestDelete,
     reload: load,
   };
 }

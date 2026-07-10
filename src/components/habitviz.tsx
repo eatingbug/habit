@@ -61,7 +61,7 @@ export function Streak({ count }: StreakProps) {
 
 // ── Heatmap (flat day-state cells) ───────────────────────────────────────────────
 
-export function Heatmap({ cells, onCellPress, columns = 20 }: HeatmapProps) {
+export function Heatmap({ cells, onCellPress, onCellLongPress, columns = 20 }: HeatmapProps) {
   const { colors: c } = useTheme();
   const styles = useThemedStyles(makeStyles);
   const colors = heatColors(c);
@@ -78,9 +78,14 @@ export function Heatmap({ cells, onCellPress, columns = 20 }: HeatmapProps) {
             ]}
           />
         );
-        if (onCellPress) {
+        if (onCellPress || onCellLongPress) {
           return (
-            <Pressable key={index} style={cellStyle} onPress={() => onCellPress(index)}>
+            <Pressable
+              key={index}
+              style={cellStyle}
+              onPress={onCellPress ? () => onCellPress(index) : undefined}
+              onLongPress={onCellLongPress ? () => onCellLongPress(index) : undefined}
+            >
               {inner}
             </Pressable>
           );

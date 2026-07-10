@@ -15,6 +15,7 @@ import { useTheme } from '@/theme/ThemeProvider';
 import { HOUR_OPTIONS, MINUTE_OPTIONS } from '@/util/date';
 import type {
   NumberFieldProps,
+  SkipReasonChipsProps,
   SkipReasonPickerProps,
   StatPickerProps,
   TextFieldProps,
@@ -174,6 +175,35 @@ export function SkipReasonPicker({ value, onValueChange }: SkipReasonPickerProps
           <Picker.Item key={r.value} label={r.label} value={r.value} color={c.text} />
         ))}
       </Picker>
+    </View>
+  );
+}
+
+// ── SkipReasonChips (B5) — one-tap skip reasons in the composer ────────────────────
+const SKIP_CHIPS: { value: SkipReason; label: string }[] = [
+  { value: 'cue', label: '깜빡함' },
+  { value: 'floor', label: '너무 힘듦' },
+  { value: 'exception', label: '예외' },
+  { value: 'identity', label: '안 내킴' },
+];
+
+export function SkipReasonChips({ onPick, value }: SkipReasonChipsProps) {
+  const styles = useThemedStyles(makeStyles);
+  const { colors: c } = useTheme();
+  return (
+    <View style={styles.ctypes}>
+      {SKIP_CHIPS.map((chip) => {
+        const selected = value === chip.value;
+        return (
+          <Pressable
+            key={chip.value}
+            onPress={() => onPick(chip.value)}
+            style={[styles.ctype, selected && { borderColor: c.accent, backgroundColor: c.accentWeak }]}
+          >
+            <Text style={[styles.ctypeText, { color: selected ? c.accentInk : c.muted }]}>{chip.label}</Text>
+          </Pressable>
+        );
+      })}
     </View>
   );
 }

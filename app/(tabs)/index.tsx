@@ -3,19 +3,30 @@
  * with heatmap + status light), the aggregate "shaky habits" count, and "+ New Quest".
  * Tapping a row → Habit Detail; tapping a status light → that habit's Reflection.
  */
+import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useDashboard } from '@/hooks/useDashboard';
-import { BrandHeader, EmptyState, HabitRow, HeatLegend, Panel, StatCard, Wrap } from '@/components';
+import { useToast } from '@/context/ToastContext';
+import { BrandHeader, EmptyState, HabitRow, HeatLegend, Panel, SkipReasonChips, StatCard, Wrap } from '@/components';
+import type { QuickResult } from '@/hooks/useToday';
 import { font, fontSize, radius, space, type ColorTheme } from '@/theme/tokens';
 import { useThemedStyles } from '@/theme/useThemedStyles';
 
 export default function Dashboard() {
-  const { loading, stats, habits, shaky } = useDashboard();
+  const { loading, stats, habits, shaky, quickLog, quickSkip, removeEntry } = useDashboard();
   const styles = useThemedStyles(makeStyles);
   const router = useRouter();
+  const { showUndo } = useToast();
+  const [skipFor, setSkipFor] = useState<string | null>(null);
   const topLevel = stats.reduce((m, s) => Math.max(m, s.level), 0);
   const shakyTotal = shaky.caution + shaky.intervention;
+
+  const undoFor = (r: QuickResult | null) => {
+    if (!r) return;
+    const msg = r.isBinary ? '완료 기록됨' : `기록됨 +${r.amount} ${r.unit}`;
+    showUndo(msg, () => removeEntry(r.id));
+  };
 
   return (
     <Wrap>
@@ -45,12 +56,30 @@ export default function Dashboard() {
           <EmptyState>아직 퀘스트가 없어요 — “+ 새 퀘스트”를 눌러 첫 퀘스트를 만들어 보세요.</EmptyState>
         ) : (
           habits.map((h) => (
-            <HabitRow
-              key={h.id}
-              data={h}
-              onPress={() => router.push({ pathname: '/habit/[id]', params: { id: h.id } })}
-              onLightPress={() => router.push({ pathname: '/reflect/[id]', params: { id: h.id } })}
-            />
+            <View key={h.id}>
+              <HabitRow
+                data={h}
+                onPress={() => router.push({ pathname: '/habit/[id]', params: { id: h.id } })}
+                onLightPress={() => router.push({ pathname: '/reflect/[id]', params: { id: h.id } })}
+                onQuickLog={() => quickLog(h.id).then(undoFor)}
+                onCellLongPress={(i) => {
+                  if (i === h.cells.length - 1) setSkipFor((cur) => (cur === h.id ? null : h.id));
+                }}
+              />
+              {skipFor === h.id ? (
+                <View style={styles.skipRow}>
+                  <Text style={styles.skipHint}>건너뛴 이유는?</Text>
+                  <SkipReasonChips
+                    onPick={(reason) => {
+                      quickSkip(h.id, reason).then((r) => {
+                        if (r) showUndo('건너뜀', () => removeEntry(r.id));
+                      });
+                      setSkipFor(null);
+                    }}
+                  />
+                </View>
+              ) : null}
+            </View>
           ))
         )}
 
@@ -95,5 +124,15 @@ const makeStyles = (c: ColorTheme) =>
       fontFamily: font.mono,
       fontSize: fontSize.small,
       color: c.accent,
+    },
+    skipRow: {
+      gap: 8,
+      paddingBottom: 16,
+      paddingLeft: 26,
+    },
+    skipHint: {
+      fontFamily: font.mono,
+      fontSize: fontSize.micro,
+      color: c.faint,
     },
   });

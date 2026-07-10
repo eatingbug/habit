@@ -3,7 +3,7 @@
  * a tappable heatmap + "add past entry" for backfill, and the journal timeline.
  */
 import { useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useHabitDetail } from '@/hooks/useHabitDetail';
 import {
@@ -117,6 +117,18 @@ export default function HabitDetail() {
     }
     closeBackfill();
   };
+  const handleDelete = async (entryId: string) => {
+    const req = await d.requestDelete(entryId);
+    if (req.message) {
+      Alert.alert('기록 삭제', req.message, [
+        { text: '취소', style: 'cancel' },
+        { text: '삭제', style: 'destructive', onPress: () => req.confirm().then(closeBackfill) },
+      ]);
+    } else {
+      await req.confirm();
+      closeBackfill();
+    }
+  };
 
   return (
     <Wrap>
@@ -204,6 +216,11 @@ export default function HabitDetail() {
             <TextField value={bfNote} onChangeText={setBfNote} placeholder="메모 (선택)" />
             <View style={styles.backfillActions}>
               <PrimaryButton label="기록 저장" onPress={saveBackfill} />
+              {editingEntryId ? (
+                <Pressable onPress={() => handleDelete(editingEntryId)} hitSlop={8}>
+                  <Text style={styles.deleteText}>삭제</Text>
+                </Pressable>
+              ) : null}
               <Pressable onPress={closeBackfill} hitSlop={8}>
                 <Text style={styles.edit}>취소</Text>
               </Pressable>
@@ -247,6 +264,7 @@ const makeStyles = (c: ColorTheme) =>
     backfill: { gap: space.sm, marginTop: space.md, padding: space.md, backgroundColor: c.surface2, borderRadius: 12, borderWidth: 1, borderColor: c.border },
     backfillTitle: { fontFamily: font.sans, fontWeight: weight.semibold, fontSize: fontSize.small, color: c.text },
     backfillActions: { flexDirection: 'row', alignItems: 'center', gap: space.md },
+    deleteText: { fontFamily: font.mono, fontSize: fontSize.meta, color: c.crit },
     toggle: { fontFamily: font.mono, fontSize: fontSize.micro, color: c.muted },
     binaryHint: { fontFamily: font.sans, fontStyle: 'italic', fontSize: fontSize.small, color: c.done },
     journalList: { marginTop: space.lg, gap: 0 },

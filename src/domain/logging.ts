@@ -5,8 +5,9 @@
  * unit-testable in isolation. No React, no I/O. (One-tap amounts, smart defaults, the
  * log-time preview, and the delete guard join here in the B-tier UX phase.)
  */
-import type { Habit, HabitEntry } from '../models';
+import type { DayState, Habit, HabitEntry } from '../models';
 import { classifyDay } from './classify';
+import { computeStreak } from './score';
 import { TUNING } from '../config/tuning';
 
 type HabitShape = Pick<Habit, 'floor' | 'target' | 'kind'>;
@@ -45,4 +46,87 @@ export function backfillTimestamp(date: string, existingCountOnDate: number): st
   const [y, m, d] = date.split('-').map(Number);
   const noonLocal = new Date(y, m - 1, d, 12, 0, 0, 0);
   return new Date(noonLocal.getTime() + existingCountOnDate).toISOString();
+}
+
+// ── B-tier one-tap logging helpers (SPEC §6.1 / §6.2) ────────────────────────────
+
+export interface OneTapAction {
+  amount: number; // the actual to append
+  label: string; // Korean button label
+  disabled: boolean; // binary habits already done today have nothing to add
+}
+
+/**
+ * The one-tap log control for a habit row (B1). Count → append one floor-sized chunk
+ * (`+{floor}`, or `+1 더` once the day already has activity — always a full chunk, only the
+ * label changes). Binary → `✓`, becoming a disabled `완료 ✓` once the day is done.
+ */
+export function oneTapAction(habit: HabitShape, hasActivityToday: boolean): OneTapAction {
+  if (habit.kind === 'binary') {
+    return hasActivityToday
+      ? { amount: 1, label: '완료 ✓', disabled: true }
+      : { amount: 1, label: '✓', disabled: false };
+  }
+  return hasActivityToday
+    ? { amount: habit.floor, label: '+1 더', disabled: false }
+    : { amount: habit.floor, label: `+${habit.floor}`, disabled: false };
+}
+
+/** Composer prefill (B2): the floor for the day's first entry, else the last-used amount. */
+export function smartDefaultAmount(daySum: number, floor: number, lastAmount?: number): number {
+  return daySum > 0 ? (lastAmount ?? floor) : floor;
+}
+
+export interface LogPreview {
+  sum: number; // running day sum if the staged amount is logged
+  floor: number;
+  remaining: number; // to the floor (0 once met)
+  state: DayState; // resulting day state (partial / done / over)
+  xpDelta: number; // XP the staged amount would add
+}
+
+/** Progress-to-floor preview for the composer (C7a): running sum, remaining, staged result. */
+export function previewLog(currentSum: number, staged: number, habit: HabitShape): LogPreview {
+  const sum = currentSum + staged;
+  const target = habit.kind === 'binary' ? undefined : habit.target;
+  return {
+    sum,
+    floor: habit.floor,
+    remaining: Math.max(0, habit.floor - sum),
+    state: classifyDay([{ actual: sum } as HabitEntry], habit.floor, target),
+    xpDelta: dayXPForSum(sum, habit) - dayXPForSum(currentSum, habit),
+  };
+}
+
+/**
+ * Consequence of a DELIBERATE delete (B6). Returns a confirm message when the delete is
+ * consequential — the last row of a date (the day goes blank) or a miss-bearing skip —
+ * else null (delete immediately). Appends a streak-break note when removing the row drops
+ * the current streak.
+ */
+export function describeDeleteConsequence(
+  entries: HabitEntry[],
+  entryId: string,
+  habit: Habit,
+  today: string,
+): string | null {
+  const target = entries.find((e) => e.id === entryId);
+  if (!target) return null;
+  const isLastRowOfDay = entries.filter((e) => e.date === target.date).length === 1;
+  const isMissSkip =
+    target.actual === 0 && target.skipReason !== undefined && target.skipReason !== 'exception';
+  if (!isLastRowOfDay && !isMissSkip) return null;
+
+  const parts: string[] = [];
+  if (isLastRowOfDay) parts.push('이 날의 기록이 비워집니다');
+  else if (isMissSkip) parts.push("이 날의 '놓침' 기록이 지워집니다");
+
+  const before = computeStreak(entries, today, habit);
+  const after = computeStreak(
+    entries.filter((e) => e.id !== entryId),
+    today,
+    habit,
+  );
+  if (after < before) parts.push(`${before}일 스트릭이 끊깁니다`);
+  return parts.join(' · ');
 }
