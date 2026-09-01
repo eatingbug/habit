@@ -5,14 +5,20 @@ class Component extends DCLogic {
     this.max = 13;
   }
   day(offset) {
-    const days = [
-      { d: '7월 8일 (화)', sum: 6, rows: [{ t: '09:40', a: '+6p' }] },
-      { d: '7월 7일 (월)', sum: 10, rows: [{ t: '12:00', a: '+10p' }] },
-      { d: '7월 6일 (일)', sum: 0, rows: [] },
-      { d: '7월 5일 (토)', sum: 4, rows: [{ t: '21:10', a: '+4p' }] },
-      { d: '7월 4일 (금)', sum: 12, rows: [{ t: '08:20', a: '+12p' }] },
+    // 오늘 = 7/8 (화). 앞의 다섯 날만 실제 데이터, 나머지는 기록 없는 날.
+    const seeded = [
+      { sum: 6, rows: [{ t: '09:40', a: '+6p' }] },
+      { sum: 10, rows: [{ t: '12:00', a: '+10p' }] },
+      { sum: 0, rows: [] },
+      { sum: 4, rows: [{ t: '12:00', a: '+4p' }] },
+      { sum: 12, rows: [{ t: '12:00', a: '+12p' }] },
     ];
-    return days[offset] || { d: '6월 ' + (30 - offset) + '일', sum: 0, rows: [] };
+    const names = ['일', '월', '화', '수', '목', '금', '토'];
+    const dayNum = 8 - offset;
+    const label = dayNum >= 1 ? '7월 ' + dayNum + '일' : '6월 ' + (30 + dayNum) + '일';
+    const wd = names[((2 - offset) % 7 + 7) % 7];
+    const info = seeded[offset] || { sum: 0, rows: [] };
+    return { d: label + ' (' + wd + ')', sum: info.sum, rows: info.rows };
   }
   renderVals() {
     const o = this.state.offset;
@@ -20,12 +26,23 @@ class Component extends DCLogic {
     const info = this.day(o);
     const sum = info.sum;
     const pct = Math.min(100, Math.round((sum / floor) * 100));
-    const states = ['done', 'over', 'partial', 'done', 'blank', 'partial', 'done', 'done', 'over', 'blank', 'done', 'partial', 'skip', 'done'];
-    const strip = states.map((s, i) => ({
-      cls: 'cell ' + s,
-      style: i === 13 - o ? 'outline:2px solid var(--accent); outline-offset:1px' : '',
-    }));
-    const stateName = sum === 0 ? '미기록 (unknown) — 미스가 아닙니다' : sum >= floor ? '달성 · 합 ' + sum + 'p' : '부분 · 합 ' + sum + 'p — 미스가 아닙니다';
+    const here = sum === 0 ? (o === 0 ? 'pending' : 'missed') : sum >= floor ? 'done' : 'partial';
+    const states = ['done', 'over', 'partial', 'done', 'missed', 'partial', 'done', 'done', 'over', 'missed', 'done', 'partial', 'skip', 'done'];
+    const strip = states.map((st, i) => {
+      const picked = i === 13 - o;
+      return {
+        cls: 'cell ' + (picked ? here : st),
+        style: picked ? 'outline:2px solid var(--accent); outline-offset:1px' : '',
+      };
+    });
+    const stateName =
+      sum === 0
+        ? o === 0
+          ? '오늘은 아직 안 했어요 — 하루가 안 끝났습니다'
+          : '기록이 없어 실패로 잡힌 날 — 지금 채우면 회복됩니다'
+        : sum >= floor
+        ? '성공 · 모두 ' + sum + '쪽'
+        : '조금 함 · 모두 ' + sum + '쪽 — 실패로 세지 않습니다';
     const feed = info.rows.length
       ? info.rows.map((r) => ({
           t: r.t,
@@ -35,7 +52,16 @@ class Component extends DCLogic {
           r: o === 0 ? '' : '지난 날 기록 · 낮 12시로 남음',
           rcls: 'backnote',
         }))
-      : [{ t: '—', n: '이 날엔 기록이 없어요', a: '기록 없음', acls: 'amt plain', r: '', rcls: 'backnote' }];
+      : [
+          {
+            t: '—',
+            n: o === 0 ? '오늘은 아직 기록이 없어요' : '이 날엔 기록이 없어요',
+            a: o === 0 ? '오늘' : '실패',
+            acls: o === 0 ? 'amt plain' : 'amt warn',
+            r: o === 0 ? '' : '채워 넣으면 이 날이 성공으로 바뀝니다',
+            rcls: 'backnote',
+          },
+        ];
     return {
       strip: strip,
       dateLabel: o === 0 ? '오늘 · ' + info.d : o === 1 ? '어제 · ' + info.d : info.d,

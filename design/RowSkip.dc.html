@@ -14,6 +14,7 @@
   --text:#1B1C20; --muted:#6E7079; --faint:#A2A4AE;
   --accent:#5A63D8; --accent-ink:#4049C4; --accent-weak:rgba(90,99,216,.10);
   --done:#3F9E72; --over:#2C875C; --partial:#C08A2E; --skip:#C25B54; --blank:#ECECF1;
+  --missed:rgba(194,91,84,.16);
   --good:#3F9E72; --warn:#C08A2E; --crit:#C25B54;
   --shadow:0 1px 2px rgba(24,24,48,.05),0 6px 22px rgba(24,24,48,.05);
   --mono:ui-monospace,"SF Mono",SFMono-Regular,"Cascadia Code","Roboto Mono",Menlo,Consolas,monospace;
@@ -27,6 +28,7 @@
     --text:#EBEBEF; --muted:#8C8F9B; --faint:#63666F;
     --accent:#828BF5; --accent-ink:#9AA1F8; --accent-weak:rgba(130,139,245,.14);
     --done:#54B487; --over:#41A472; --partial:#D3A24A; --skip:#D06B63; --blank:#20232B;
+    --missed:rgba(208,107,99,.20);
     --good:#54B487; --warn:#D3A24A; --crit:#D06B63;
     --shadow:0 1px 2px rgba(0,0,0,.32),0 8px 26px rgba(0,0,0,.30);
   }
@@ -37,6 +39,7 @@
   --text:#EBEBEF; --muted:#8C8F9B; --faint:#63666F;
   --accent:#828BF5; --accent-ink:#9AA1F8; --accent-weak:rgba(130,139,245,.14);
   --done:#54B487; --over:#41A472; --partial:#D3A24A; --skip:#D06B63; --blank:#20232B;
+    --missed:rgba(208,107,99,.20);
   --good:#54B487; --warn:#D3A24A; --crit:#D06B63;
   --shadow:0 1px 2px rgba(0,0,0,.32),0 8px 26px rgba(0,0,0,.30);
 }
@@ -93,6 +96,8 @@ h2.sh{font-size:16px; margin:0; letter-spacing:-.01em; font-weight:640}
 .cell.done{background:var(--done)} .cell.over{background:var(--over)}
 .cell.partial{background:var(--partial)} .cell.skip{background:var(--skip)}
 .cell.blank{background:var(--blank); border-color:var(--border)}
+.cell.missed{background:var(--missed); border-color:var(--skip)}
+.cell.pending{background:var(--blank); border-color:var(--border-strong); border-style:dashed}
 .qbottom{display:flex; align-items:center; gap:9px}
 .qbottom .ribbon{margin-right:2px}
 .banner{display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:var(--r);
@@ -177,13 +182,16 @@ h2.sh{font-size:16px; margin:0; letter-spacing:-.01em; font-weight:640}
 .sc-over{background:color-mix(in srgb,var(--over) 18%,transparent); color:var(--over)}
 .sc-partial{background:color-mix(in srgb,var(--partial) 18%,transparent); color:var(--partial)}
 .sc-skip{background:color-mix(in srgb,var(--skip) 16%,transparent); color:var(--skip)}
+.sc-missed{background:var(--missed); color:var(--skip); box-shadow:inset 0 0 0 1px var(--skip)}
 .jrows{font-size:11px; color:var(--muted); font-family:var(--mono)}
 .mirror{display:flex; gap:6px; justify-content:space-between}
 .mcell{flex:1; display:flex; flex-direction:column; align-items:center; gap:5px}
 .mcell .mw{font-family:var(--mono); font-size:9.5px; color:var(--faint)}
 .mcell .mv{width:100%; aspect-ratio:1; border-radius:6px; display:grid; place-items:center; font-family:var(--mono); font-size:10px; color:#fff; font-weight:600}
 .mv.done{background:var(--done)} .mv.over{background:var(--over)} .mv.partial{background:var(--partial)}
-.mv.skip{background:var(--skip)} .mv.blank{background:var(--blank); color:var(--faint); border:1px solid var(--border)}
+.mv.skip{background:var(--skip)}
+.mv.missed{background:var(--missed); color:var(--skip); border:1px solid var(--skip)}
+.mv.pending{background:var(--blank); color:var(--faint); border:1px dashed var(--border-strong)}
 .flag{border:1px solid var(--border); border-left-width:3px; border-radius:var(--r-sm); padding:11px 12px; display:flex; flex-direction:column; gap:6px; background:var(--surface)}
 .flag.crit{border-left-color:var(--crit)} .flag.warn{border-left-color:var(--warn)}
 .flag .fhd{display:flex; align-items:center; gap:8px}
@@ -255,9 +263,9 @@ h2.sh{font-size:16px; margin:0; letter-spacing:-.01em; font-weight:640}
       <span class="qcue">점심 먹고 10쪽</span>
     </div>
     <div class="qbottom">
-      <span class="streak">🔥<span class="num">7</span></span>
+      <span class="streak">🔥<span class="num">3</span></span>
       <span class="ribbon" aria-hidden="true">
-        <span class="cell done"></span><span class="cell partial"></span><span class="cell done"></span><span class="cell blank"></span><span class="cell partial"></span><span class="cell done"></span><span class="cell done"></span><span class="cell partial"></span><span class="cell blank"></span><span class="cell done"></span><span class="cell partial"></span><span class="cell done"></span><span class="cell done"></span><span class="cell blank" style="outline:2px solid var(--accent); outline-offset:1px"></span>
+        <span class="cell done"></span><span class="cell partial"></span><span class="cell done"></span><span class="cell missed"></span><span class="cell partial"></span><span class="cell done"></span><span class="cell done"></span><span class="cell partial"></span><span class="cell missed"></span><span class="cell done"></span><span class="cell partial"></span><span class="cell done"></span><span class="cell done"></span><span class="cell pending" style="outline:2px solid var(--accent); outline-offset:1px"></span>
       </span>
       <button class="btn ghost" type="button">+최소</button>
     </div>
@@ -278,6 +286,7 @@ h2.sh{font-size:16px; margin:0; letter-spacing:-.01em; font-weight:640}
     <div class="drow"><span class="dk">너무 힘듦</span><span class="dv">최소량이 너무 많아요</span></div>
     <div class="drow"><span class="dk">예외</span><span class="dv" style="color:var(--good)">아플 때 같은 날 — 실패로 안 셉니다</span></div>
     <div class="drow"><span class="dk">안 내킴</span><span class="dv">왜 하는지가 아직 안 와닿아요</span></div>
+    <div class="drow"><span class="dk">안 찍음</span><span class="dv">아무것도 안 남기면 그냥 <b>실패</b> — 이유가 안 남습니다</span></div>
   </div>
 
   <div class="toast">

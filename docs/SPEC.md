@@ -25,7 +25,7 @@ the first real implementation of Habiquest.
 - **Stage 2 — Perform → Record:** habit entry logging (count: timestamp + actual;
   yes/no: a single "done" = `actual: 1`). **Multiple entries per (habit, day) are
   allowed** — entries store raw facts only and the day's state
-  `unknown / partial / done / over / skip` is **computed** from the day's summed
+  `pending / missed / partial / done / over / skip` is **computed** from the day's summed
   `actual` (§4.1). **Low-friction logging:** one-tap "+floor" / "✓" from Today *and* the
   Dashboard (B1), smart-default + quick-add chips (B2), collapsed time picker (B3), a
   "yesterday" fast-path (B4), one-tap skip-reason chips (B5), undo-toast for one-tap
@@ -49,8 +49,8 @@ the first real implementation of Habiquest.
 - **Lifecycle (§3.3):** `forming` → `established` → `paused`; demotion path.
 - **All 4 surfaces:** Dashboard, Today, Habit Detail, Reflection.
 - Visual reference: **`mvp/habiquest-linear.html`** (new Linear/Notion adaptive mockup —
-  §6.0 / §6.5), which supersedes `mvp/habiquest-demo_2.html` for **look**; the old demo
-  remains a layout/flow reference only. Replace seeded data with real domain + repository.
+  §6.0 / §6.5). The old dark-gold RPG demo has been deleted; this is now the only
+  mockup. Replace seeded data with real domain + repository.
 
 ### 1.3 Explicitly deferred (named here so they are not forgotten)
 
@@ -239,14 +239,19 @@ interface HabitEntry {
 
 **Day-state (computed, never stored):**
 ```typescript
-type DayState = 'unknown' | 'partial' | 'done' | 'over' | 'skip';
+type DayState = 'pending' | 'missed' | 'partial' | 'done' | 'over' | 'skip';
 ```
 See §4.1 for the `classifyDay` aggregation that produces it.
 
-**Blank = absence of any row** for a `(habitId, date)` → `unknown`, never a miss.
-A day with only skip rows is `skip`; only `skip` with a non-`exception` reason
-counts as a diagnostic miss (CONCEPT §3.2). A day with positive activity below
-floor is `partial` (also not a miss — see §4.1).
+**Absence of any row** for a `(habitId, date)` resolves by date (ADR-0001): it is
+`pending` when `date === today` (the day is still open) and **`missed` — a miss —**
+for any earlier date on or after the habit's `createdAt`. A day with only skip rows
+is `skip`; a `skip` with a non-`exception` reason is also a miss (CONCEPT §3.2).
+A day with positive activity below floor is `partial` (not a miss — see §4.1).
+
+**Backfill repairs a `missed` day.** Because day-state is computed and never stored,
+appending an activity row to a past date reclassifies that day and every derived
+quantity that ran through it — streak, success rate, miss count — recovers with it.
 
 **Yes/No habits** store each "done" as an `actual: 1` activity row and never produce
 `over` — the day resolves to `done` whenever ≥1 activity row exists.
@@ -325,13 +330,17 @@ Day-state is **computed from all of a day's entries**, never stored on a row.
 `classifyEntry`/`RangeError` contract.
 
 ```typescript
-function classifyDay(entries: HabitEntry[], habit: Habit): DayState
+function classifyDay(
+  entries: HabitEntry[], habit: Habit, date: string, today: string
+): DayState
 ```
-`entries` are all rows for one `(habitId, date)`. Algorithm:
+`entries` are all rows for one `(habitId, date)`. The classifier needs `date` and
+`today` to tell an open day from a missed one (ADR-0001). Algorithm:
 
 1. Partition into **activity rows** (`actual > 0`, no `skipReason`) and **skip rows**
    (`actual: 0`, `skipReason` present).
-2. If there are **no rows** → `'unknown'`.
+2. If there are **no rows** → `'pending'` when `date === today`, else `'missed'`.
+   (Dates before `habit.createdAt` are not classified at all.)
 3. If there is **≥1 activity row**, compute `sum = Σ actual` (the aggregation
    function is always **SUM** in V1 — see note) and classify by the sum; skip rows
    are ignored ("positive activity overrides skip"). Classify `done` first, then
@@ -364,18 +373,21 @@ share the noon timestamp (§6.3 gives them strictly increasing sub-noon offsets,
 > floor check means a positive-but-sub-floor day can now exist. It is classified
 > `partial`, whose engine effects are **exactly these three, and no others**:
 > (1) earns **0 XP** (floor not met; §4.2); (2) is **transparent** to the streak and
-> to never-miss-twice — it never breaks a streak and never counts as a miss (§4.3);
+> to never-miss-twice — it never breaks a streak and never counts as a miss (§4.3),
+> which now makes it strictly better than leaving the day unrecorded;
 > (3) **lowers `floorCompletionRate`** as an intended non-completion so the "floor too
 > high" diagnosis can fire (§4.4, Rule 1). Heatmap renders it with a distinct shade.
 >
 > **Scoped fairness rule.** Honestly logging a shortfall (`partial`) must never leave
-> the user worse off than logging nothing (`unknown`) **for XP, streak, or
-> miss-count** — and it is not, on any of the three. It *does* intentionally lower
+> the user worse off than logging nothing (`missed`) **for XP, streak, or
+> miss-count** — and it is not, on any of the three. Since ADR-0001 made an unrecorded
+> day a miss, `partial` is now *strictly* better than silence on streak and miss-count,
+> not merely no worse. It *does* intentionally lower
 > `floorCompletionRate` (effect 3); that lowering is the helpful "your floor may be
 > too high" signal, not a penalty, so it must **not** leak into surfaces where a lower
 > rate *hurts* the user (Established→Forming demotion, caution light) — see §4.4 /
 > §4.6 / §4.7 for the split. On top of this "never worse" floor, `engagementStreak`
-> (§4.3) makes a `partial` day *strictly better* than a blank one — reinforcing
+> (§4.3) makes a `partial` day *strictly better* than an unrecorded one — reinforcing
 > showing up without granting XP.
 
 > **SUM-only (V1 scope).** Day aggregation is always the sum of `actual`. This fits
@@ -384,10 +396,14 @@ share the noon timestamp (§6.3 gives them strictly increasing sub-noon offsets,
 > the current floor/target comparison only supports `sum >= target`.
 
 ```typescript
-function isMissDay(state: DayState): boolean
+function isMissDay(state: DayState, entries: HabitEntry[]): boolean
 ```
-- `'unknown'` (blank) → `false`; `'partial'` → `false`; `'done'`/`'over'` → `false`
+- `'missed'` → **`true`** (a miss with no reason — ADR-0001)
+- `'pending'` → `false`; `'partial'` → `false`; `'done'`/`'over'` → `false`
 - `'skip'` → `true` **only when** `effectiveSkipReason !== 'exception'`
+
+A `missed` day is a miss for the **streak, the miss count and the success rate**, but
+it attributes **no component** — only a reasoned `skip` does that (§4.4 Rule 5).
 
 **Yes/No** habits: any activity row (`actual: 1`) makes the day `'done'`; multiple
 "done" rows are idempotent (the day is still `done`, XP awarded once — §4.2).
@@ -404,7 +420,7 @@ function computeStatLevel(entries: HabitEntry[], habit: Habit): number
 // C1 — what THIS log just unlocked, for immediate log-time feedback (§6.2)
 type LogEffect = {
   xpGained:          number;
-  floorCrossedToday: boolean;   // day went unknown/partial → done
+  floorCrossedToday: boolean;   // day went pending/missed/partial → done
   pushedToOver:      boolean;
   statLevelUp:       boolean;
   streakMilestoneHit?: number;  // milestone reached (incl. decayed re-achievement)
@@ -425,15 +441,18 @@ not individual rows.
   and once-only `TUNING.xpStreakBonus` milestones (keyed on the longest run).
   **Binary** habits add `milestoneBonusXP` instead. A `partial` day earns **no**
   floor-completion XP (floor not met) and contributes no intensity.
-- **`milestoneBonusXP`** (binary) — walks runs of `done` days (blank, `partial`, &
-  exception-skip days transparent; a non-exception miss resets the run). Each
+- **`milestoneBonusXP`** (binary) — walks runs of `done` days (`pending`, `partial` &
+  exception-skip days transparent; a `missed` day or a non-exception `skip` resets the
+  run — ADR-0001; backfilling the missed day restores it). Each
   milestone in `TUNING.binaryStreakMilestones` fires once per run that reaches it;
   the k-th time a milestone is reached awards `base × TUNING.binaryMilestoneDecay^(k-1)`
   (rounded; dropped below `TUNING.milestoneBonusEpsilon`). A pure function of the
   entries — idempotent; binary XP for any day is awarded at most once.
 - **Streak** = consecutive days whose day-state is `done`/`over`, working backward
-  from `today`. `blank`, `partial`, and exception-skip days are **transparent**
-  (neither extend nor break the streak); a non-exception `skip` day breaks it.
+  from `today`. `pending`, `partial`, and exception-skip days are **transparent**
+  (neither extend nor break the streak); a `missed` day **and** a non-exception `skip`
+  day break it (ADR-0001). Backfilling a `missed` day re-joins the runs on either side
+  of it — the streak is recomputed, never stored, so recovery is automatic.
 - **`levelForXP`** = highest index in `TUNING.statLevelThresholds` whose threshold
   ≤ the XP.
 - **Stat level** = `levelForXP(computeXP(entries, habit))` — cumulative XP drives
@@ -456,16 +475,16 @@ function atRiskToday(entries: HabitEntry[], today: string): boolean          // 
 function engagementStreak(entries: HabitEntry[], today: string): number      // C3
 function showedUpDays(entries: HabitEntry[], window: number): number         // C3 (cumulative)
 ```
-Counts consecutive **miss days** (a `skip` day whose effective reason is
-non-`exception`) working backward from `asOfDate`. `done`/`over`/`blank`/`partial`
-and exception-skip days do **not** increment the count — a `partial` day, like a
-blank, never registers as a miss. `needsNeverMissTwiceIntervention` returns `true`
+Counts consecutive **miss days** — a `missed` day, or a `skip` day whose effective
+reason is non-`exception` — working backward from `asOfDate`. `done`/`over`/`pending`/
+`partial` and exception-skip days do **not** increment the count; a `partial` day never
+registers as a miss, while an unrecorded past day now does (ADR-0001). `needsNeverMissTwiceIntervention` returns `true`
 when the count reaches `TUNING.statusLight.interventionConsecMiss`. The UI reads
 this to show the 🔴 status light and the "don't miss twice" nudge.
 
 - **`atRiskToday` (C2) — the proactive save.** Returns `true` when the most recent
-  *resolved* day (`today − 1`) is a non-exception miss (or a streak just broke) **and**
-  today is still `unknown`/`partial`. This is the open save window — *before* the second
+  *resolved* day (`today − 1`) is a non-exception miss — including an unrecorded
+  `missed` day — or a streak just broke, **and** today is still `pending`/`partial`. This is the open save window — *before* the second
   miss completes — that `needsNeverMissTwiceIntervention` (which fires only *after* two
   misses) misses. When `true`, Today shows an amber, opportunity-framed save banner
   ("어제 놓쳤어요 — 오늘 최소 한 번이면 이어갈 수 있어요") wired to the B1 one-tap floor log
@@ -474,8 +493,8 @@ this to show the 🔴 status light and the "don't miss twice" nudge.
 - **`engagementStreak` / `showedUpDays` (C3) — reward showing up, not XP.** Consecutive
   (and cumulative-in-window) days with **any real engagement** — `done`/`over`/**`partial`**
   — distinct from the floor-`computeStreak` (which counts `done`/`over` only). This makes a
-  `partial` day **strictly better than blank** (satisfying the scoped fairness rule §3.2,
-  which forbids only *worse*) **without granting XP** — `partial` stays 0 XP (§4.2).
+  `partial` day **strictly better than an unrecorded one** (satisfying the scoped fairness
+  rule §3.2) **without granting XP** — `partial` stays 0 XP (§4.2).
   Foregrounded in Forming (Habit Detail §6.3; the C1 log acknowledgment reads
   "나타남 · 7일째"), because in formation the decisive quantity is repetitions-in-context
   (Lally: early reps move the automaticity curve most), not perfect floor days.
@@ -489,31 +508,42 @@ function diagnose(habit: Habit, entries: HabitEntry[], asOfDate: string): Diagno
 Runs all four rules in order; returns an array of `DiagnosisFlag` (may be empty).
 All rules read **day-states** (§4.1), not rows.
 
-**`floorCompletionRate(entries, window)`** = `done`/`over` days ÷ "engaged" days,
-where engaged days = `done` + `over` + `partial` + non-exception `skip` days within
-the window. `blank` (unknown) and exception-skip days are excluded from both. A
-`partial` day therefore lowers the rate (it is a non-completion the user attempted)
-without being a miss — this is what lets Rule 1 fire when the floor is chronically
-out of reach.
+**Two rates, deliberately different (ADR-0001).**
+
+- **`successRate(entries, window)`** — the number the **user** sees ("성공률") =
+  `done`/`over` days ÷ (`done` + `over` + `partial` + non-exception `skip` +
+  **`missed`**) within the window. `pending` and exception-skip days are excluded.
+  An unrecorded day lowers it, and backfilling that day raises it back.
+- **`floorCompletionRate(entries, window)`** — the number the **diagnosis** reads =
+  `done`/`over` days ÷ "engaged" days, where engaged days = `done` + `over` +
+  `partial` + non-exception `skip`. `pending`, exception-skip **and `missed`** days are
+  excluded from both sides.
+
+The split is the point. Rule 1 asks *"when you tried, could you reach the floor?"* — a
+`missed` day says nothing about the floor, so letting it into that denominator would
+make forgotten logging read as "your floor is too high," which is the false signal the
+old blank-exclusion rule existed to prevent. A `partial` day still lowers both rates
+(it is a non-completion the user attempted) without being a miss — this is what lets
+Rule 1 fire when the floor is chronically out of reach.
 
 > **Minimum-sample guard (avoids n=1 false positives).** The rate reports a
 > "not-enough-data" state (treated as healthy — no flag) until the window holds at
 > least `TUNING.diagnosis.minEngagedDaysForRate` (default 5) engaged days. Without it,
 > a single honest `partial` gives `0/1 = 0%` and would trip Rule 1 (28-day) and
-> Rule 4 (14-day) off one data point — flagging an honest early logger while a blank
-> day (excluded, rate healthy) is never flagged. Rules 1 and 4 do not fire below the
-> guard.
+> Rule 4 (14-day) off one data point — flagging an honest early logger while a `missed`
+> day (excluded from this rate, §4.4) is never flagged. Rules 1 and 4 do not fire below
+> the guard.
 
 > **Rate role split (upholds the scoped fairness rule, §3.2/§4.1).** `partial` lowers
 > this rate deliberately. That is *helpful* where a low rate prompts a fix — Rule 1's
 > "lower your floor," and the 🟡 caution light it raises, are intended **opportunities**
 > (§7.4), not penalties. But where a low rate would instead **cost** the user status —
 > the Established→Forming demotion (§4.7) — that consumer must use a **partial-excluded**
-> rate (engaged days = `done` + `over` + non-exception `skip`; `partial` in neither
-> numerator nor denominator), so an honest partial-logger is never *evicted from
-> Established* (principle 11) while a silent blank-logger is not. Property to hold
-> (§7.3): converting any day `blank → partial` must never worsen a **demotion** or a
-> **🔴 intervention** outcome (a 🟡 caution is allowed — it is help, not harm).
+> rate (engaged days = `done` + `over` + non-exception `skip` + `missed`; `partial` in
+> neither numerator nor denominator), so an honest partial-logger is never *evicted from
+> Established* (principle 11) while a silent non-logger is. Property to hold (§7.3):
+> converting any day `missed → partial` (or `→ done`) must never worsen **any** outcome —
+> streak, success rate, miss count, demotion or 🔴 intervention. Backfill is pure repair.
 
 **Rule 1 — Floor too high**
 ```
@@ -657,7 +687,7 @@ Transitions:
   (§4.4 — `partial` in neither numerator nor denominator) falls below threshold for the
   same window. The partial-excluded rate is **required** by the scoped fairness rule
   (§3.2): an honest `partial`-logger must not be evicted from Established (principle 11)
-  when a silent blank-logger would not be.
+  when a silent non-logger would not be.
 - `* → paused`: explicit user action only (not triggered automatically).
 - `paused → forming/established`: explicit resume action only.
 
@@ -731,9 +761,8 @@ that costs nothing; corrections are edit/delete of a specific row, §6.2).
 ### 6.0 Visual language — adaptive, minimal (Linear / Notion)
 
 The visual language is a **clean, minimal, typographic system in the Linear/Notion
-family** — *not* the dark-gold RPG treatment of `mvp/habiquest-demo_2.html` (that file is
-now a **layout/flow reference only**; the new mockup `mvp/habiquest-linear.html` (§6.5)
-supersedes its look). Principles:
+family** — *not* a dark-gold RPG treatment. `mvp/habiquest-linear.html` (§6.5) is the
+single visual source of truth; the earlier RPG demo has been deleted. Principles:
 
 - **Adaptive light + dark.** One token set, both themes first-class (follow the OS
   setting; a manual toggle is optional). Neither theme is an afterthought.
@@ -750,8 +779,9 @@ supersedes its look). Principles:
   - *Color:* a neutral scale (bg / surface / border / text-primary / text-muted), one
     **accent** (interactive/brand), and **semantic** hues for day-states and lights
     (`done` / `over` / `partial` / `skip` / `caution` / `intervention` / `positive`) —
-    muted, and distinct in **both** themes (the heatmap must keep blank ≠ partial ≠ skip
-    legible in light *and* dark).
+    muted, and distinct in **both** themes (the heatmap must keep pending ≠ missed ≠
+    partial ≠ skip legible in light *and* dark; `missed` and `skip` share the miss hue
+    and are told apart by outline vs. fill).
   - *Type:* a system / Inter-like sans; a small modular scale (≈ 12 / 14 / 16 / 20 / 28);
     tabular numerals for counts and XP.
   - *Space & shape:* an 8px spacing rhythm; small radii (6–10px); hairline borders.
@@ -765,8 +795,9 @@ restrained language; §6.5 links the reference mockup.
 ### 6.1 Dashboard (`app/index.tsx` or `app/(tabs)/dashboard.tsx`)
 - Stat cards: level (from cumulative XP), XP bar, "to next level" label.
 - Quest Log: per-habit row with name, stat tag, cue summary, streak, 20-day heatmap
-  (each cell a computed day-state — `unknown`/`partial`/`done`/`over`/`skip` — with
-  `partial` rendered distinctly from blank), **status light** (🟢 / 🟡 / 🔴).
+  (each cell a computed day-state — `pending`/`missed`/`partial`/`done`/`over`/`skip`;
+  `pending` neutral, `missed` the miss color as an **outline**, `skip` the miss color
+  **filled**, `partial` its own shade), **status light** (🟢 / 🟡 / 🔴).
   - **One-tap log on the row (B1).** A primary log affordance so the highest-frequency
     action is the cheapest, right where the user lands: binary → a "✓" appending
     `actual: 1` for today; count → a **"+floor"** appending one `actual = floor` activity
@@ -787,8 +818,8 @@ restrained language; §6.5 links the reference mockup.
     §6.3). A non-today entry is a **backfill** and follows the §6.3 rules (noon-based
     timestamp, append-only). This makes Today the single logging surface for the two
     dominant cases — today, and "did it last night, forgot to log" — so forgotten days
-    are recovered where the thought occurs and `unknown` days (and lost misses) stop
-    piling up. Older gaps still use Habit-Detail backfill.
+    are recovered where the thought occurs and `missed` days stop accumulating —
+    under ADR-0001 an unfilled day is a broken streak, so this is the repair path. Older gaps still use Habit-Detail backfill.
   - Target selector: "Free log" or one of the user's habits.
   - Free log path: type chips (Note / Win / Mood / Idea) + optional note.
   - **Habit path (count):**
@@ -832,7 +863,7 @@ restrained language; §6.5 links the reference mockup.
     (undo = re-log; append-only keeps this low-stakes). The one guarded case is deleting
     the **last remaining row of a date** or a **miss-bearing skip**: show a
     **consequence-aware** confirm ("이 날이 비워지고 N일 스트릭이 끊깁니다") — that reverts
-    the day to `unknown` and can silently break a streak or erase a recorded miss. There
+    the day to `missed` — a miss — and can break a streak or erase a recorded miss. There
     is no "clear whole day" action.
   - *(This revises the earlier blanket "native Alert on every delete, no undo-toast"
     rule — scoped now: undo-toast for the new frequent one-tap creates, a
@@ -878,9 +909,10 @@ restrained language; §6.5 links the reference mockup.
 ### 6.4 Reflection (`app/reflect/[id].tsx`)
 - Entry point: tap a 🔴 or 🟡 status light on the Dashboard.
 - **Mirror:** 7-day heatmap grid showing this week's **day-states**
-  (`unknown` / `partial` / `done` / `over` / `skip`), each visually distinct so the
-  user can tell "didn't log (unknown)" from "logged but fell short (partial)" from
-  "skipped (miss)" — plus any journal notes.
+  (`pending` / `missed` / `partial` / `done` / `over` / `skip`), each visually distinct so
+  the user can tell "never logged it (missed — a miss, no reason)" from "logged but fell
+  short (partial — not a miss)" from "marked not-done (skip — a miss, reason known)" from
+  "today, still open (pending)" — plus any journal notes.
 - **Diagnosis flags:** pre-computed, rule-based cards. Each shows:
   - Component (CUE / FLOOR / IDENTITY / LOAD), severity badge.
   - Human-readable message.
@@ -915,14 +947,14 @@ File: `src/domain/**/*.test.ts`
 
 | Test suite | Cases to cover |
 |---|---|
-| `classify.test.ts` | `classifyDay`: no rows → unknown; sum ≥ floor → done; sum ≥ target → over; `0 < sum < floor` → partial; only-skip → skip; **`done` precedes `over` and `over ⇒ done`; defensive `target <= floor` (and any binary target) → not `over`**; activity row overrides skip rows on the same day; `effectiveSkipReason` = latest skip **under the `(timestamp ASC, id ASC)` total order (equal-timestamp determinism; permutation-invariant)**; `isMissDay` (skip non-exception → miss; partial/blank/exception → not a miss); yes/no multiple "done" rows idempotent |
-| `score.test.ts` | count XP on day-sums (base + target bonus + above-floor intensity + streak milestone); partial day earns 0 floor XP; binary XP (base + decaying milestones, **once per day** for multiple done rows); `milestoneBonusXP` decay / blank-forgiven / break-rebuild / idempotent; `levelForXP` boundaries; stat level = XP threshold lookup; **`describeLogEffect` delta: floor-crossed / pushed-to-over / level-up / milestone / `showedUp` on partial / `savedAtRiskDay`** |
-| `streak.test.ts` | 0, 1, 2 consecutive misses; blank **and partial** days do not break streak; exception skip does not count; **`engagementStreak` counts done/over/partial (⊇ `computeStreak`); `atRiskToday` true iff `today−1` miss/break AND today unknown/partial; `showedUpDays`** |
+| `classify.test.ts` | `classifyDay`: no rows → `pending` when the date is today, `missed` when it is past (ADR-0001); sum ≥ floor → done; sum ≥ target → over; `0 < sum < floor` → partial; only-skip → skip; **`done` precedes `over` and `over ⇒ done`; defensive `target <= floor` (and any binary target) → not `over`**; activity row overrides skip rows on the same day; `effectiveSkipReason` = latest skip **under the `(timestamp ASC, id ASC)` total order (equal-timestamp determinism; permutation-invariant)**; `isMissDay` (`missed` → miss; skip non-exception → miss; partial/pending/exception → not a miss); backfilling a `missed` date reclassifies it and clears the miss; yes/no multiple "done" rows idempotent |
+| `score.test.ts` | count XP on day-sums (base + target bonus + above-floor intensity + streak milestone); partial day earns 0 floor XP; binary XP (base + decaying milestones, **once per day** for multiple done rows); `milestoneBonusXP` decay / `missed`-resets-run (and backfill restores it) / break-rebuild / idempotent; `levelForXP` boundaries; stat level = XP threshold lookup; **`describeLogEffect` delta: floor-crossed / pushed-to-over / level-up / milestone / `showedUp` on partial / `savedAtRiskDay`** |
+| `streak.test.ts` | 0, 1, 2 consecutive misses; **`missed` days break the streak and backfilling one re-joins the runs on either side**; `partial` and `pending` days do not break streak; exception skip does not count; **`engagementStreak` counts done/over/partial (⊇ `computeStreak`); `atRiskToday` true iff `today−1` miss/break AND today pending/partial; `showedUpDays`** |
 | `diagnose.test.ts` | each of the 4 rules fires on exact threshold; rules below threshold do not fire; Rule 3 suppressed for binary; **Rule 5 skip-reason attribution (cue/floor/identity thresholds; exception never counted; component dedup keeps higher severity)**; **min-sample guard: Rules 1 & 4 silent below `minEngagedDaysForRate`**; empty flags for healthy habit |
 | `recommend.test.ts` | priority order — critical cue > critical identity > floor warning > cue warning > stagnation; keep on empty flags |
 | `statusLight.test.ts` | Forming 🔴 at consecutive-miss threshold; **Established 🔴 on decline ONLY with latest week ≤ target (decline floor-guard); decline from a peak (all > target) → not 🔴**; 🟡 on one flag; **lifecycle-aware `personal_best` (Established = intensity best; Forming = consistency/streak best)**; `weeklyActualTotals` shape; stable on healthy |
-| `lifecycle.test.ts` | Forming→Established at threshold; **demotion uses the partial-excluded rate (blank→partial never demotes)**; Paused only on explicit action |
-| `heatLevel.test.ts` | binary done → full cell (4); non-exception skip → miss; exception / blank → neutral; **partial → distinct sub-floor shade (≠ blank, ≠ miss)**; count above-floor ramp regression |
+| `lifecycle.test.ts` | Forming→Established at threshold; **demotion uses the partial-excluded rate incl. `missed` (`missed`→partial never demotes)**; Paused only on explicit action |
+| `heatLevel.test.ts` | binary done → full cell (4); non-exception skip → miss (filled); **`missed` → miss (outline), visually distinct from both `skip` and `pending`**; exception / `pending` → neutral; **partial → distinct sub-floor shade**; count above-floor ramp regression |
 
 All tests must pass with `npm test` (Expo / Jest preset). The loop proof
 (`src/__tests__/loop.test.ts`) additionally covers a binary habit end-to-end
@@ -945,7 +977,7 @@ Perform on web (`npx expo start --web`) then on a native simulator:
 4. **Tap the 🔴** → navigate to Reflection for that habit.
 5. **Verify diagnosis:** Rule 4 fires ("No cue set …") with evidence text visible;
    suggested action is `fill_cue`, pre-selected. The mirror renders the distinct
-   day-states (today `done`, the two skip days as misses, other days blank).
+   day-states (today `done`, the two skip days as misses, the unlogged past days `missed`).
 6. **Commit:** enter a cue ("After morning coffee"), keep action as `fill_cue`.
 7. **Verify** the habit's `cue` field in the repository is updated (check Habit
    Detail → Design box shows the new cue).
@@ -955,7 +987,7 @@ Perform on web (`npx expo start --web`) then on a native simulator:
 
 **Partial check (optional).** Create a count habit with floor=5. Log two entries
 one day (actual=2, then actual=1 → sum 3). Verify the day renders as **`partial`**
-(a shade distinct from blank and from a skip), the streak is unaffected, and it is
+(a shade distinct from `missed` and from a `skip`), the streak is unaffected, and it is
 **not** counted as a miss — but it lowers the 28-day floor-completion rate.
 
 **Yes/No variant.** Create a yes/no habit (the floor / unit / target fields are
@@ -980,21 +1012,23 @@ must hold for any entry set). Volume/performance is **not** a V1 criterion
 | positive but sub-floor | `actual: 2`, `actual: 1` | `partial`, sum 3 |
 | morning skip, evening done | `skip(cue)`, `actual: 5` | `done` (activity overrides skip) |
 | only skips, mixed reasons | `skip(cue)@09:00`, `skip(floor)@21:00` | `skip`, effective reason `floor` (latest) |
-| no rows | — | `unknown` |
+| no rows, date is today | — | `pending` |
+| no rows, date is past | — | `missed` (a miss) |
+| backfill a row onto a `missed` date | (was 0 rows) | day → `partial`/`done`/`over`; streak and rates recover |
 | binary, multiple dones | `actual: 1`, `actual: 1` | `done`; XP awarded once |
-| delete last row of a date | (was `done`, now 0 rows) | day → `unknown` |
+| delete last row of a past date | (was `done`, now 0 rows) | day → `missed` (a miss) |
 | corrupt `target <= floor` (defensive) | `floor 5, target 3`, `actual: 4` | `partial` (target ignored; sum 4 < floor, **not** `over`) |
 | same-noon backfilled skips | `skip(cue)@T12:00:00`, `skip(floor)@T12:00:01` | `skip`, effective reason `floor` (total order `timestamp ASC, id ASC`) |
 | below min-sample | 1 engaged day, `partial` | Rule 1 / Rule 4 **do not** fire ("gathering data") |
 | engagement vs floor streak | 10 straight `partial` days | `engagementStreak` = 10, `computeStreak` = 0, XP unchanged (partial = 0) |
-| at-risk save window | `today−1` = miss, today = blank | `atRiskToday` = true; a floor log today sets `describeLogEffect.savedAtRiskDay` |
+| at-risk save window | `today−1` = miss (incl. `missed`), today = `pending` | `atRiskToday` = true; a floor log today sets `describeLogEffect.savedAtRiskDay` |
 | decline from peak (guarded) | Established, weekly totals `12,11,10,9`, target 8 | **no 🔴** (all > target — decline floor-guard, C5) |
 | decline toward floor | Established, weekly totals `9,8,7,6`, target 8 | 🔴 intervention (latest ≤ target) |
 | skip-reason threshold (Rule 5) | 2 `cue` skips in 28d | cue-component warning fires |
 
 **Invariants:**
 - A day with **≥1 activity row (`actual > 0`)** never classifies as `skip`.
-- A `partial` or `unknown` day is **never** a miss (never breaks streak / never
+- A `partial` or `pending` day is **never** a miss (never breaks streak / never
   increments `consecutiveMissCount`).
 - **Engagement ⊇ floor.** `engagementStreak` counts `done`/`over`/`partial`;
   `computeStreak` counts `done`/`over` only — so `engagementStreak >= computeStreak`
@@ -1002,7 +1036,7 @@ must hold for any entry set). Volume/performance is **not** a V1 criterion
 - **`over ⇒ done`** — an `over` day always met the floor. A **binary** habit has
   `floor === 1` and no `target`, so its summed `actual: 1` rows can never emit `over`.
 - Binary XP for any single day is awarded **at most once**, regardless of row count.
-- **Scoped fairness (property).** Converting any single day `blank → partial` never
+- **Scoped fairness (property).** Converting any single day `missed → partial` never
   worsens a lifecycle **demotion** (§4.7) or a **🔴 intervention** (§4.6) outcome (a
   🟡 caution may appear — it is an opportunity, not harm; §7.4).
 - **Total order.** A day's rows are ordered by `(timestamp ASC, then id ASC)`;

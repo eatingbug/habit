@@ -14,6 +14,7 @@
   --text:#1B1C20; --muted:#6E7079; --faint:#A2A4AE;
   --accent:#5A63D8; --accent-ink:#4049C4; --accent-weak:rgba(90,99,216,.10);
   --done:#3F9E72; --over:#2C875C; --partial:#C08A2E; --skip:#C25B54; --blank:#ECECF1;
+  --missed:rgba(194,91,84,.16);
   --good:#3F9E72; --warn:#C08A2E; --crit:#C25B54;
   --shadow:0 1px 2px rgba(24,24,48,.05),0 6px 22px rgba(24,24,48,.05);
   --mono:ui-monospace,"SF Mono",SFMono-Regular,"Cascadia Code","Roboto Mono",Menlo,Consolas,monospace;
@@ -27,6 +28,7 @@
     --text:#EBEBEF; --muted:#8C8F9B; --faint:#63666F;
     --accent:#828BF5; --accent-ink:#9AA1F8; --accent-weak:rgba(130,139,245,.14);
     --done:#54B487; --over:#41A472; --partial:#D3A24A; --skip:#D06B63; --blank:#20232B;
+    --missed:rgba(208,107,99,.20);
     --good:#54B487; --warn:#D3A24A; --crit:#D06B63;
     --shadow:0 1px 2px rgba(0,0,0,.32),0 8px 26px rgba(0,0,0,.30);
   }
@@ -37,6 +39,7 @@
   --text:#EBEBEF; --muted:#8C8F9B; --faint:#63666F;
   --accent:#828BF5; --accent-ink:#9AA1F8; --accent-weak:rgba(130,139,245,.14);
   --done:#54B487; --over:#41A472; --partial:#D3A24A; --skip:#D06B63; --blank:#20232B;
+    --missed:rgba(208,107,99,.20);
   --good:#54B487; --warn:#D3A24A; --crit:#D06B63;
   --shadow:0 1px 2px rgba(0,0,0,.32),0 8px 26px rgba(0,0,0,.30);
 }
@@ -93,6 +96,8 @@ h2.sh{font-size:16px; margin:0; letter-spacing:-.01em; font-weight:640}
 .cell.done{background:var(--done)} .cell.over{background:var(--over)}
 .cell.partial{background:var(--partial)} .cell.skip{background:var(--skip)}
 .cell.blank{background:var(--blank); border-color:var(--border)}
+.cell.missed{background:var(--missed); border-color:var(--skip)}
+.cell.pending{background:var(--blank); border-color:var(--border-strong); border-style:dashed}
 .qbottom{display:flex; align-items:center; gap:9px}
 .qbottom .ribbon{margin-right:2px}
 .banner{display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:var(--r);
@@ -177,13 +182,16 @@ h2.sh{font-size:16px; margin:0; letter-spacing:-.01em; font-weight:640}
 .sc-over{background:color-mix(in srgb,var(--over) 18%,transparent); color:var(--over)}
 .sc-partial{background:color-mix(in srgb,var(--partial) 18%,transparent); color:var(--partial)}
 .sc-skip{background:color-mix(in srgb,var(--skip) 16%,transparent); color:var(--skip)}
+.sc-missed{background:var(--missed); color:var(--skip); box-shadow:inset 0 0 0 1px var(--skip)}
 .jrows{font-size:11px; color:var(--muted); font-family:var(--mono)}
 .mirror{display:flex; gap:6px; justify-content:space-between}
 .mcell{flex:1; display:flex; flex-direction:column; align-items:center; gap:5px}
 .mcell .mw{font-family:var(--mono); font-size:9.5px; color:var(--faint)}
 .mcell .mv{width:100%; aspect-ratio:1; border-radius:6px; display:grid; place-items:center; font-family:var(--mono); font-size:10px; color:#fff; font-weight:600}
 .mv.done{background:var(--done)} .mv.over{background:var(--over)} .mv.partial{background:var(--partial)}
-.mv.skip{background:var(--skip)} .mv.blank{background:var(--blank); color:var(--faint); border:1px solid var(--border)}
+.mv.skip{background:var(--skip)}
+.mv.missed{background:var(--missed); color:var(--skip); border:1px solid var(--skip)}
+.mv.pending{background:var(--blank); color:var(--faint); border:1px dashed var(--border-strong)}
 .flag{border:1px solid var(--border); border-left-width:3px; border-radius:var(--r-sm); padding:11px 12px; display:flex; flex-direction:column; gap:6px; background:var(--surface)}
 .flag.crit{border-left-color:var(--crit)} .flag.warn{border-left-color:var(--warn)}
 .flag .fhd{display:flex; align-items:center; gap:8px}
@@ -249,7 +257,7 @@ h2.sh{font-size:16px; margin:0; letter-spacing:-.01em; font-weight:640}
     <span class="chip">독서 · 지능</span>
   </div>
 
-  <p class="hint" style="margin:0">해 놓고 기록만 깜빡한 날이 있죠. 그런 날은 <b style="color:var(--text)">실패로 세지 않습니다.</b> 여기서 바로 채워 넣으면 됩니다.</p>
+  <p class="hint" style="margin:0">기록이 없는 지난 날은 <b style="color:var(--text)">실패로 잡힙니다.</b> 대신 지금 채워 넣으면 그 날이 성공으로 <b style="color:var(--done)">회복되고, 끊겼던 연속도 다시 이어집니다.</b></p>
 
   <div class="composer">
     <div class="rowline">
@@ -309,7 +317,7 @@ h2.sh{font-size:16px; margin:0; letter-spacing:-.01em; font-weight:640}
 
   <sc-if value="{{ isBackfill }}" hint-placeholder-val="{{ true }}">
     <div class="banner" style="background:var(--accent-weak); border-color:color-mix(in srgb,var(--accent) 34%,transparent)">
-      <span class="bx" style="color:var(--muted)"><b style="color:var(--accent-ink)">지난 날 기록</b> — 시각은 그날 <span class="num">낮 12시</span>로 남습니다. 원래 있던 기록을 지우지 않고 <b style="color:var(--text)">옆에 더해집니다.</b></span>
+      <span class="bx" style="color:var(--muted)"><b style="color:var(--accent-ink)">지난 날 기록</b> — 시각은 그날 <span class="num">낮 12시</span>로 남습니다. 원래 있던 기록을 지우지 않고 <b style="color:var(--text)">옆에 더해집니다.</b> 실패로 잡혀 있던 날이면 성공으로 바뀌고, 연속 날수가 다시 계산됩니다.</span>
     </div>
   </sc-if>
 
@@ -343,14 +351,20 @@ class Component extends DCLogic {
     this.max = 13;
   }
   day(offset) {
-    const days = [
-      { d: '7월 8일 (화)', sum: 6, rows: [{ t: '09:40', a: '+6p' }] },
-      { d: '7월 7일 (월)', sum: 10, rows: [{ t: '12:00', a: '+10p' }] },
-      { d: '7월 6일 (일)', sum: 0, rows: [] },
-      { d: '7월 5일 (토)', sum: 4, rows: [{ t: '21:10', a: '+4p' }] },
-      { d: '7월 4일 (금)', sum: 12, rows: [{ t: '08:20', a: '+12p' }] },
+    // 오늘 = 7/8 (화). 앞의 다섯 날만 실제 데이터, 나머지는 기록 없는 날.
+    const seeded = [
+      { sum: 6, rows: [{ t: '09:40', a: '+6p' }] },
+      { sum: 10, rows: [{ t: '12:00', a: '+10p' }] },
+      { sum: 0, rows: [] },
+      { sum: 4, rows: [{ t: '12:00', a: '+4p' }] },
+      { sum: 12, rows: [{ t: '12:00', a: '+12p' }] },
     ];
-    return days[offset] || { d: '6월 ' + (30 - offset) + '일', sum: 0, rows: [] };
+    const names = ['일', '월', '화', '수', '목', '금', '토'];
+    const dayNum = 8 - offset;
+    const label = dayNum >= 1 ? '7월 ' + dayNum + '일' : '6월 ' + (30 + dayNum) + '일';
+    const wd = names[((2 - offset) % 7 + 7) % 7];
+    const info = seeded[offset] || { sum: 0, rows: [] };
+    return { d: label + ' (' + wd + ')', sum: info.sum, rows: info.rows };
   }
   renderVals() {
     const o = this.state.offset;
@@ -358,12 +372,23 @@ class Component extends DCLogic {
     const info = this.day(o);
     const sum = info.sum;
     const pct = Math.min(100, Math.round((sum / floor) * 100));
-    const states = ['done', 'over', 'partial', 'done', 'blank', 'partial', 'done', 'done', 'over', 'blank', 'done', 'partial', 'skip', 'done'];
-    const strip = states.map((s, i) => ({
-      cls: 'cell ' + s,
-      style: i === 13 - o ? 'outline:2px solid var(--accent); outline-offset:1px' : '',
-    }));
-    const stateName = sum === 0 ? '미기록 (unknown) — 미스가 아닙니다' : sum >= floor ? '달성 · 합 ' + sum + 'p' : '부분 · 합 ' + sum + 'p — 미스가 아닙니다';
+    const here = sum === 0 ? (o === 0 ? 'pending' : 'missed') : sum >= floor ? 'done' : 'partial';
+    const states = ['done', 'over', 'partial', 'done', 'missed', 'partial', 'done', 'done', 'over', 'missed', 'done', 'partial', 'skip', 'done'];
+    const strip = states.map((st, i) => {
+      const picked = i === 13 - o;
+      return {
+        cls: 'cell ' + (picked ? here : st),
+        style: picked ? 'outline:2px solid var(--accent); outline-offset:1px' : '',
+      };
+    });
+    const stateName =
+      sum === 0
+        ? o === 0
+          ? '오늘은 아직 안 했어요 — 하루가 안 끝났습니다'
+          : '기록이 없어 실패로 잡힌 날 — 지금 채우면 회복됩니다'
+        : sum >= floor
+        ? '성공 · 모두 ' + sum + '쪽'
+        : '조금 함 · 모두 ' + sum + '쪽 — 실패로 세지 않습니다';
     const feed = info.rows.length
       ? info.rows.map((r) => ({
           t: r.t,
@@ -373,7 +398,16 @@ class Component extends DCLogic {
           r: o === 0 ? '' : '지난 날 기록 · 낮 12시로 남음',
           rcls: 'backnote',
         }))
-      : [{ t: '—', n: '이 날엔 기록이 없어요', a: '기록 없음', acls: 'amt plain', r: '', rcls: 'backnote' }];
+      : [
+          {
+            t: '—',
+            n: o === 0 ? '오늘은 아직 기록이 없어요' : '이 날엔 기록이 없어요',
+            a: o === 0 ? '오늘' : '실패',
+            acls: o === 0 ? 'amt plain' : 'amt warn',
+            r: o === 0 ? '' : '채워 넣으면 이 날이 성공으로 바뀝니다',
+            rcls: 'backnote',
+          },
+        ];
     return {
       strip: strip,
       dateLabel: o === 0 ? '오늘 · ' + info.d : o === 1 ? '어제 · ' + info.d : info.d,
