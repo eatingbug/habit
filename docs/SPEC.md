@@ -158,6 +158,10 @@ export const TUNING = {
     cueSkipThreshold:          2,     // ≥ this many cue-skips in window → cue flag (§4.4 / Part D)
     floorSkipThreshold:        2,     // ≥ this many floor-skips in window → reinforce floor flag
     identitySkipThreshold:     2,     // ≥ this many identity-skips in window → identity flag
+
+    // ADR-0002 — a run of `missed` days asks before it diagnoses (§4.4 / §6.4)
+    missedRunForBackfillPrompt:  3,    // consecutive `missed` days → show the bulk-backfill prompt
+    missedRateForBackfillPrompt: 0.40, // or this share of the last 14 days being `missed`
   },
 } as const;
 ```
@@ -522,7 +526,17 @@ All rules read **day-states** (§4.1), not rows.
 The split is the point. Rule 1 asks *"when you tried, could you reach the floor?"* — a
 `missed` day says nothing about the floor, so letting it into that denominator would
 make forgotten logging read as "your floor is too high," which is the false signal the
-old blank-exclusion rule existed to prevent. A `partial` day still lowers both rates
+old blank-exclusion rule existed to prevent.
+
+> **`missed` never attributes a component, and gets no rule of its own (ADR-0002).**
+> A `missed` day conflates two opposite worlds — *doing it but not logging* (the
+> **record** loop is broken) and *quietly stopped* (the **design** or the **load** is)
+> — and the data cannot tell them apart, so any flag built on it would be a guess.
+> Instead, a run of them triggers the **bulk-backfill prompt** (§6.4): the system asks
+> before it diagnoses, and the answer separates the two worlds. Once the days are
+> filled in — or marked not-done, which attaches a reason — the four rules below
+> diagnose correctly on their own. This was a missing-**data** problem, not a
+> missing-**rule** one. A `partial` day still lowers both rates
 (it is a non-completion the user attempted) without being a miss — this is what lets
 Rule 1 fire when the floor is chronically out of reach.
 
@@ -908,6 +922,17 @@ restrained language; §6.5 links the reference mockup.
 
 ### 6.4 Reflection (`app/reflect/[id].tsx`)
 - Entry point: tap a 🔴 or 🟡 status light on the Dashboard.
+- **Recover-first prompt (ADR-0002).** When the habit's recent history holds a run of
+  `missed` days — `TUNING.diagnosis.missedRunForBackfillPrompt` consecutive, or more
+  than `missedRateForBackfillPrompt` of the last 14 days — the screen opens with a
+  **bulk-backfill question above the mirror**, not with a diagnosis:
+  *"이 5일, 하셨나요?"* Each listed date offers **one tap to fill it** (appends
+  `actual = floor`, noon-pinned per §6.3) and **one tap for "안 했어요"** (appends a
+  skip; the reason chips follow). Present the two choices with **equal visual weight** —
+  making "fill" the easy path biases the data it is meant to collect. In-app only, on
+  entering reflection: never a push (§7.4 alert blindness). Filling repairs the day and
+  every quantity computed through it (ADR-0001); marking not-done attaches a reason and
+  so feeds Rule 5. Either way the diagnosis below runs on data instead of a guess.
 - **Mirror:** 7-day heatmap grid showing this week's **day-states**
   (`pending` / `missed` / `partial` / `done` / `over` / `skip`), each visually distinct so
   the user can tell "never logged it (missed — a miss, no reason)" from "logged but fell
@@ -953,6 +978,7 @@ File: `src/domain/**/*.test.ts`
 | `diagnose.test.ts` | each of the 4 rules fires on exact threshold; rules below threshold do not fire; Rule 3 suppressed for binary; **Rule 5 skip-reason attribution (cue/floor/identity thresholds; exception never counted; component dedup keeps higher severity)**; **min-sample guard: Rules 1 & 4 silent below `minEngagedDaysForRate`**; empty flags for healthy habit |
 | `recommend.test.ts` | priority order — critical cue > critical identity > floor warning > cue warning > stagnation; keep on empty flags |
 | `statusLight.test.ts` | Forming 🔴 at consecutive-miss threshold; **Established 🔴 on decline ONLY with latest week ≤ target (decline floor-guard); decline from a peak (all > target) → not 🔴**; 🟡 on one flag; **lifecycle-aware `personal_best` (Established = intensity best; Forming = consistency/streak best)**; `weeklyActualTotals` shape; stable on healthy |
+| `backfillPrompt.test.ts` | ADR-0002: prompt fires at the consecutive-`missed` threshold and at the 14-day rate threshold, and not below either; it lists only `missed` dates on/after `createdAt`; filling a listed date reclassifies it and re-runs the streak (never a new day-state row); marking not-done writes a skip with the chosen reason; **no diagnosis flag is ever emitted for `missed` days themselves** |
 | `lifecycle.test.ts` | Forming→Established at threshold; **demotion uses the partial-excluded rate incl. `missed` (`missed`→partial never demotes)**; Paused only on explicit action |
 | `heatLevel.test.ts` | binary done → full cell (4); non-exception skip → miss (filled); **`missed` → miss (outline), visually distinct from both `skip` and `pending`**; exception / `pending` → neutral; **partial → distinct sub-floor shade**; count above-floor ramp regression |
 
@@ -1028,6 +1054,8 @@ must hold for any entry set). Volume/performance is **not** a V1 criterion
 
 **Invariants:**
 - A day with **≥1 activity row (`actual > 0`)** never classifies as `skip`.
+- A `missed` day **never** produces a diagnosis flag or a component attribution
+  (ADR-0002); it only counts toward the streak break, the miss count and `successRate`.
 - A `partial` or `pending` day is **never** a miss (never breaks streak / never
   increments `consecutiveMissCount`).
 - **Engagement ⊇ floor.** `engagementStreak` counts `done`/`over`/`partial`;

@@ -1,7 +1,7 @@
 # Habit System — Product Specification
 
 **Tagline:** Build the Habit, Grow yourself
-**Status:** Draft v3.4 (MVP scope) · updated 2026-09-01 (ADR-0001: an unlogged past day now counts as a miss and backfill repairs it; plus v3.3's scoped fairness + engagement streak, log-time reward, proactive never-miss-twice save, visible weekly growth, skip-reasons drive diagnosis; minimal adaptive Linear/Notion visual language)
+**Status:** Draft v3.5 (MVP scope) · updated 2026-09-01 (ADR-0001: an unlogged past day now counts as a miss and backfill repairs it; ADR-0002: a run of unlogged days asks before it diagnoses; plus v3.3's scoped fairness + engagement streak, log-time reward, proactive never-miss-twice save, visible weekly growth, skip-reasons drive diagnosis; minimal adaptive Linear/Notion visual language)
 **Working name:** Habiquest (candidate, not final)
 
 ---
@@ -122,7 +122,9 @@ rewards showing up without granting XP.
 **What a missed day cannot tell us.** It carries no reason, so it never attributes a
 component (cue / floor / identity). Only an explicit **skip** does that (§6). The
 floor-diagnosis therefore still reads *"when you tried, could you reach the floor?"* —
-it excludes missed days. Superseded: the earlier rule that blank days are `unknown` and
+it excludes missed days. And because a run of missed days is genuinely ambiguous —
+*doing it but not logging* versus *quietly stopped* — reflection **asks instead of
+guessing** (§6.3, ADR-0002). Superseded: the earlier rule that blank days are `unknown` and
 excluded from misses to keep the diagnosis input clean (see ADR-0001 for the reversal
 and its one open question).
 
@@ -252,6 +254,7 @@ weekly batch**, and it is **active** (the system proposes; the user verifies).
 
 ### 6.2 Active form — verify, don't write
 Reflection must be cheap. The user's job is **choosing, not writing**:
+0. **Recover first, if the record has holes** (§6.3) — before any diagnosis.
 1. **Mirror** — resurface that habit's week: heatmap, missed days, journal notes.
 2. **Diagnosis (pre-computed, rule-based).** The system states what it sees and
    asks only for confirmation: *"Looks like the Tue/Thu cue failed — [Right] /
@@ -273,6 +276,33 @@ Reflection must be cheap. The user's job is **choosing, not writing**:
 4. **Always show the reasoning.** Every diagnosis displays its evidence. This is
    the guardrail against users rubber-stamping a wrong recommendation — visible
    reasoning reduces uncritical agreement.
+
+### 6.3 When the misses are mostly *unlogged* — ask, don't diagnose (ADR-0002)
+
+An unlogged day counts as a miss (§3.2), but it is silent about **why**, and it hides
+two opposite situations: the habit is alive and only the **recording** broke, or the
+habit itself was quietly dropped. The remedy is not a smarter rule — it is the missing
+data. So when a habit shows a run of unlogged days, reflection opens with a question
+rather than a verdict:
+
+> **"이 5일, 하셨나요?"** — each date takes one tap to fill in, or one tap for "안 했어요."
+
+The answer *is* the diagnosis:
+
+- **Mostly filled in** → the habit was alive; the recording loop is what needs a fix
+  (propose a time to record, not a change to the habit).
+- **Marked not-done** → real misses, now carrying reasons — the four rules (§6.2) work
+  normally from here.
+- **Ignored, repeatedly** → disengagement from the habit itself; this is portfolio
+  load (§8), not a per-habit design fault.
+
+Keep "fill it in" and "안 했어요" **equally prominent**: making one path easier biases
+the very data the question exists to collect. And keep it in-app, on entering
+reflection — never a push (§7.4).
+
+No fifth diagnostic component is introduced. Once the days are resolved, the existing
+rules have what they need. Whether *"the recording loop broke"* eventually deserves its
+own component is deferred until this prompt shows how often that case actually occurs.
 
 **The output of reflection is a change to (or explicit confirmation of) the habit
 design.** That is where the loop closes in code.
@@ -484,11 +514,11 @@ Deferred to keep the MVP focused and validatable. Design when built:
    `skipReason` — day-state is *computed*, not stored], FreeLog, ReflectionSession,
    lifecycle state) and relations. *(Largely resolved — see SPEC §3; day-states are
    derived per SPEC §4.1.)*
-8. **Diagnosing a recording gap (opened by ADR-0001).** A `missed` day counts as a miss
-   but attributes no component. When most of a habit's misses are `missed` — "doing it
-   but not logging," or "quietly stopped" — none of the four rules explains it.
-   Undecided: add a fifth *recording-gap* diagnosis, or raise a run of `missed` days to
-   the **cue** component.
+8. **Diagnosing a recording gap (opened by ADR-0001).** *(Resolved — ADR-0002, §6.3:
+   neither. A run of `missed` days triggers a bulk-backfill question at the top of
+   reflection, and the answer separates "not logging" from "stopped"; no fifth component
+   is added. Left open for later: whether a dedicated `record` component earns its place
+   once we see how often the first case occurs.)*
 
 ---
 
