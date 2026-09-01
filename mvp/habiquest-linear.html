@@ -14,6 +14,7 @@
     --text:#1B1C20; --muted:#6E7079; --faint:#A2A4AE;
     --accent:#5A63D8; --accent-ink:#4049C4; --accent-weak:rgba(90,99,216,.10);
     --done:#3F9E72; --over:#2C875C; --partial:#C08A2E; --skip:#C25B54; --blank:#ECECF1;
+    --missed:rgba(194,91,84,.16);
     --good:#3F9E72; --warn:#C08A2E; --crit:#C25B54;
     --shadow:0 1px 2px rgba(24,24,48,.05),0 6px 22px rgba(24,24,48,.05);
     --mono:ui-monospace,"SF Mono",SFMono-Regular,"Cascadia Code","Roboto Mono",Menlo,Consolas,monospace;
@@ -27,6 +28,7 @@
       --text:#EBEBEF; --muted:#8C8F9B; --faint:#63666F;
       --accent:#828BF5; --accent-ink:#9AA1F8; --accent-weak:rgba(130,139,245,.14);
       --done:#54B487; --over:#41A472; --partial:#D3A24A; --skip:#D06B63; --blank:#20232B;
+      --missed:rgba(208,107,99,.20);
       --good:#54B487; --warn:#D3A24A; --crit:#D06B63;
       --shadow:0 1px 2px rgba(0,0,0,.32),0 8px 26px rgba(0,0,0,.30);
     }
@@ -37,6 +39,7 @@
     --text:#EBEBEF; --muted:#8C8F9B; --faint:#63666F;
     --accent:#828BF5; --accent-ink:#9AA1F8; --accent-weak:rgba(130,139,245,.14);
     --done:#54B487; --over:#41A472; --partial:#D3A24A; --skip:#D06B63; --blank:#20232B;
+    --missed:rgba(208,107,99,.20);
     --good:#54B487; --warn:#D3A24A; --crit:#D06B63;
     --shadow:0 1px 2px rgba(0,0,0,.32),0 8px 26px rgba(0,0,0,.30);
   }
@@ -136,7 +139,8 @@
   .ribbon .cell{flex:1; aspect-ratio:1; border-radius:2.5px; background:var(--blank); border:1px solid transparent}
   .cell.done{background:var(--done)} .cell.over{background:var(--over)}
   .cell.partial{background:var(--partial)} .cell.skip{background:var(--skip)}
-  .cell.blank{background:var(--blank); border-color:var(--border)}
+  .cell.missed{background:var(--missed); border-color:var(--skip)}
+  .cell.pending{background:var(--blank); border-color:var(--border-strong); border-style:dashed}
   .qbottom{display:flex; align-items:center; gap:9px}
   .qbottom .ribbon{margin-right:2px}
 
@@ -223,15 +227,29 @@
   .sc-over{background:color-mix(in srgb,var(--over) 18%,transparent); color:var(--over)}
   .sc-partial{background:color-mix(in srgb,var(--partial) 18%,transparent); color:var(--partial)}
   .sc-skip{background:color-mix(in srgb,var(--skip) 16%,transparent); color:var(--skip)}
+  .sc-missed{background:var(--missed); color:var(--skip); box-shadow:inset 0 0 0 1px var(--skip)}
   .jrows{font-size:11px; color:var(--muted); font-family:var(--mono)}
 
   /* ---- reflection ---- */
+  .recover{border:1px solid var(--border-strong); border-radius:var(--r); background:var(--surface-2);
+    padding:12px; display:flex; flex-direction:column; gap:10px}
+  .recover .rq{font-size:13px; font-weight:600; letter-spacing:-.01em}
+  .recover .rh{font-size:11px; color:var(--faint); line-height:1.45}
+  .recover .rd{display:flex; align-items:center; gap:7px}
+  .recover .rd .dt{font-family:var(--mono); font-size:11px; color:var(--muted); width:46px; flex:none}
+  .recover .rd .sp{flex:1}
+  .recover .rd .btn{padding:7px 10px; font-size:11.5px; flex:none; width:74px}
+  .recover .rd .btn.yes{border-color:color-mix(in srgb,var(--done) 55%,transparent); color:var(--done)}
+  .recover .rd .btn.no{border-color:color-mix(in srgb,var(--skip) 50%,transparent); color:var(--skip)}
+
   .mirror{display:flex; gap:6px; justify-content:space-between}
   .mcell{flex:1; display:flex; flex-direction:column; align-items:center; gap:5px}
   .mcell .mw{font-family:var(--mono); font-size:9.5px; color:var(--faint)}
   .mcell .mv{width:100%; aspect-ratio:1; border-radius:6px; display:grid; place-items:center; font-family:var(--mono); font-size:10px; color:#fff; font-weight:600}
   .mv.done{background:var(--done)} .mv.over{background:var(--over)} .mv.partial{background:var(--partial)}
-  .mv.skip{background:var(--skip)} .mv.blank{background:var(--blank); color:var(--faint); border:1px solid var(--border)}
+  .mv.skip{background:var(--skip)}
+  .mv.missed{background:var(--missed); color:var(--skip); border:1px solid var(--skip)}
+  .mv.pending{background:var(--blank); color:var(--faint); border:1px dashed var(--border-strong)}
 
   .flag{border:1px solid var(--border); border-left-width:3px; border-radius:var(--r-sm); padding:11px 12px; display:flex; flex-direction:column; gap:6px; background:var(--surface)}
   .flag.crit{border-left-color:var(--crit)} .flag.warn{border-left-color:var(--warn)}
@@ -262,11 +280,12 @@
     </div>
     <div class="topbar-right">
       <div class="legend" aria-label="하루 상태 범례">
-        <span class="li"><span class="sw" style="background:var(--blank)"></span>미기록</span>
+        <span class="li"><span class="sw" style="background:var(--blank);border-style:dashed"></span>오늘·미기록</span>
+        <span class="li"><span class="sw" style="background:var(--missed);border-color:var(--skip)"></span>기록 없음 (실패)</span>
         <span class="li"><span class="sw" style="background:var(--partial);border-color:transparent"></span>부분</span>
         <span class="li"><span class="sw" style="background:var(--done);border-color:transparent"></span>달성</span>
         <span class="li"><span class="sw" style="background:var(--over);border-color:transparent"></span>초과</span>
-        <span class="li"><span class="sw" style="background:var(--skip);border-color:transparent"></span>건너뜀</span>
+        <span class="li"><span class="sw" style="background:var(--skip);border-color:transparent"></span>건너뜀 (사유 있음)</span>
       </div>
       <button class="toggle" id="themeBtn" type="button" aria-label="테마 전환">
         <span id="themeIcon">◐</span><span id="themeTxt">테마</span>
@@ -317,9 +336,9 @@
                 <span class="qcue">모닝커피 후</span>
               </div>
               <div class="qbottom">
-                <span class="streak">🔥<span class="num">14</span></span>
+                <span class="streak">🔥<span class="num">12</span></span>
                 <span class="ribbon" aria-hidden="true">
-                  <span class="cell done"></span><span class="cell over"></span><span class="cell done"></span><span class="cell partial"></span><span class="cell done"></span><span class="cell blank"></span><span class="cell done"></span><span class="cell over"></span><span class="cell done"></span><span class="cell done"></span><span class="cell partial"></span><span class="cell done"></span><span class="cell over"></span><span class="cell done"></span>
+                  <span class="cell done"></span><span class="cell over"></span><span class="cell done"></span><span class="cell partial"></span><span class="cell done"></span><span class="cell done"></span><span class="cell done"></span><span class="cell over"></span><span class="cell done"></span><span class="cell done"></span><span class="cell partial"></span><span class="cell done"></span><span class="cell over"></span><span class="cell done"></span>
                 </span>
                 <button class="btn ghost" type="button">+최소</button>
               </div>
@@ -332,9 +351,9 @@
                 <span class="qcue">점심 후 10p</span>
               </div>
               <div class="qbottom">
-                <span class="streak">🔥<span class="num">6</span></span>
+                <span class="streak">🔥<span class="num">4</span></span>
                 <span class="ribbon" aria-hidden="true">
-                  <span class="cell done"></span><span class="cell partial"></span><span class="cell partial"></span><span class="cell done"></span><span class="cell blank"></span><span class="cell partial"></span><span class="cell done"></span><span class="cell done"></span><span class="cell partial"></span><span class="cell blank"></span><span class="cell done"></span><span class="cell partial"></span><span class="cell done"></span><span class="cell done"></span>
+                  <span class="cell done"></span><span class="cell partial"></span><span class="cell done"></span><span class="cell partial"></span><span class="cell done"></span><span class="cell done"></span><span class="cell missed"></span><span class="cell partial"></span><span class="cell done"></span><span class="cell done"></span><span class="cell done"></span><span class="cell partial"></span><span class="cell done"></span><span class="cell partial"></span>
                 </span>
                 <button class="btn ghost" type="button">+최소</button>
               </div>
@@ -349,7 +368,7 @@
               <div class="qbottom">
                 <span class="streak">—</span>
                 <span class="ribbon" aria-hidden="true">
-                  <span class="cell done"></span><span class="cell blank"></span><span class="cell done"></span><span class="cell blank"></span><span class="cell done"></span><span class="cell blank"></span><span class="cell blank"></span><span class="cell done"></span><span class="cell blank"></span><span class="cell done"></span><span class="cell blank"></span><span class="cell skip"></span><span class="cell skip"></span><span class="cell blank"></span>
+                  <span class="cell done"></span><span class="cell missed"></span><span class="cell done"></span><span class="cell missed"></span><span class="cell done"></span><span class="cell missed"></span><span class="cell missed"></span><span class="cell done"></span><span class="cell missed"></span><span class="cell done"></span><span class="cell missed"></span><span class="cell skip"></span><span class="cell skip"></span><span class="cell pending"></span>
                 </span>
                 <button class="btn ghost" type="button">✓ 완료</button>
               </div>
@@ -375,7 +394,7 @@
 
           <div class="banner">
             <span class="dot r"></span>
-            <span class="bx"><b>어제 명상을 놓쳤어요.</b> 오늘 한 번이면 흐름이 이어져요.</span>
+            <span class="bx"><b>어제 명상을 놓쳤어요.</b> 오늘 한 번이면 흐름이 이어져요. 어제도 지금 채워 넣을 수 있어요.</span>
             <button class="btn pri" type="button" style="padding:6px 10px">✓ 완료</button>
           </div>
 
@@ -472,17 +491,17 @@
           </div>
 
           <div class="chartcard">
-            <div class="ch-head"><span class="eyebrow">주간 실행량 (최근 8주)</span><span class="sub num">최고 62</span></div>
+            <div class="ch-head"><span class="eyebrow">주간 실행량 (최근 7주)</span><span class="sub num">최고 70</span></div>
             <div class="chart">
-              <div class="refline target" style="bottom:74%"><span>목표 10</span></div>
-              <div class="refline" style="bottom:40%"><span>바닥 5</span></div>
-              <div class="bar"><i style="height:46%"></i><span class="wk">6</span></div>
-              <div class="bar"><i style="height:58%"></i><span class="wk">5</span></div>
-              <div class="bar"><i style="height:52%"></i><span class="wk">4</span></div>
-              <div class="bar"><i style="height:70%"></i><span class="wk">3</span></div>
-              <div class="bar"><i style="height:66%"></i><span class="wk">2</span></div>
-              <div class="bar"><i style="height:84%"></i><span class="wk">1</span></div>
-              <div class="bar best"><i style="height:100%"></i><span class="star">⭐</span><span class="wk">이번</span></div>
+              <div class="refline target" style="bottom:95%"><span>목표 주 70</span></div>
+              <div class="refline" style="bottom:47%"><span>바닥 주 35</span></div>
+              <div class="bar"><i style="height:43%"></i><span class="wk">6</span></div>
+              <div class="bar"><i style="height:54%"></i><span class="wk">5</span></div>
+              <div class="bar"><i style="height:49%"></i><span class="wk">4</span></div>
+              <div class="bar"><i style="height:65%"></i><span class="wk">3</span></div>
+              <div class="bar"><i style="height:62%"></i><span class="wk">2</span></div>
+              <div class="bar"><i style="height:78%"></i><span class="wk">1</span></div>
+              <div class="bar best"><i style="height:95%"></i><span class="star">⭐</span><span class="wk">이번</span></div>
             </div>
           </div>
 
@@ -499,6 +518,7 @@
             <div class="jday"><span class="jd">7/7</span><span class="jc"><span class="statechip sc-over">초과 · 합 12</span><span class="jrows">08:00 +12</span></span></div>
             <div class="jday"><span class="jd">7/6</span><span class="jc"><span class="statechip sc-partial">부분 · 합 3</span><span class="jrows">07:20 +3 · 바닥 미달, 미스 아님</span></span></div>
             <div class="jday"><span class="jd">7/5</span><span class="jc"><span class="statechip sc-skip">건너뜀 · 너무 힘듦</span><span class="jrows">메모: 어깨 뻐근함</span></span></div>
+            <div class="jday"><span class="jd">7/4</span><span class="jc"><span class="statechip sc-missed">기록 없음 · 실패</span><span class="jrows">지금 기록을 넣으면 이 날이 회복됩니다 · <button class="btn ghost" type="button" style="padding:3px 8px">기록 추가</button></span></span></div>
           </div>
         </div>
       </div>
@@ -517,27 +537,42 @@
             <span class="chip">이번 주</span>
           </div>
 
-          <div class="eyebrow">미러 — 이번 주 상태</div>
-          <div class="mirror">
-            <div class="mcell"><span class="mw">월</span><span class="mv done">✓</span></div>
-            <div class="mcell"><span class="mw">화</span><span class="mv blank">–</span></div>
-            <div class="mcell"><span class="mw">수</span><span class="mv done">✓</span></div>
-            <div class="mcell"><span class="mw">목</span><span class="mv skip">✕</span></div>
-            <div class="mcell"><span class="mw">금</span><span class="mv skip">✕</span></div>
-            <div class="mcell"><span class="mw">토</span><span class="mv blank">–</span></div>
-            <div class="mcell"><span class="mw">일</span><span class="mv blank">–</span></div>
+          <div class="recover">
+            <span class="rq">이 5일, 하셨나요?</span>
+            <span class="rh">기록이 없어 실패로 잡힌 날입니다. 어느 쪽인지 알려 주시면 나머지는 저희가 봅니다.</span>
+            <div>
+              <div class="rd"><span class="dt">7/2</span><span class="sp"></span><button class="btn yes" type="button">했어요</button><button class="btn no" type="button">안 했어요</button></div>
+              <div class="rd"><span class="dt">7/3</span><span class="sp"></span><button class="btn yes" type="button">했어요</button><button class="btn no" type="button">안 했어요</button></div>
+              <div class="rd"><span class="dt">7/4</span><span class="sp"></span><button class="btn yes" type="button">했어요</button><button class="btn no" type="button">안 했어요</button></div>
+              <div class="rd"><span class="dt">7/6</span><span class="sp"></span><button class="btn yes" type="button">했어요</button><button class="btn no" type="button">안 했어요</button></div>
+              <div class="rd"><span class="dt">7/7</span><span class="sp"></span><button class="btn yes" type="button">했어요</button><button class="btn no" type="button">안 했어요</button></div>
+            </div>
+            <span class="rh">“했어요”는 그 날을 성공으로 회복시키고 연속을 다시 잇습니다. “안 했어요”는 이유를 물어봅니다.</span>
           </div>
 
+          <div class="eyebrow">미러 — 최근 7일</div>
+          <div class="mirror">
+            <div class="mcell"><span class="mw">수</span><span class="mv done">✓</span></div>
+            <div class="mcell"><span class="mw">목</span><span class="mv missed">·</span></div>
+            <div class="mcell"><span class="mw">금</span><span class="mv done">✓</span></div>
+            <div class="mcell"><span class="mw">토</span><span class="mv missed">·</span></div>
+            <div class="mcell"><span class="mw">일</span><span class="mv skip">✕</span></div>
+            <div class="mcell"><span class="mw">월</span><span class="mv skip">✕</span></div>
+            <div class="mcell"><span class="mw">화</span><span class="mv pending">오늘</span></div>
+          </div>
+          <p class="footnote" style="text-align:left">기록 없음(테두리) 2일 · 건너뜀(채움) 2일 — 둘 다 실패지만, 기록 없음은 <b>이유를 모릅니다.</b> 지난 날을 채워 넣으면 그 날은 회복됩니다.</p>
+
           <div class="eyebrow">진단</div>
+          <p class="footnote" style="text-align:left; margin:0">아래 진단은 <b>직접 표시한 날</b>만 보고 말합니다 — 기록이 없는 날은 이유를 모르니 여기 끼지 않습니다.</p>
           <div class="flag crit">
             <div class="fhd"><span class="badge crit">신호 · CUE</span><span class="dot r"></span></div>
             <div class="fmsg">신호(cue)가 없어요 — 습관이 안 붙는 가장 큰 이유일 수 있어요.</div>
-            <div class="fev">최근 14일 완료율 40% · 신호(cue) 미설정</div>
+            <div class="fev">최근 14일 성공률 36% (기록 없음 5일 포함) · 신호(cue) 미설정</div>
           </div>
           <div class="flag warn">
             <div class="fhd"><span class="badge warn">신호 · CUE</span><span class="dot a"></span></div>
             <div class="fmsg">건너뛰기가 '깜빡함'에 몰려 있어요.</div>
-            <div class="fev">28일간 '깜빡함' 건너뛰기 3회 (Rule 5)</div>
+            <div class="fev">28일간 '깜빡함' 건너뛰기 3회 (Rule 5)<br>기록 없음 5일은 이유가 없어 성분에 반영되지 않음</div>
           </div>
 
           <div class="rec">
@@ -559,8 +594,9 @@
   </main>
 
   <p class="credit">
-    Habiquest — 습관 형성 시스템 · 기록 서브시스템 목업 (SPEC v3.1 / CONCEPT v3.3)<br>
-    적응형 라이트·다크 · 미니멀 게임화 · 하루 상태는 <span class="num">기록 합계</span>에서 계산됩니다 (미기록 ≠ 부분 ≠ 건너뜀)
+    Habiquest — 습관 형성 시스템 · 기록 서브시스템 목업 (SPEC v3.2 / CONCEPT v3.4 · ADR-0001)<br>
+    적응형 라이트·다크 · 미니멀 게임화 · 하루 상태는 <span class="num">기록 합계</span>에서 계산됩니다<br>
+    기록 없는 지난 날은 <b>실패</b>로 세고, 나중에 채워 넣으면 그 날이 <b>회복</b>됩니다 (오늘 ≠ 기록 없음 ≠ 부분 ≠ 건너뜀)
   </p>
 </div>
 

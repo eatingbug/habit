@@ -1,0 +1,585 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+:root{
+  --bg:#FBFBFC; --surface:#FFFFFF; --surface-2:#F5F5F8; --inset:#F0F0F4;
+  --border:#E7E7EE; --border-strong:#D9D9E1;
+  --text:#1B1C20; --muted:#6E7079; --faint:#A2A4AE;
+  --accent:#5A63D8; --accent-ink:#4049C4; --accent-weak:rgba(90,99,216,.10);
+  --done:#3F9E72; --over:#2C875C; --partial:#C08A2E; --skip:#C25B54; --blank:#ECECF1;
+  --missed:rgba(194,91,84,.16);
+  --good:#3F9E72; --warn:#C08A2E; --crit:#C25B54;
+  --shadow:0 1px 2px rgba(24,24,48,.05),0 6px 22px rgba(24,24,48,.05);
+  --mono:ui-monospace,"SF Mono",SFMono-Regular,"Cascadia Code","Roboto Mono",Menlo,Consolas,monospace;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI","Apple SD Gothic Neo","Malgun Gothic","Noto Sans KR",Roboto,sans-serif;
+  --r:10px; --r-sm:7px;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#0D0E12; --surface:#15171C; --surface-2:#1B1D23; --inset:#1B1D24;
+    --border:#262933; --border-strong:#343845;
+    --text:#EBEBEF; --muted:#8C8F9B; --faint:#63666F;
+    --accent:#828BF5; --accent-ink:#9AA1F8; --accent-weak:rgba(130,139,245,.14);
+    --done:#54B487; --over:#41A472; --partial:#D3A24A; --skip:#D06B63; --blank:#20232B;
+    --missed:rgba(208,107,99,.20);
+    --good:#54B487; --warn:#D3A24A; --crit:#D06B63;
+    --shadow:0 1px 2px rgba(0,0,0,.32),0 8px 26px rgba(0,0,0,.30);
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0D0E12; --surface:#15171C; --surface-2:#1B1D23; --inset:#1B1D24;
+  --border:#262933; --border-strong:#343845;
+  --text:#EBEBEF; --muted:#8C8F9B; --faint:#63666F;
+  --accent:#828BF5; --accent-ink:#9AA1F8; --accent-weak:rgba(130,139,245,.14);
+  --done:#54B487; --over:#41A472; --partial:#D3A24A; --skip:#D06B63; --blank:#20232B;
+    --missed:rgba(208,107,99,.20);
+  --good:#54B487; --warn:#D3A24A; --crit:#D06B63;
+  --shadow:0 1px 2px rgba(0,0,0,.32),0 8px 26px rgba(0,0,0,.30);
+}
+*{box-sizing:border-box}
+body{margin:0; background:var(--surface); color:var(--text); font-family:var(--sans);
+  -webkit-font-smoothing:antialiased; line-height:1.5;}
+a{color:var(--accent-ink)} a:hover{color:var(--accent)}
+.app{width:100%; min-height:100%; background:var(--surface); padding:18px 16px 22px;
+  display:flex; flex-direction:column; gap:14px}
+.app.tight{gap:11px}
+.num{font-family:var(--mono); font-variant-numeric:tabular-nums; font-feature-settings:"tnum" 1}
+.eyebrow{font-family:var(--mono); font-size:10.5px; letter-spacing:.14em; text-transform:uppercase;
+  color:var(--faint); font-weight:500}
+h2.sh{font-size:16px; margin:0; letter-spacing:-.01em; font-weight:640}
+.sub{color:var(--muted); font-size:12px}
+.rowline{display:flex; align-items:center; justify-content:space-between; gap:10px}
+.chip{display:inline-flex; align-items:center; gap:5px; font-size:11px; padding:3px 8px;
+  border-radius:999px; background:var(--surface-2); color:var(--muted); border:1px solid var(--border)}
+.chip.stat{color:var(--accent-ink); background:var(--accent-weak); border-color:transparent; font-weight:550}
+.chip.warnc{color:var(--warn); background:transparent; border-color:color-mix(in srgb,var(--warn) 40%,transparent)}
+.chip.goodc{color:var(--good); background:transparent; border-color:color-mix(in srgb,var(--good) 40%,transparent)}
+.dot{width:8px;height:8px;border-radius:50%;flex:none}
+.dot.g{background:var(--good)} .dot.a{background:var(--warn)} .dot.r{background:var(--crit)}
+.btn{appearance:none; font-family:var(--sans); font-size:12.5px; font-weight:550; cursor:pointer;
+  border-radius:var(--r-sm); padding:8px 12px; border:1px solid var(--border-strong);
+  background:var(--surface); color:var(--text); display:inline-flex; align-items:center; gap:6px; justify-content:center}
+.btn:hover{border-color:var(--accent)}
+.btn:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+.btn.pri{background:var(--accent); border-color:var(--accent); color:#fff; min-height:44px; padding:10px 14px}
+.btn.pri:hover{background:var(--accent-ink)}
+.btn.ghost{background:transparent; border-color:var(--border); color:var(--muted); padding:6px 10px; font-size:11.5px}
+.btn.ghost:hover{color:var(--accent-ink); border-color:var(--accent)}
+.btn.tap{min-height:44px}
+.btn.sel{border-color:var(--accent); color:var(--accent-ink); background:var(--accent-weak)}
+.btn.block{width:100%}
+.xpbar{height:4px; border-radius:3px; background:var(--inset); overflow:hidden}
+.xpbar > i{display:block; height:100%; border-radius:3px; background:var(--accent)}
+.stats{display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px}
+.statcard{border:1px solid var(--border); border-radius:var(--r); padding:10px; background:var(--surface-2); display:flex; flex-direction:column; gap:7px}
+.statcard .top{display:flex; align-items:center; justify-content:space-between}
+.statcard .name{font-size:11.5px; color:var(--muted); display:flex; align-items:center; gap:5px}
+.statcard .lv{font-family:var(--mono); font-size:14px; font-weight:640; letter-spacing:-.01em}
+.statcard .lv small{color:var(--faint); font-weight:500; font-size:10px}
+.statcard .to{font-size:10px; color:var(--faint); font-family:var(--mono)}
+.quests{display:flex; flex-direction:column; gap:9px}
+.quest{border:1px solid var(--border); border-radius:var(--r); padding:11px 12px; background:var(--surface); display:flex; flex-direction:column; gap:9px}
+.quest.lit{border-color:color-mix(in srgb,var(--good) 45%,transparent); background:color-mix(in srgb,var(--good) 5%,var(--surface))}
+.quest .qtop{display:flex; align-items:center; gap:8px}
+.quest .qname{font-weight:580; font-size:13.5px; letter-spacing:-.01em}
+.quest .qcue{font-size:11px; color:var(--muted); margin-left:auto; max-width:120px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.streak{font-family:var(--mono); font-size:11px; color:var(--muted); display:flex; align-items:center; gap:4px}
+.ribbon{display:flex; gap:3px; flex:1; min-width:0}
+.ribbon .cell{flex:1; aspect-ratio:1; border-radius:2.5px; background:var(--blank); border:1px solid transparent}
+.cell.done{background:var(--done)} .cell.over{background:var(--over)}
+.cell.partial{background:var(--partial)} .cell.skip{background:var(--skip)}
+.cell.blank{background:var(--blank); border-color:var(--border)}
+.cell.missed{background:var(--missed); border-color:var(--skip)}
+.cell.pending{background:var(--blank); border-color:var(--border-strong); border-style:dashed}
+.qbottom{display:flex; align-items:center; gap:9px}
+.qbottom .ribbon{margin-right:2px}
+.banner{display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:var(--r);
+  background:color-mix(in srgb,var(--warn) 12%,var(--surface)); border:1px solid color-mix(in srgb,var(--warn) 34%,transparent)}
+.banner.good{background:color-mix(in srgb,var(--good) 10%,var(--surface)); border-color:color-mix(in srgb,var(--good) 34%,transparent)}
+.banner .bx{flex:1; font-size:11.5px; line-height:1.4}
+.banner .bx b{color:var(--warn)}
+.banner.good .bx b{color:var(--good)}
+.composer{border:1px solid var(--border-strong); border-radius:var(--r); background:var(--surface-2); padding:12px; display:flex; flex-direction:column; gap:11px}
+.seg{display:flex; gap:4px; background:var(--inset); padding:3px; border-radius:8px}
+.seg button{flex:1; appearance:none; border:0; background:transparent; color:var(--muted); font-family:var(--sans);
+  font-size:11.5px; padding:6px 4px; border-radius:6px; cursor:pointer; font-weight:520}
+.seg button[aria-selected="true"]{background:var(--surface); color:var(--text); box-shadow:0 1px 2px rgba(0,0,0,.06); font-weight:600}
+.seg button:focus-visible{outline:2px solid var(--accent); outline-offset:1px}
+.qadd{display:flex; gap:6px; align-items:center}
+.numfield{flex:none; width:56px; font-family:var(--mono); font-size:15px; font-weight:600; text-align:center;
+  border:1px solid var(--border-strong); border-radius:var(--r-sm); padding:7px 4px; background:var(--surface); color:var(--text);
+  display:grid; place-items:center; min-height:44px}
+.unit{font-size:11.5px; color:var(--muted)}
+.qchips{display:flex; gap:5px; margin-left:auto}
+.qchips .btn{padding:6px 9px; font-size:11.5px; font-family:var(--mono)}
+.progress{display:flex; flex-direction:column; gap:5px}
+.progress .pl{display:flex; justify-content:space-between; font-size:11px; color:var(--muted); font-family:var(--mono)}
+.ptrack{height:6px; border-radius:4px; background:var(--inset); overflow:hidden}
+.ptrack > i{display:block; height:100%; background:var(--accent); border-radius:4px; transition:width .18s ease}
+.ctrls{display:flex; align-items:center; gap:8px}
+.time{font-family:var(--mono); font-size:11px; color:var(--muted); border:1px solid var(--border); border-radius:999px; padding:5px 10px; background:var(--surface); cursor:pointer}
+.skiprow{display:flex; gap:5px; align-items:center; flex-wrap:wrap}
+.skiprow .lbl{font-size:11px; color:var(--faint)}
+.feed{display:flex; flex-direction:column; gap:2px}
+.feeditem{display:flex; gap:10px; padding:9px 2px; border-bottom:1px solid var(--border)}
+.feeditem:last-child{border-bottom:0}
+.feeditem .ft{font-family:var(--mono); font-size:10.5px; color:var(--faint); width:38px; flex:none; padding-top:2px}
+.feeditem .fb{flex:1; display:flex; flex-direction:column; gap:3px}
+.feeditem .fh{display:flex; align-items:center; gap:7px}
+.feeditem .fn{font-size:12.5px; font-weight:540}
+.amt{font-family:var(--mono); font-size:11px; padding:2px 7px; border-radius:6px; background:var(--accent-weak); color:var(--accent-ink); font-weight:600}
+.amt.plain{background:var(--surface-2); color:var(--muted)}
+.amt.warn{background:color-mix(in srgb,var(--partial) 18%,transparent); color:var(--partial)}
+.feeditem .fnote{font-size:11.5px; color:var(--muted)}
+.freelog{border-left:2px dashed var(--border-strong); padding-left:9px; margin-left:2px}
+.rewardtag{font-size:10.5px; color:var(--good); font-family:var(--mono)}
+.rewardtag.warn{color:var(--partial)}
+.toast{display:flex; align-items:center; gap:9px; padding:9px 11px; border-radius:var(--r);
+  background:var(--text); color:var(--bg); font-size:11.5px; box-shadow:var(--shadow)}
+.toast .rx{font-family:var(--mono); font-weight:600}
+.toast .undo{margin-left:auto; font-weight:600; color:var(--accent); cursor:pointer; background:transparent; border:0; font-size:11.5px; font-family:var(--sans)}
+.pills{display:flex; gap:7px; flex-wrap:wrap}
+.pill{border:1px solid var(--border); border-radius:var(--r-sm); padding:7px 9px; background:var(--surface-2); display:flex; flex-direction:column; gap:2px; min-width:0; flex:1}
+.pill .pk{font-size:9.5px; letter-spacing:.08em; text-transform:uppercase; color:var(--faint); font-family:var(--mono)}
+.pill .pv{font-family:var(--mono); font-size:14px; font-weight:640; letter-spacing:-.01em}
+.pill .pv small{font-size:10px; color:var(--faint); font-weight:500}
+.chartcard{border:1px solid var(--border); border-radius:var(--r); padding:12px; background:var(--surface); display:flex; flex-direction:column; gap:10px}
+.chartcard.primary{border-color:var(--border-strong); background:var(--surface-2)}
+.chartcard .ch-head{display:flex; align-items:baseline; justify-content:space-between}
+.chart{position:relative; height:104px; display:flex; align-items:flex-end; gap:6px; padding-top:6px; margin-bottom:16px}
+.refline{position:absolute; left:0; right:0; border-top:1px dashed var(--border-strong); display:flex; justify-content:flex-end}
+.refline span{font-family:var(--mono); font-size:9px; color:var(--faint); transform:translateY(-50%); background:var(--surface); padding:0 3px}
+.chartcard.primary .refline span{background:var(--surface-2)}
+.refline.target{border-top-color:color-mix(in srgb,var(--accent) 55%,transparent)}
+.refline.target span{color:var(--accent-ink)}
+.bar{flex:1; background:var(--inset); border-radius:3px 3px 0 0; position:relative; min-height:3px; display:flex; justify-content:center; align-items:flex-start}
+.bar > i{position:absolute; left:0; right:0; bottom:0; background:var(--done); border-radius:3px 3px 0 0}
+.bar.best > i{background:var(--accent)}
+.bar.cool > i{background:var(--partial)}
+.bar .star{position:absolute; top:-15px; font-size:11px}
+.bar .wk{position:absolute; bottom:-15px; font-family:var(--mono); font-size:8.5px; color:var(--faint)}
+.designbox{border:1px solid var(--border); border-radius:var(--r); overflow:hidden}
+.designbox .dhead{display:flex; align-items:center; justify-content:space-between; padding:9px 12px; background:var(--surface-2); border-bottom:1px solid var(--border)}
+.drow{display:flex; gap:10px; padding:9px 12px; border-bottom:1px solid var(--border)}
+.drow:last-child{border-bottom:0}
+.drow .dk{width:52px; flex:none; font-size:10px; letter-spacing:.06em; text-transform:uppercase; color:var(--faint); font-family:var(--mono); padding-top:2px}
+.drow .dv{font-size:12.5px}
+.drow .dv.empty{color:var(--crit); font-style:italic}
+.journal{display:flex; flex-direction:column; gap:0}
+.jday{display:flex; gap:10px; padding:9px 0; border-bottom:1px solid var(--border)}
+.jday:last-child{border-bottom:0}
+.jday .jd{width:52px; flex:none; font-family:var(--mono); font-size:10.5px; color:var(--muted); padding-top:2px}
+.jday .jc{flex:1; display:flex; flex-direction:column; gap:4px}
+.statechip{font-size:10px; padding:2px 7px; border-radius:5px; font-family:var(--mono); font-weight:600; align-self:flex-start}
+.sc-done{background:color-mix(in srgb,var(--done) 16%,transparent); color:var(--done)}
+.sc-over{background:color-mix(in srgb,var(--over) 18%,transparent); color:var(--over)}
+.sc-partial{background:color-mix(in srgb,var(--partial) 18%,transparent); color:var(--partial)}
+.sc-skip{background:color-mix(in srgb,var(--skip) 16%,transparent); color:var(--skip)}
+.sc-missed{background:var(--missed); color:var(--skip); box-shadow:inset 0 0 0 1px var(--skip)}
+.jrows{font-size:11px; color:var(--muted); font-family:var(--mono)}
+.mirror{display:flex; gap:6px; justify-content:space-between}
+.mcell{flex:1; display:flex; flex-direction:column; align-items:center; gap:5px}
+.mcell .mw{font-family:var(--mono); font-size:9.5px; color:var(--faint)}
+.mcell .mv{width:100%; aspect-ratio:1; border-radius:6px; display:grid; place-items:center; font-family:var(--mono); font-size:10px; color:#fff; font-weight:600}
+.mv.done{background:var(--done)} .mv.over{background:var(--over)} .mv.partial{background:var(--partial)}
+.mv.skip{background:var(--skip)}
+.mv.missed{background:var(--missed); color:var(--skip); border:1px solid var(--skip)}
+.mv.pending{background:var(--blank); color:var(--faint); border:1px dashed var(--border-strong)}
+.flag{border:1px solid var(--border); border-left-width:3px; border-radius:var(--r-sm); padding:11px 12px; display:flex; flex-direction:column; gap:6px; background:var(--surface)}
+.flag.crit{border-left-color:var(--crit)} .flag.warn{border-left-color:var(--warn)}
+.flag .fhd{display:flex; align-items:center; gap:8px}
+.badge{font-size:9.5px; font-family:var(--mono); letter-spacing:.06em; text-transform:uppercase; padding:2px 6px; border-radius:5px; font-weight:600}
+.badge.crit{color:var(--crit); background:color-mix(in srgb,var(--crit) 14%,transparent)}
+.badge.warn{color:var(--warn); background:color-mix(in srgb,var(--warn) 16%,transparent)}
+.flag .fmsg{font-size:12.5px; line-height:1.45}
+.flag .fev{font-size:10.5px; color:var(--muted); font-family:var(--mono); background:var(--inset); border-radius:6px; padding:6px 8px}
+.rec{border:1px solid var(--accent); background:var(--accent-weak); border-radius:var(--r); padding:12px; display:flex; flex-direction:column; gap:9px}
+.rec .rhd{font-size:12px; font-weight:600; color:var(--accent-ink); display:flex; align-items:center; gap:6px}
+.rec .rin{font-size:11.5px; color:var(--text); border:1px solid var(--border-strong); border-radius:var(--r-sm); padding:8px 10px; background:var(--surface)}
+.rec .alts{display:flex; gap:5px; flex-wrap:wrap}
+.footnote{font-size:10.5px; color:var(--faint); text-align:center}
+.field{display:flex; flex-direction:column; gap:6px}
+.field .fl{font-size:11.5px; color:var(--muted); display:flex; align-items:center; gap:6px}
+.field .fl .req{font-family:var(--mono); font-size:9.5px; color:var(--accent-ink); background:var(--accent-weak); padding:1px 5px; border-radius:4px; letter-spacing:.04em}
+.field .fl .opt{font-family:var(--mono); font-size:9.5px; color:var(--faint); border:1px solid var(--border); padding:1px 5px; border-radius:4px; letter-spacing:.04em}
+.input{border:1px solid var(--border-strong); border-radius:var(--r-sm); background:var(--surface); color:var(--text);
+  font-family:var(--sans); font-size:13px; padding:10px 11px; min-height:44px; width:100%;
+  display:flex; align-items:center}
+.input.ph{color:var(--faint)}
+.input::placeholder{color:var(--faint)}
+.input:focus-visible{outline:2px solid var(--accent); outline-offset:1px}
+.hint{font-size:10.5px; color:var(--faint); line-height:1.45}
+.chiprow{display:flex; gap:6px; flex-wrap:wrap}
+.sheet{border:1px solid var(--border-strong); border-radius:var(--r); background:var(--surface);
+  box-shadow:var(--shadow); padding:14px; display:flex; flex-direction:column; gap:12px}
+.slotbar{display:flex; gap:5px}
+.slotbar i{flex:1; height:5px; border-radius:3px; background:var(--inset)}
+.slotbar i.on{background:var(--accent)}
+.slotbar i.over{background:var(--warn)}
+.minirow{display:flex; align-items:center; gap:9px; padding:8px 0; border-bottom:1px solid var(--border)}
+.minirow:last-child{border-bottom:0}
+.minirow .mn{font-size:12.5px; font-weight:540}
+.minirow .mm{margin-left:auto; font-family:var(--mono); font-size:10.5px; color:var(--faint)}
+.pick{border:1px solid var(--border); border-radius:var(--r-sm); padding:10px 11px; background:var(--surface);
+  display:flex; align-items:center; gap:9px; cursor:pointer; text-align:left; width:100%; font-family:var(--sans); min-height:44px}
+.pick.on{border-color:var(--accent); background:var(--accent-weak)}
+.pick .box{width:16px;height:16px;border-radius:5px;border:1px solid var(--border-strong);flex:none;display:grid;place-items:center;
+  font-size:10px; color:#fff; font-family:var(--mono)}
+.pick.on .box{background:var(--accent); border-color:var(--accent)}
+.pick .pn{font-size:12.5px; font-weight:540}
+.pick .pd{font-size:10.5px; color:var(--muted)}
+.datectl{display:flex; align-items:center; gap:6px}
+.datectl .dnav{appearance:none; border:1px solid var(--border-strong); background:var(--surface); color:var(--muted);
+  width:32px; height:32px; border-radius:var(--r-sm); cursor:pointer; font-family:var(--mono); font-size:13px; line-height:1}
+.datectl .dnav:disabled{opacity:.35; cursor:not-allowed}
+.datectl .dnav:hover:not(:disabled){border-color:var(--accent); color:var(--accent-ink)}
+.datectl .dlabel{font-family:var(--mono); font-size:12px; font-weight:600; padding:0 4px; min-width:78px; text-align:center}
+.backnote{font-size:10.5px; color:var(--faint); font-family:var(--mono)}
+.milestones{display:flex; gap:5px; align-items:flex-end}
+.ms{flex:1; display:flex; flex-direction:column; align-items:center; gap:4px}
+.ms .mb{width:100%; border-radius:4px 4px 0 0; background:var(--inset); position:relative; height:44px}
+.ms .mb > i{position:absolute; left:0; right:0; bottom:0; border-radius:4px 4px 0 0; background:var(--accent)}
+.ms .mb.dim > i{background:color-mix(in srgb,var(--accent) 42%,var(--inset))}
+.ms .mk{font-family:var(--mono); font-size:9px; color:var(--faint)}
+.ms .mxp{font-family:var(--mono); font-size:9.5px; color:var(--muted)}
+
+.recover{border:1px solid var(--border-strong); border-radius:var(--r); background:var(--surface-2);
+  padding:12px; display:flex; flex-direction:column; gap:10px}
+.recover .rq{font-size:13px; font-weight:600; letter-spacing:-.01em}
+.recover .rd{display:flex; align-items:center; gap:7px}
+.recover .rd .dt{font-family:var(--mono); font-size:11px; color:var(--muted); width:46px; flex:none}
+.recover .rd .sp{flex:1}
+.recover .rd .btn{padding:7px 10px; font-size:11.5px; min-height:36px; flex:none; width:74px}
+.recover .rd .btn.yes{border-color:color-mix(in srgb,var(--done) 55%,transparent); color:var(--done)}
+.recover .rd .btn.no{border-color:color-mix(in srgb,var(--skip) 50%,transparent); color:var(--skip)}
+  </style>
+</helmet>
+<div class="app tight">
+  <div class="rowline">
+    <div>
+      <div class="eyebrow">7월 8일 화요일</div>
+      <h2 class="sh">오늘</h2>
+    </div>
+    <div class="sub num" style="text-align:right">{{ tally }}<br>{{ xpToday }}</div>
+  </div>
+
+  <sc-if value="{{ showSave }}" hint-placeholder-val="{{ true }}">
+    <div class="banner">
+      <span class="dot r"></span>
+      <span class="bx"><b>어제 명상을 놓쳤어요.</b> 오늘 한 번이면 흐름이 이어져요. 어제도 지금 채워 넣을 수 있어요.</span>
+      <button class="btn pri" type="button" style="padding:6px 10px; min-height:36px" onClick="{{ saveNow }}">✓ 완료</button>
+    </div>
+  </sc-if>
+
+  <div class="composer">
+    <div class="seg" role="tablist" aria-label="기록 대상">
+      <sc-for list="{{ tabs }}" as="t" hint-placeholder-count="4">
+        <button role="tab" type="button" aria-selected="{{ t.on }}" onClick="{{ t.pick }}">{{ t.label }}</button>
+      </sc-for>
+    </div>
+
+    <sc-if value="{{ isCount }}" hint-placeholder-val="{{ true }}">
+      <div class="qadd">
+        <button class="btn pri" type="button" style="flex:1" onClick="{{ logFloor }}">{{ floorLabel }}</button>
+        <div class="numfield">{{ staged }}</div>
+        <span class="unit">{{ unit }}</span>
+      </div>
+      <div class="qadd">
+        <span class="skiprow"><span class="lbl">빠른 추가</span></span>
+        <span class="qchips">
+          <sc-for list="{{ quick }}" as="q" hint-placeholder-count="3">
+            <button class="btn" type="button" onClick="{{ q.go }}">{{ q.label }}</button>
+          </sc-for>
+        </span>
+      </div>
+      <div class="progress">
+        <div class="pl"><span>{{ progLeft }}</span><span>{{ progRight }}</span></div>
+        <div class="ptrack"><i style="{{ progStyle }}"></i></div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isBinary }}" hint-placeholder-val="{{ false }}">
+      <button class="btn pri block" type="button" onClick="{{ logFloor }}">{{ floorLabel }}</button>
+      <div class="hint">{{ binaryNote }}</div>
+    </sc-if>
+
+    <sc-if value="{{ isFree }}" hint-placeholder-val="{{ false }}">
+      <div class="skiprow">
+        <sc-for list="{{ freeTypes }}" as="f" hint-placeholder-count="4">
+          <button class="{{ f.cls }}" type="button" onClick="{{ f.pick }}">{{ f.label }}</button>
+        </sc-for>
+      </div>
+      <div class="input ph">메모 (선택) — 오늘 무슨 일이 있었나요</div>
+      <button class="btn pri block" type="button" onClick="{{ logFree }}">오늘 일기 남기기</button>
+      <div class="hint">그냥 오늘 있었던 일을 적는 칸이에요. 점수나 연속 날수와는 아무 상관 없습니다.</div>
+    </sc-if>
+
+    <sc-if value="{{ isHabit }}" hint-placeholder-val="{{ true }}">
+      <div class="ctrls">
+        <button class="time" type="button">🕑 지금 {{ clock }}</button>
+        <span class="skiprow" style="margin-left:auto">
+          <span class="lbl">건너뛰기</span>
+          <sc-for list="{{ skips }}" as="s" hint-placeholder-count="3">
+            <button class="btn ghost" type="button" onClick="{{ s.go }}">{{ s.label }}</button>
+          </sc-for>
+        </span>
+      </div>
+    </sc-if>
+  </div>
+
+  <sc-if value="{{ hasToast }}" hint-placeholder-val="{{ true }}">
+    <div class="toast">
+      <span class="rx">{{ toastMain }}</span><span>{{ toastSub }}</span>
+      <button class="undo" type="button" onClick="{{ undo }}">실행취소</button>
+    </div>
+  </sc-if>
+
+  <div class="eyebrow">오늘 기록</div>
+  <div class="feed">
+    <sc-for list="{{ feed }}" as="f" hint-placeholder-count="4">
+      <div class="{{ f.wrap }}">
+        <span class="ft">{{ f.t }}</span>
+        <span class="fb">
+          <span class="fh"><span class="fn">{{ f.name }}</span><span class="{{ f.acls }}">{{ f.amt }}</span></span>
+          <span class="{{ f.rcls }}">{{ f.reward }}</span>
+        </span>
+      </div>
+    </sc-for>
+  </div>
+</div>
+</x-dc>
+<script data-dc-script data-props='{}'>
+var HABITS = {
+  read: { name: '독서', unit: 'p', floor: 10, target: 15, kind: 'count', last: 6 },
+  pullup: { name: '턱걸이', unit: '회', floor: 5, target: 10, kind: 'count', last: 5 },
+  meditate: { name: '명상', kind: 'binary', floor: 1 }
+};
+
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = {
+      target: 'read',
+      freeType: '기분',
+      day: { read: 6, pullup: 5, meditate: 0 },
+      xp: 180,
+      minutes: 860,
+      saved: false,
+      toast: null,
+      feed: [
+        { id: 1, t: '09:40', name: '독서', amt: '+6p', acls: 'amt', reward: '', rcls: 'rewardtag', wrap: 'feeditem' },
+        { id: 2, t: '08:25', name: '🌤 기분', amt: '', acls: 'amt plain', reward: '아침 공기가 좋았다. 컨디션 맑음.', rcls: 'fnote', wrap: 'feeditem freelog' },
+        { id: 3, t: '07:10', name: '턱걸이', amt: '+5회', acls: 'amt', reward: '→ 5/5 달성 · +60 XP', rcls: 'rewardtag', wrap: 'feeditem' }
+      ]
+    };
+  }
+
+  clockText() {
+    var m = this.state.minutes;
+    var h = Math.floor(m / 60) % 24;
+    var mm = m % 60;
+    return (h < 10 ? '0' : '') + h + ':' + (mm < 10 ? '0' : '') + mm;
+  }
+
+  push(item, dayDelta, key, xpDelta) {
+    var s = this.state;
+    var day = Object.assign({}, s.day);
+    if (key) day[key] = (day[key] || 0) + dayDelta;
+    this.setState({
+      minutes: s.minutes + 7,
+      day: day,
+      xp: s.xp + xpDelta,
+      feed: [item].concat(s.feed),
+      toast: { main: item.toastMain, sub: item.toastSub, id: item.id, key: key, amount: dayDelta, xp: xpDelta }
+    });
+  }
+
+  logAmount(id, amount) {
+    var h = HABITS[id];
+    var before = this.state.day[id] || 0;
+    var after = before + amount;
+    var crossedFloor = before < h.floor && after >= h.floor;
+    var crossedTarget = h.target && before < h.target && after >= h.target;
+    var xp = 0;
+    var main, sub, reward;
+    if (crossedFloor) xp += 60;
+    if (crossedTarget) xp += 60;
+    if (!crossedFloor && after >= h.floor) xp += 12;
+    if (after < h.floor) {
+      main = '기록했어요 · XP 없음';
+      sub = '오늘 나타났어요';
+      reward = '→ ' + after + '/' + h.floor + ' · 최소엔 못 미쳤지만 “나타남” 하루 추가';
+    } else {
+      main = '기록했어요 · +' + xp + ' XP';
+      sub = crossedTarget ? '목표까지 넘었어요 🎯' : crossedFloor ? '최소만큼 했어요 💪' : '최소보다 더 했어요';
+      reward = crossedTarget
+        ? '→ 합 ' + after + ' · 목표 ' + h.target + ' 넘음 · +' + xp + ' XP'
+        : crossedFloor
+        ? '→ ' + after + '/' + h.floor + ' 오늘 몫 완료 · +' + xp + ' XP'
+        : '→ 합 ' + after + ' · +' + xp + ' XP';
+    }
+    var unit = h.unit || '';
+    this.push(
+      {
+        id: Date.now(),
+        t: this.clockText(),
+        name: h.name,
+        amt: '+' + amount + unit,
+        acls: after >= h.floor ? 'amt' : 'amt warn',
+        reward: reward,
+        rcls: after >= h.floor ? 'rewardtag' : 'rewardtag warn',
+        wrap: 'feeditem',
+        toastMain: main,
+        toastSub: sub
+      },
+      amount,
+      id,
+      xp
+    );
+  }
+
+  logSkip(id, reason) {
+    var h = HABITS[id];
+    this.push(
+      {
+        id: Date.now(),
+        t: this.clockText(),
+        name: h.name,
+        amt: '건너뜀',
+        acls: 'amt plain',
+        reward: reason,
+        rcls: 'backnote',
+        wrap: 'feeditem',
+        toastMain: '못 한 날로 기록했어요',
+        toastSub: reason
+      },
+      0,
+      null,
+      0
+    );
+  }
+
+  undo() {
+    var s = this.state;
+    var t = s.toast;
+    if (!t) return;
+    var day = Object.assign({}, s.day);
+    if (t.key) day[t.key] = Math.max(0, (day[t.key] || 0) - t.amount);
+    this.setState({
+      day: day,
+      xp: Math.max(0, s.xp - t.xp),
+      feed: s.feed.filter(function (f) { return f.id !== t.id; }),
+      saved: t.key === 'meditate' ? false : s.saved,
+      toast: null
+    });
+  }
+
+  renderVals() {
+    var self = this;
+    var target = this.state.target;
+    var h = HABITS[target];
+    var isFree = target === 'free';
+    var isCount = !isFree && h.kind === 'count';
+    var isBinary = !isFree && h.kind === 'binary';
+    var sum = isFree ? 0 : this.state.day[target] || 0;
+
+    var tabs = [{ id: 'free', label: '오늘 일기' }, { id: 'read', label: '독서' }, { id: 'pullup', label: '턱걸이' }, { id: 'meditate', label: '명상' }].map(function (t) {
+      return { label: t.label, on: t.id === target, pick: function () { self.setState({ target: t.id }); } };
+    });
+
+    var quick = [];
+    if (isCount) {
+      quick = [
+        { label: '+1', amount: 1 },
+        { label: '최소만큼', amount: h.floor },
+        { label: '지난번 ' + h.last, amount: h.last }
+      ].map(function (q) {
+        return { label: q.label, go: function () { self.logAmount(target, q.amount); } };
+      });
+    }
+
+    var skips = [
+      { label: '깜빡함', reason: '깜빡함 — 할 시간이 안 정해짐' },
+      { label: '너무 힘듦', reason: '너무 힘듦 — 최소량이 많음' },
+      { label: '예외', reason: '예외 — 실패로 안 셈' }
+    ].map(function (s) {
+      return { label: s.label, go: function () { self.logSkip(target, s.reason); } };
+    });
+
+    var freeTypes = ['메모', '잘한 일', '기분', '떠오른 생각'].map(function (f) {
+      return {
+        label: f,
+        cls: f === self.state.freeType ? 'btn sel' : 'btn',
+        pick: function () { self.setState({ freeType: f }); }
+      };
+    });
+
+    var pct = isCount ? Math.min(100, Math.round((sum / h.floor) * 100)) : 0;
+    var done = Object.keys(HABITS).filter(function (k) { return (self.state.day[k] || 0) >= HABITS[k].floor; }).length;
+    var toast = this.state.toast;
+
+    return {
+      tally: '오늘 ' + done + '/3',
+      xpToday: '+' + this.state.xp + ' XP',
+      showSave: !this.state.saved && (this.state.day.meditate || 0) < 1,
+      saveNow: function () { self.logAmount('meditate', 1); self.setState({ target: 'meditate', saved: true }); },
+      tabs: tabs,
+      isCount: isCount,
+      isBinary: isBinary,
+      isFree: isFree,
+      isHabit: !isFree,
+      unit: isCount ? h.unit : '',
+      staged: isCount ? h.floor : 1,
+      floorLabel: isCount ? '✓ 최소만큼 했어요 (+' + h.floor + (h.unit || '') + ')' : '✓ 오늘 했어요',
+      binaryNote: '채울 양이 없는 습관이에요. 한 번 누르면 오늘 몫 끝.',
+      logFloor: function () { if (isFree) return; self.logAmount(target, isCount ? h.floor : 1); },
+      quick: quick,
+      skips: skips,
+      freeTypes: freeTypes,
+      logFree: function () {
+        self.push(
+          {
+            id: Date.now(),
+            t: self.clockText(),
+            name: self.state.freeType,
+            amt: '자유 로그',
+            acls: 'amt plain',
+            reward: '점수에는 영향 없어요',
+            rcls: 'fnote',
+            wrap: 'feeditem freelog',
+            toastMain: '일기를 남겼어요',
+            toastSub: '점수 변화 없음'
+          },
+          0,
+          null,
+          0
+        );
+      },
+      progLeft: isCount ? '오늘 ' + sum + ' / ' + h.floor + h.unit : '',
+      progRight: isCount
+        ? sum >= h.target
+          ? '목표 ' + h.target + h.unit + '도 넘었어요 🎯'
+          : sum >= h.floor
+          ? '오늘 몫 완료 ✓ · 목표까지 ' + (h.target - sum) + h.unit
+          : h.floor - sum + h.unit + ' 더 하면 오늘 몫 완료'
+        : '',
+      progStyle: 'width:' + pct + '%',
+      clock: this.clockText(),
+      hasToast: !!toast,
+      toastMain: toast ? toast.main : '',
+      toastSub: toast ? toast.sub : '',
+      undo: function () { self.undo(); },
+      feed: this.state.feed
+    };
+  }
+}
+</script>
+</body>
+</html>

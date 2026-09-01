@@ -1,7 +1,7 @@
 # Habit System — Product Specification
 
 **Tagline:** Build the Habit, Grow yourself
-**Status:** Draft v3.3 (MVP scope) · updated 2026-07-08 (recording review: scoped fairness + engagement streak, log-time reward, proactive never-miss-twice save, visible weekly growth, skip-reasons drive diagnosis; minimal adaptive Linear/Notion visual language)
+**Status:** Draft v3.5 (MVP scope) · updated 2026-09-01 (ADR-0001: an unlogged past day now counts as a miss and backfill repairs it; ADR-0002: a run of unlogged days asks before it diagnoses; plus v3.3's scoped fairness + engagement streak, log-time reward, proactive never-miss-twice save, visible weekly growth, skip-reasons drive diagnosis; minimal adaptive Linear/Notion visual language)
 **Working name:** Habiquest (candidate, not final)
 
 ---
@@ -94,23 +94,39 @@ diagnosis engine clean:
 - **partial** — you logged real activity but the total fell short of the floor.
 - **skip** — the day was explicitly marked not-done, *with a reason* (no real
   activity that day).
-- **blank** — no entry at all. Treated as **unknown**.
+- **missed** — a *past* day with no entry at all. **A miss** (see below).
+- **pending** — *today*, with no entry yet. The day is still open; not a miss.
 
-Yes/No habits use only **done** / **skip** / **blank** — they have no **over** or
-**partial** (any "done" is the whole floor).
+Yes/No habits use only **done** / **skip** / **missed** / **pending** — they have no
+**over** or **partial** (any "done" is the whole floor).
 
-**Neither blank nor partial is a miss.** Only **skip** (with a non-exception reason)
-counts as a miss for diagnosis. Excluding *blank* prevents forgotten logging from
-poisoning the diagnosis (a false "you keep missing Tuesdays"). Excluding *partial*
-upholds a fairness rule, scoped precisely: **honestly logging that you fell short must
-never be worse for you than logging nothing — for XP, streak, or miss-count.** A partial
-day still *informs* the design: it deliberately lowers your floor-completion rate, which
-is exactly the "your floor may be too high" signal. That lowering is help, not a penalty,
-so it must not leak into places where a lower rate would *cost* you (being demoted out of
-Established, §3.3 — see SPEC §4.4/§4.7). And a partial day is made *strictly better* than
-a blank one by the **engagement ("showed up") streak** (§10), which rewards showing up
-without granting XP. Trade-off: a genuine miss the user never marks stays unknown — we
-accept under-counting for clean signal, and mitigate it with easy backfill (§5).
+**An unlogged past day is a miss; backfilling repairs it (ADR-0001).** If you never
+record a day, it counts as a miss — it breaks the streak and lowers your success rate.
+Recording it later, even days later, **reclassifies that day and heals everything that
+ran through it**: the streak reconnects, the rate recovers, the miss is gone. This is
+structural rather than a special case — day-state is *computed*, never stored, so
+adding one row to a past date simply changes the answer (§5, backfill). What this buys:
+silence and effort stop looking the same, and "log it" becomes the cheapest way to keep
+a streak alive.
+
+**A partial day is still never a miss**, and the fairness rule is unchanged — only its
+baseline moved: **honestly logging that you fell short must never be worse for you than
+logging nothing — for XP, streak, or miss-count.** Silence is now the *worst* outcome,
+so partial is strictly better than it on every measure. A partial day still *informs*
+the design: it deliberately lowers your floor-completion rate, which is exactly the
+"your floor may be too high" signal. That lowering is help, not a penalty, so it must
+not leak into places where a lower rate would *cost* you (being demoted out of
+Established, §3.3 — see SPEC §4.4/§4.7). The **engagement ("showed up") streak** (§10)
+rewards showing up without granting XP.
+
+**What a missed day cannot tell us.** It carries no reason, so it never attributes a
+component (cue / floor / identity). Only an explicit **skip** does that (§6). The
+floor-diagnosis therefore still reads *"when you tried, could you reach the floor?"* —
+it excludes missed days. And because a run of missed days is genuinely ambiguous —
+*doing it but not logging* versus *quietly stopped* — reflection **asks instead of
+guessing** (§6.3, ADR-0002). Superseded: the earlier rule that blank days are `unknown` and
+excluded from misses to keep the diagnosis input clean (see ADR-0001 for the reversal
+and its one open question).
 
 ### 3.3 Habit lifecycle
 - **Forming** — still establishing; goal is floor consistency. XP / streak / the "showed
@@ -191,10 +207,11 @@ purpose, and is cheaper than blank-form abandonment at creation.
   feedback** — "floor hit · +60 XP", "past target", a level-up, a milestone, or a
   **"showed up"** acknowledgment for a partial. A computed-but-undelivered reward is a dead
   reward; the reinforcing moment is the instant of the behavior.
-- **Backfill (required), and easy.** Past-date entries can be added, so "did it but forgot
-  to log" is recoverable and never a miss. A **"yesterday" fast-path** sits right in the
-  Today composer for the dominant forgot-last-night case; older gaps use Habit Detail. This
-  keeps the "blank is not a miss" bargain honest — forgotten days must be cheap to recover.
+- **Backfill (required), and easy — it is now the *recovery* mechanism.** An unrecorded
+  past day counts as a miss (§3.2); adding the entry later takes it back. "Did it but
+  forgot to log" is therefore always recoverable, and recovering it is the point. A **"yesterday" fast-path** sits right in the
+  Today composer for the dominant forgot-last-night case; older gaps use Habit Detail. Since a forgotten day now costs a streak until it is filled, this path has to stay
+  cheap — the whole bargain of ADR-0001 rests on it.
 - **Skip with reason — a pre-classified diagnosis that now *acts*.** Marking a day skipped
   is **one tap on a reason chip** (a small fixed set, to stay low-friction). Reasons map
   onto the diagnostic components, and V1 now **feeds them into diagnosis** (SPEC §4.4
@@ -204,13 +221,17 @@ purpose, and is cheaper than blank-form abandonment at creation.
   - "sick / off / external" → **legitimate exception — excluded from miss count**
   - "didn't feel like it / no meaning" → **identity**
   - free-text note optional, alongside the category.
-- **Heatmap.** Daily states visualized, each visually distinct: a *blank* (unknown) day
-  must not look like a *partial* (logged-but-short) or a *skip* (miss) day.
+- **Heatmap.** Daily states visualized, each visually distinct: a *missed* day (no record,
+  reason unknown) must not look like a *partial* (logged-but-short), a *skip* (marked
+  not-done, reason known), or a *pending* (today, still open) day. Rendering: pending is
+  neutral, missed is the miss color as an **outline**, skip is the miss color **filled** —
+  so "failed" and "failed, and we know why" read apart at a glance.
 - **never-miss-twice — a proactive save.** One miss is normal and recoverable; only
   *consecutive* misses are the real failure signal. The system intervenes **inside the open
-  save window** — yesterday was a miss (or a streak just broke) and today is still blank —
-  with an opportunity-framed nudge ("one floor log today keeps this rolling"), *before* the
-  second miss completes, not after.
+  save window** — yesterday was a miss (now including an unrecorded day) and today is still
+  pending — with an opportunity-framed nudge ("one floor log today keeps this rolling"),
+  *before* the second miss completes, not after. Because unrecorded days now count, this
+  banner fires more often and doubles as the backfill prompt.
 
 ### Stage 3 — Reflect
 
@@ -233,6 +254,7 @@ weekly batch**, and it is **active** (the system proposes; the user verifies).
 
 ### 6.2 Active form — verify, don't write
 Reflection must be cheap. The user's job is **choosing, not writing**:
+0. **Recover first, if the record has holes** (§6.3) — before any diagnosis.
 1. **Mirror** — resurface that habit's week: heatmap, missed days, journal notes.
 2. **Diagnosis (pre-computed, rule-based).** The system states what it sees and
    asks only for confirmation: *"Looks like the Tue/Thu cue failed — [Right] /
@@ -254,6 +276,33 @@ Reflection must be cheap. The user's job is **choosing, not writing**:
 4. **Always show the reasoning.** Every diagnosis displays its evidence. This is
    the guardrail against users rubber-stamping a wrong recommendation — visible
    reasoning reduces uncritical agreement.
+
+### 6.3 When the misses are mostly *unlogged* — ask, don't diagnose (ADR-0002)
+
+An unlogged day counts as a miss (§3.2), but it is silent about **why**, and it hides
+two opposite situations: the habit is alive and only the **recording** broke, or the
+habit itself was quietly dropped. The remedy is not a smarter rule — it is the missing
+data. So when a habit shows a run of unlogged days, reflection opens with a question
+rather than a verdict:
+
+> **"이 5일, 하셨나요?"** — each date takes one tap to fill in, or one tap for "안 했어요."
+
+The answer *is* the diagnosis:
+
+- **Mostly filled in** → the habit was alive; the recording loop is what needs a fix
+  (propose a time to record, not a change to the habit).
+- **Marked not-done** → real misses, now carrying reasons — the four rules (§6.2) work
+  normally from here.
+- **Ignored, repeatedly** → disengagement from the habit itself; this is portfolio
+  load (§8), not a per-habit design fault.
+
+Keep "fill it in" and "안 했어요" **equally prominent**: making one path easier biases
+the very data the question exists to collect. And keep it in-app, on entering
+reflection — never a push (§7.4).
+
+No fifth diagnostic component is introduced. Once the days are resolved, the existing
+rules have what they need. Whether *"the recording loop broke"* eventually deserves its
+own component is deferred until this prompt shows how often that case actually occurs.
 
 **The output of reflection is a change to (or explicit confirmation of) the habit
 design.** That is where the loop closes in code.
@@ -376,8 +425,9 @@ where requirements rise as you improve → negative reinforcement → churn):
   intensity, a yes/no habit instead earns a bonus when its streak reaches a
   milestone (5, 10, 20, … days). Re-reaching the same milestone after the streak
   breaks awards a **diminishing** amount (geometric decay), so rebuilding still
-  motivates but can't be farmed. A merely-blank gap is forgiven (the streak
-  continues); only a logged miss resets it.
+  motivates but can't be farmed. An **unrecorded** gap now resets the run
+  (ADR-0001) — backfilling that day restores it; `partial` and exception days stay
+  transparent.
 - **Streak milestones (count) → once-only bonus** at N-day marks.
 - **Showing up (sub-floor) → a "showed up" streak, not XP** — a partial day (real
   activity below the floor) earns **no XP** (the floor stays *the* rewarded threshold, so
@@ -464,6 +514,11 @@ Deferred to keep the MVP focused and validatable. Design when built:
    `skipReason` — day-state is *computed*, not stored], FreeLog, ReflectionSession,
    lifecycle state) and relations. *(Largely resolved — see SPEC §3; day-states are
    derived per SPEC §4.1.)*
+8. **Diagnosing a recording gap (opened by ADR-0001).** *(Resolved — ADR-0002, §6.3:
+   neither. A run of `missed` days triggers a bulk-backfill question at the top of
+   reflection, and the answer separates "not logging" from "stopped"; no fifth component
+   is added. Left open for later: whether a dedicated `record` component earns its place
+   once we see how often the first case occurs.)*
 
 ---
 
@@ -480,12 +535,14 @@ Deferred to keep the MVP focused and validatable. Design when built:
    inside the still-open save window, *before* the second miss completes.
 6. Resurface records actively; an unread record is dead.
 7. Reflection is per-habit, active (verify, don't write), and ends in a decision.
-8. Keep the diagnosis input clean: only explicit skips count as misses; blank is
-   unknown and partial (logged-but-short) is not a miss. Honest logging is never
-   penalized vs. silence — scoped to XP, streak, and miss-count (partial deliberately
-   lowers the floor-rate as a *help* signal, but never causes demotion), and the "showed
-   up" streak makes an honest partial strictly *better* than silence. Explicit
-   skip-reasons actively drive diagnosis; free logs stay out of reflection.
+8. Not recording is failing — but never permanently. An unlogged past day is a miss;
+   backfilling it repairs the streak and the rate retroactively (ADR-0001). Partial
+   (logged-but-short) is still not a miss, and honest logging is never penalized vs.
+   silence — scoped to XP, streak, and miss-count (partial deliberately lowers the
+   floor-rate as a *help* signal, but never causes demotion), with the "showed up"
+   streak making an honest partial strictly *better* than silence. Only explicit
+   skip-reasons attribute a component; a missed day counts but explains nothing.
+   Free logs stay out of reflection.
 9. Status lights are intervention *opportunities*, not reproaches — and mix in
    positive lighting.
 10. Overload is a design failure: prevent with Forming slots, correct with Focus

@@ -1,0 +1,57 @@
+<div class="app">
+  <div class="rowline">
+    <div style="display:flex; align-items:center; gap:8px">
+      <span class="dot a"></span><h2 class="sh">명상</h2><span class="chip stat">의지</span>
+    </div>
+    <span class="chip">형성 중</span>
+  </div>
+  <div class="sub" style="margin-top:-6px">했다 / 안 했다만 있는 습관이에요. <b style="color:var(--text)">며칠 이어 갔는지</b>만 봅니다.</div>
+
+  <div class="pills">
+    <div class="pill"><span class="pk">연속</span><span class="pv num">10<small>일</small></span></div>
+    <div class="pill"><span class="pk">최고 연속</span><span class="pv num">10<small>일</small></span></div>
+    <div class="pill"><span class="pk">성공률</span><span class="pv num">75<small>%</small></span></div>
+    <div class="pill"><span class="pk">주간 XP</span><span class="pv num">180</span></div>
+  </div>
+
+  <div class="chartcard">
+    <div class="ch-head"><span class="eyebrow">이어 간 날 보너스</span><span class="sub num">지금까지 <span>210</span> XP</span></div>
+    <div class="milestones">
+      <div class="ms"><div class="mb"><i style="height:100%"></i></div><span class="mxp">+120</span><span class="mk">5일 첫 달성</span></div>
+      <div class="ms"><div class="mb dim"><i style="height:50%"></i></div><span class="mxp">+60</span><span class="mk">5일 두 번째</span></div>
+      <div class="ms"><div class="mb dim"><i style="height:25%"></i></div><span class="mxp">+30</span><span class="mk">5일 세 번째</span></div>
+      <div class="ms"><div class="mb"><i style="height:0%"></i></div><span class="mxp">+200</span><span class="mk">10일</span></div>
+      <div class="ms"><div class="mb"><i style="height:0%"></i></div><span class="mxp">+340</span><span class="mk">20일</span></div>
+    </div>
+    <span class="hint">더 많이 할 수가 없는 습관이라, <b style="color:var(--text)">며칠 이어 갔는지</b>로 보너스를 드려요. 끊겼다가 같은 날수를 다시 채우면 보너스는 절반씩 줄어듭니다. 다시 시작할 맛은 남기되, 일부러 끊고 반복해서 챙길 수는 없게요.</span>
+  </div>
+
+  <div class="chartcard">
+    <div class="ch-head"><span class="eyebrow">최근 20일</span><span class="sub">함 · 안 함 · 기록 없음</span></div>
+    <span class="ribbon" aria-hidden="true">
+      <span class="cell done"></span><span class="cell skip"></span><span class="cell missed"></span><span class="cell done"></span><span class="cell done"></span><span class="cell skip"></span><span class="cell missed"></span><span class="cell done"></span><span class="cell done"></span><span class="cell missed"></span><span class="cell done"></span><span class="cell done"></span><span class="cell done"></span><span class="cell done"></span><span class="cell done"></span><span class="cell done"></span><span class="cell done"></span><span class="cell done"></span><span class="cell done"></span><span class="cell done"></span>
+    </span>
+    <span class="hint">테두리만 있는 칸은 <b style="color:var(--text)">기록이 없어 실패로 잡힌 날</b>이고, 꽉 찬 칸은 “오늘 안 함”을 직접 찍은 날이에요. 둘 다 연속을 끊습니다. 다만 <b style="color:var(--done)">지난 날을 채워 넣으면 그 날이 성공으로 바뀌고 연속도 다시 이어집니다.</b></span>
+  </div>
+
+  <div class="chartcard">
+    <div class="ch-head"><span class="eyebrow">아직 몸에 붙는 중 — 보통 두 달쯤 걸려요</span><span class="sub num">32일째 / 보통 66일</span></div>
+    <div class="xpbar"><i style="width:48%"></i></div>
+    <span class="hint">날짜가 아니라 <b style="color:var(--text)">실제로 한 날 수</b>로 셉니다. 좀 더디더라도 실패한 게 아니라 아직 붙는 중인 거예요.</span>
+  </div>
+
+  <div class="designbox">
+    <div class="dhead"><span class="eyebrow">지금 이렇게 하기로 했어요</span><button class="btn ghost" type="button">수정</button></div>
+    <div class="drow"><span class="dk">언제</span><span class="dv empty">아직 안 정함 — 이것부터 정해 보길 권합니다</span></div>
+    <div class="drow"><span class="dk">최소량</span><span class="dv">없음 — 했다 / 안 했다</span></div>
+    <div class="drow"><span class="dk">이유</span><span class="dv empty">아직 안 적음</span></div>
+  </div>
+
+  <div class="eyebrow">저널</div>
+  <div class="journal">
+    <div class="jday"><span class="jd">7/8</span><span class="jc"><span class="statechip sc-done">함</span><span class="jrows">22:40 ✓</span></span></div>
+    <div class="jday"><span class="jd">7/7</span><span class="jc"><span class="statechip sc-done">함</span><span class="jrows">23:05 ✓ · 메모: 5분만</span></span></div>
+    <div class="jday"><span class="jd">7/6</span><span class="jc"><span class="statechip sc-missed">기록 없음 · 실패</span><span class="jrows">지금 채워 넣으면 이 날이 회복됩니다</span></span></div>
+    <div class="jday"><span class="jd">7/5</span><span class="jc"><span class="statechip sc-skip">안 함 · 깜빡함</span><span class="jrows">이 이유가 “언제 할지” 문제로 쌓입니다</span></span></div>
+  </div>
+</div>

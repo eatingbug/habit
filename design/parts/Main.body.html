@@ -1,0 +1,86 @@
+<div class="app">
+  <div class="rowline">
+    <div>
+      <div class="eyebrow">새 습관</div>
+      <h2 class="sh">습관 만들기</h2>
+    </div>
+    <span class="chip">첫 설계</span>
+  </div>
+
+  <p class="hint" style="margin:0">지금은 아무 기록도 없으니 <b style="color:var(--text)">일단 추측으로</b> 정합니다. 해 보고 안 맞으면 나중에 같이 고쳐요. 가볍게 정하세요.</p>
+
+  <div class="field">
+    <span class="fl">이름 <span class="req">필수</span></span>
+    <div class="input">턱걸이</div>
+  </div>
+
+  <div class="field">
+    <span class="fl">측정 방식 <span class="req">필수</span></span>
+    <div class="seg" role="tablist" aria-label="측정 방식">
+      <button role="tab" type="button" aria-selected="{{ isCount }}" onClick="{{ pickCount }}">횟수 · 양</button>
+      <button role="tab" type="button" aria-selected="{{ isBinary }}" onClick="{{ pickBinary }}">예 · 아니오</button>
+    </div>
+  </div>
+
+  <sc-if value="{{ isCount }}" hint-placeholder-val="{{ true }}">
+    <div class="field">
+      <span class="fl">최소량 <span class="req">필수</span></span>
+      <div class="qadd">
+        <div class="numfield">5</div>
+        <div class="input" style="flex:1">회</div>
+      </div>
+      <span class="hint">아무리 바빠도 할 수 있는 양으로 잡으세요. 이만큼만 하면 <b style="color:var(--done)">그날은 성공</b>입니다.</span>
+    </div>
+
+    <div class="field">
+      <span class="fl">목표 <span class="opt">선택</span></span>
+      <div class="qadd">
+        <div class="numfield">10</div>
+        <div class="input ph" style="flex:1">더 하고 싶은 양 · 안 채워도 괜찮아요</div>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ isBinary }}" hint-placeholder-val="{{ false }}">
+    <div class="field">
+      <span class="fl">최소량 · 목표</span>
+      <div class="input ph">정할 게 없어요 — 했다 / 안 했다 뿐</div>
+      <span class="hint">양이 없는 습관이에요. <b style="color:var(--text)">며칠 이어 갔는지만</b> 봅니다. 5일·10일처럼 이어 간 날이 쌓일 때 보너스를 받아요.</span>
+    </div>
+  </sc-if>
+
+  <div class="field">
+    <span class="fl">스탯 <span class="req">필수</span></span>
+    <div class="chiprow">
+      <sc-for list="{{ stats }}" as="s" hint-placeholder-count="5">
+        <button class="{{ s.cls }}" type="button" onClick="{{ s.pick }}">{{ s.name }}</button>
+      </sc-for>
+    </div>
+    <span class="hint">이 습관을 하면 고른 능력치가 올라갑니다.</span>
+  </div>
+
+  <div class="field">
+    <span class="fl">신호 — 언제·어디서 할지 <span class="opt">선택</span></span>
+    <div class="input ph">예: 아침 커피 마신 뒤, 문틀 바에서</div>
+  </div>
+
+  <div class="field">
+    <span class="fl">이유 — 어떤 사람이 되고 싶은지 <span class="opt">선택</span></span>
+    <div class="input ph">예: 나는 매일 몸을 쓰는 사람이니까</div>
+  </div>
+
+  <div class="banner" style="background:var(--surface-2); border-color:var(--border)">
+    <span class="bx" style="color:var(--muted)">아래 두 칸은 <b style="color:var(--text)">비워 두셔도 됩니다.</b> 나중에 잘 안 될 때, “언제 할지부터 정해 볼까요?” 하고 저희가 먼저 물어볼게요. 그때 채우는 게 훨씬 잘 붙습니다.</span>
+  </div>
+
+  <div class="sheet">
+    <div class="rowline">
+      <span class="eyebrow">지금 만드는 중인 습관</span>
+      <span class="num" style="font-size:11px; color:var(--muted)">2 / 3</span>
+    </div>
+    <div class="slotbar"><i class="on"></i><i class="on"></i><i></i></div>
+    <span class="hint">한 번에 너무 많이 벌이면 다 무너집니다. 아직 한 자리 남았어요.</span>
+  </div>
+
+  <button class="btn pri block" type="button">습관 만들기</button>
+</div>

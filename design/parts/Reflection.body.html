@@ -1,0 +1,59 @@
+<div class="app">
+  <div class="rowline">
+    <div style="display:flex; align-items:center; gap:8px">
+      <span class="dot r"></span><h2 class="sh">명상, 잠깐 볼까요</h2>
+    </div>
+    <span class="chip">이번 주</span>
+  </div>
+
+  <div class="recover">
+    <span class="rq">이 5일, 하셨나요?</span>
+    <span class="hint" style="margin:0">기록이 없는 날이라 실패로 잡혀 있어요. 어느 쪽인지 알려 주시면 나머지는 저희가 봅니다.</span>
+    <div>
+      <div class="rd"><span class="dt">7/2</span><span class="sp"></span><button class="btn yes" type="button">했어요</button><button class="btn no" type="button">안 했어요</button></div>
+      <div class="rd"><span class="dt">7/3</span><span class="sp"></span><button class="btn yes" type="button">했어요</button><button class="btn no" type="button">안 했어요</button></div>
+      <div class="rd"><span class="dt">7/4</span><span class="sp"></span><button class="btn yes" type="button">했어요</button><button class="btn no" type="button">안 했어요</button></div>
+      <div class="rd"><span class="dt">7/6</span><span class="sp"></span><button class="btn yes" type="button">했어요</button><button class="btn no" type="button">안 했어요</button></div>
+      <div class="rd"><span class="dt">7/7</span><span class="sp"></span><button class="btn yes" type="button">했어요</button><button class="btn no" type="button">안 했어요</button></div>
+    </div>
+    <span class="hint" style="margin:0">“했어요”를 누르면 그 날이 성공으로 회복되고 연속도 다시 이어집니다. “안 했어요”를 누르면 이유를 물어볼게요.</span>
+  </div>
+
+  <div class="eyebrow">최근 7일은 이랬어요</div>
+  <div class="mirror">
+    <div class="mcell"><span class="mw">수</span><span class="mv done">✓</span></div>
+    <div class="mcell"><span class="mw">목</span><span class="mv missed">·</span></div>
+    <div class="mcell"><span class="mw">금</span><span class="mv done">✓</span></div>
+    <div class="mcell"><span class="mw">토</span><span class="mv missed">·</span></div>
+    <div class="mcell"><span class="mw">일</span><span class="mv skip">✕</span></div>
+    <div class="mcell"><span class="mw">월</span><span class="mv skip">✕</span></div>
+    <div class="mcell"><span class="mw">화</span><span class="mv pending">오늘</span></div>
+  </div>
+  <p class="hint" style="margin:0">테두리(·)는 <b style="color:var(--text)">기록이 없어 실패로 잡힌 날</b>, 꽉 찬 칸(✕)은 직접 “안 함”을 찍은 날. 둘 다 실패지만 앞엣것은 <b style="color:var(--text)">이유를 모릅니다.</b></p>
+
+  <div class="eyebrow">저희가 보기엔</div>
+  <p class="hint" style="margin:0">아래 진단은 <b style="color:var(--text)">직접 표시한 날</b>만 보고 말합니다 — 기록이 없는 날은 이유를 모르니 여기 끼지 않아요.</p>
+  <div class="flag crit">
+    <div class="fhd"><span class="badge crit">언제 할지</span><span class="dot r"></span></div>
+    <div class="fmsg">언제 할지가 안 정해져 있어요. 습관이 안 붙는 가장 흔한 이유예요.</div>
+    <div class="fev">최근 14일 성공률 36% (기록 없음 5일 포함) · 할 시간을 안 정함</div>
+  </div>
+  <div class="flag warn">
+    <div class="fhd"><span class="badge warn">최소량</span><span class="dot a"></span></div>
+    <div class="fmsg">“너무 힘듦”으로 못 한 날이 반복돼요. 최소량이 부담일 수 있어요.</div>
+    <div class="fev">최근 28일 중 “너무 힘듦” 2번<br>기록 없음 5일은 이유가 없어 여기 반영되지 않음</div>
+  </div>
+
+  <div class="rec">
+    <div class="rhd">✓ 이렇게 해 볼까요: 할 시간 정하기</div>
+    <div class="sub" style="font-size:11px">언제, 어디서 할지만 정해도 훨씬 잘 됩니다. 맞으면 누르기만 하세요.</div>
+    <div class="rin">예: “자기 전 양치 후, 침대 옆에서”</div>
+    <div class="alts">
+      <button class="btn ghost" type="button">최소량 줄이기</button>
+      <button class="btn ghost" type="button">잠깐 쉬기</button>
+      <button class="btn ghost" type="button">그대로 두기</button>
+    </div>
+    <button class="btn pri block" type="button">적용하고 닫기</button>
+  </div>
+  <p class="footnote">왜 그렇게 봤는지 근거를 항상 같이 보여 드려요. 그래야 그냥 넘기지 않으실 테니까요.</p>
+</div>

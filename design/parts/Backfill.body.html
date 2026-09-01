@@ -1,0 +1,91 @@
+<div class="app tight">
+  <div class="rowline">
+    <div><div class="eyebrow">오늘 화면</div><h2 class="sh">지난 날 채워 넣기</h2></div>
+    <span class="chip">독서 · 지능</span>
+  </div>
+
+  <p class="hint" style="margin:0">기록이 없는 지난 날은 <b style="color:var(--text)">실패로 잡힙니다.</b> 대신 지금 채워 넣으면 그 날이 성공으로 <b style="color:var(--done)">회복되고, 끊겼던 연속도 다시 이어집니다.</b></p>
+
+  <div class="composer">
+    <div class="rowline">
+      <span class="eyebrow">날짜</span>
+      <span class="backnote">{{ rangeNote }}</span>
+    </div>
+
+    <div class="datectl">
+      <button class="dnav" type="button" onClick="{{ prev }}" aria-label="이전 날">‹</button>
+      <span class="dlabel">{{ dateLabel }}</span>
+      <button class="dnav" type="button" onClick="{{ next }}" disabled="{{ atToday }}" aria-label="다음 날">›</button>
+      <span class="qchips">
+        <button class="{{ todayCls }}" type="button" onClick="{{ goToday }}">오늘</button>
+        <button class="{{ ydayCls }}" type="button" onClick="{{ goYesterday }}">어제</button>
+      </span>
+    </div>
+
+    <div>
+      <span class="ribbon" aria-hidden="true">
+        <sc-for list="{{ strip }}" as="c" hint-placeholder-count="14">
+          <span class="{{ c.cls }}" style="{{ c.style }}"></span>
+        </sc-for>
+      </span>
+      <div class="backnote" style="margin-top:6px">{{ dayState }}</div>
+    </div>
+
+    <div class="qadd">
+      <button class="btn pri" type="button" style="flex:1">✓ 최소만큼 했어요 (+10쪽)</button>
+      <div class="numfield">10</div>
+      <span class="unit">p</span>
+    </div>
+
+    <div class="qadd">
+      <span class="skiprow"><span class="lbl">빠르게</span></span>
+      <span class="qchips">
+        <button class="btn" type="button">+1</button>
+        <button class="btn" type="button">최소만큼</button>
+        <button class="btn" type="button">지난번 6</button>
+      </span>
+    </div>
+
+    <div class="progress">
+      <div class="pl"><span>{{ progLeft }}</span><span>{{ progRight }}</span></div>
+      <div class="ptrack"><i style="{{ progStyle }}"></i></div>
+    </div>
+
+    <div class="ctrls">
+      <button class="time" type="button">{{ timeLabel }}</button>
+      <span class="skiprow" style="margin-left:auto">
+        <span class="lbl">못 했어요</span>
+        <button class="btn ghost" type="button">깜빡함</button>
+        <button class="btn ghost" type="button">너무 힘듦</button>
+        <button class="btn ghost" type="button">예외</button>
+      </span>
+    </div>
+  </div>
+
+  <sc-if value="{{ isBackfill }}" hint-placeholder-val="{{ true }}">
+    <div class="banner" style="background:var(--accent-weak); border-color:color-mix(in srgb,var(--accent) 34%,transparent)">
+      <span class="bx" style="color:var(--muted)"><b style="color:var(--accent-ink)">지난 날 기록</b> — 시각은 그날 <span class="num">낮 12시</span>로 남습니다. 원래 있던 기록을 지우지 않고 <b style="color:var(--text)">옆에 더해집니다.</b> 실패로 잡혀 있던 날이면 성공으로 바뀌고, 연속 날수가 다시 계산됩니다.</span>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ atToday }}" hint-placeholder-val="{{ false }}">
+    <div class="banner" style="background:var(--surface-2); border-color:var(--border)">
+      <span class="bx" style="color:var(--muted)">오늘 기록은 <b style="color:var(--text)">지금 시각</b>으로 남습니다. 순서를 매길 때만 쓰이니 신경 안 쓰셔도 돼요.</span>
+    </div>
+  </sc-if>
+
+  <div class="eyebrow">{{ feedTitle }}</div>
+  <div class="feed">
+    <sc-for list="{{ feed }}" as="f" hint-placeholder-count="2">
+      <div class="feeditem">
+        <span class="ft">{{ f.t }}</span>
+        <span class="fb">
+          <span class="fh"><span class="fn">{{ f.n }}</span><span class="{{ f.acls }}">{{ f.a }}</span></span>
+          <span class="{{ f.rcls }}">{{ f.r }}</span>
+        </span>
+      </div>
+    </sc-for>
+  </div>
+
+  <p class="footnote">아직 오지 않은 날, 습관을 만들기 전 날짜는 고를 수 없어요.</p>
+</div>
