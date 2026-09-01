@@ -47,28 +47,25 @@ class Component extends DCLogic {
     var h = HABITS[id];
     var before = this.state.day[id] || 0;
     var after = before + amount;
+    var crossedFloor = before < h.floor && after >= h.floor;
+    var crossedTarget = h.target && before < h.target && after >= h.target;
     var xp = 0;
     var main, sub, reward;
-    if (after >= h.floor && before < h.floor) {
-      xp = 60;
-      main = '기록됨 · +60 XP';
-      sub = '바닥 달성 💪';
-      reward = '→ ' + after + '/' + h.floor + ' 달성 · +60 XP';
-    } else if (h.target && after >= h.target && before < h.target) {
-      xp = 90;
-      main = '기록됨 · +90 XP';
-      sub = '목표 초과 🎯';
-      reward = '→ 목표 ' + h.target + ' 초과 · +90 XP';
-    } else if (after >= h.floor) {
-      xp = 12;
-      main = '기록됨 · +12 XP';
-      sub = '바닥 위 강도';
-      reward = '→ 합 ' + after + ' · +12 XP';
+    if (crossedFloor) xp += 60;
+    if (crossedTarget) xp += 60;
+    if (!crossedFloor && after >= h.floor) xp += 12;
+    if (after < h.floor) {
+      main = '기록했어요 · XP 없음';
+      sub = '오늘 나타났어요';
+      reward = '→ ' + after + '/' + h.floor + ' · 최소엔 못 미쳤지만 “나타남” 하루 추가';
     } else {
-      xp = 0;
-      main = '기록됨 · XP 없음';
-      sub = '나타남 (showed up)';
-      reward = '→ ' + after + '/' + h.floor + ' 부분 · 나타남 스트릭 +1';
+      main = '기록했어요 · +' + xp + ' XP';
+      sub = crossedTarget ? '목표까지 넘었어요 🎯' : crossedFloor ? '최소만큼 했어요 💪' : '최소보다 더 했어요';
+      reward = crossedTarget
+        ? '→ 합 ' + after + ' · 목표 ' + h.target + ' 넘음 · +' + xp + ' XP'
+        : crossedFloor
+        ? '→ ' + after + '/' + h.floor + ' 오늘 몫 완료 · +' + xp + ' XP'
+        : '→ 합 ' + after + ' · +' + xp + ' XP';
     }
     var unit = h.unit || '';
     this.push(
@@ -99,10 +96,10 @@ class Component extends DCLogic {
         name: h.name,
         amt: '건너뜀',
         acls: 'amt plain',
-        reward: '사유: ' + reason + ' → 진단 성분으로 집계',
+        reward: reason,
         rcls: 'backnote',
         wrap: 'feeditem',
-        toastMain: '건너뜀 기록됨',
+        toastMain: '못 한 날로 기록했어요',
         toastSub: reason
       },
       0,
@@ -121,6 +118,7 @@ class Component extends DCLogic {
       day: day,
       xp: Math.max(0, s.xp - t.xp),
       feed: s.feed.filter(function (f) { return f.id !== t.id; }),
+      saved: t.key === 'meditate' ? false : s.saved,
       toast: null
     });
   }
@@ -134,7 +132,7 @@ class Component extends DCLogic {
     var isBinary = !isFree && h.kind === 'binary';
     var sum = isFree ? 0 : this.state.day[target] || 0;
 
-    var tabs = [{ id: 'free', label: '자유 로그' }, { id: 'read', label: '독서' }, { id: 'pullup', label: '턱걸이' }, { id: 'meditate', label: '명상' }].map(function (t) {
+    var tabs = [{ id: 'free', label: '오늘 일기' }, { id: 'read', label: '독서' }, { id: 'pullup', label: '턱걸이' }, { id: 'meditate', label: '명상' }].map(function (t) {
       return { label: t.label, on: t.id === target, pick: function () { self.setState({ target: t.id }); } };
     });
 
@@ -142,22 +140,22 @@ class Component extends DCLogic {
     if (isCount) {
       quick = [
         { label: '+1', amount: 1 },
-        { label: '+최소', amount: h.floor },
-        { label: '직전 ' + h.last, amount: h.last }
+        { label: '최소만큼', amount: h.floor },
+        { label: '지난번 ' + h.last, amount: h.last }
       ].map(function (q) {
         return { label: q.label, go: function () { self.logAmount(target, q.amount); } };
       });
     }
 
     var skips = [
-      { label: '깜빡함', reason: '깜빡함 → 신호' },
-      { label: '너무 힘듦', reason: '너무 힘듦 → 바닥' },
-      { label: '예외', reason: '예외 — 미스 제외' }
+      { label: '깜빡함', reason: '깜빡함 — 할 시간이 안 정해짐' },
+      { label: '너무 힘듦', reason: '너무 힘듦 — 최소량이 많음' },
+      { label: '예외', reason: '예외 — 실패로 안 셈' }
     ].map(function (s) {
       return { label: s.label, go: function () { self.logSkip(target, s.reason); } };
     });
 
-    var freeTypes = ['메모', '성취', '기분', '아이디어'].map(function (f) {
+    var freeTypes = ['메모', '잘한 일', '기분', '떠오른 생각'].map(function (f) {
       return {
         label: f,
         cls: f === self.state.freeType ? 'btn sel' : 'btn',
@@ -170,10 +168,10 @@ class Component extends DCLogic {
     var toast = this.state.toast;
 
     return {
-      tally: '퀘스트 ' + done + '/3',
+      tally: '오늘 ' + done + '/3',
       xpToday: '+' + this.state.xp + ' XP',
       showSave: !this.state.saved && (this.state.day.meditate || 0) < 1,
-      saveNow: function () { self.setState({ target: 'meditate' }); self.logAmount('meditate', 1); self.setState({ saved: true }); },
+      saveNow: function () { self.logAmount('meditate', 1); self.setState({ target: 'meditate', saved: true }); },
       tabs: tabs,
       isCount: isCount,
       isBinary: isBinary,
@@ -181,9 +179,9 @@ class Component extends DCLogic {
       isHabit: !isFree,
       unit: isCount ? h.unit : '',
       staged: isCount ? h.floor : 1,
-      floorLabel: isCount ? '✓ 최소 실행 (+' + h.floor + (h.unit || '') + ')' : '✓ 완료 표시',
-      binaryNote: '채울 양이 없습니다 — 한 번의 완료가 곧 바닥입니다.',
-      logFloor: function () { self.logAmount(target, isCount ? h.floor : 1); },
+      floorLabel: isCount ? '✓ 최소만큼 했어요 (+' + h.floor + (h.unit || '') + ')' : '✓ 오늘 했어요',
+      binaryNote: '채울 양이 없는 습관이에요. 한 번 누르면 오늘 몫 끝.',
+      logFloor: function () { if (isFree) return; self.logAmount(target, isCount ? h.floor : 1); },
       quick: quick,
       skips: skips,
       freeTypes: freeTypes,
@@ -195,11 +193,11 @@ class Component extends DCLogic {
             name: self.state.freeType,
             amt: '자유 로그',
             acls: 'amt plain',
-            reward: 'XP·스탯·스트릭에 영향 없음',
+            reward: '점수에는 영향 없어요',
             rcls: 'fnote',
             wrap: 'feeditem freelog',
-            toastMain: '자유 로그 기록됨',
-            toastSub: 'XP 없음'
+            toastMain: '일기를 남겼어요',
+            toastSub: '점수 변화 없음'
           },
           0,
           null,
@@ -207,7 +205,13 @@ class Component extends DCLogic {
         );
       },
       progLeft: isCount ? '오늘 ' + sum + ' / ' + h.floor + h.unit : '',
-      progRight: isCount ? (sum >= h.floor ? '달성 ✓ · 목표 ' + h.target + '까지 ' + Math.max(0, h.target - sum) : h.floor - sum + h.unit + ' 남음 → 달성') : '',
+      progRight: isCount
+        ? sum >= h.target
+          ? '목표 ' + h.target + h.unit + '도 넘었어요 🎯'
+          : sum >= h.floor
+          ? '오늘 몫 완료 ✓ · 목표까지 ' + (h.target - sum) + h.unit
+          : h.floor - sum + h.unit + ' 더 하면 오늘 몫 완료'
+        : '',
       progStyle: 'width:' + pct + '%',
       clock: this.clockText(),
       hasToast: !!toast,

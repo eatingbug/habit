@@ -1,7 +1,7 @@
 <div class="app tight">
   <div class="rowline">
     <div>
-      <div class="eyebrow">7월 8일 화요일 · 14주차</div>
+      <div class="eyebrow">7월 8일 화요일</div>
       <h2 class="sh">오늘</h2>
     </div>
     <div class="sub num" style="text-align:right">{{ tally }}<br>{{ xpToday }}</div>
@@ -54,8 +54,8 @@
         </sc-for>
       </div>
       <div class="input ph">메모 (선택) — 오늘 무슨 일이 있었나요</div>
-      <button class="btn pri block" type="button" onClick="{{ logFree }}">자유 로그 기록</button>
-      <div class="hint">자유 로그는 XP·스탯·스트릭에 전혀 영향을 주지 않고, 회고 입력에도 들어가지 않습니다.</div>
+      <button class="btn pri block" type="button" onClick="{{ logFree }}">오늘 일기 남기기</button>
+      <div class="hint">그냥 오늘 있었던 일을 적는 칸이에요. 점수나 연속 날수와는 아무 상관 없습니다.</div>
     </sc-if>
 
     <sc-if value="{{ isHabit }}" hint-placeholder-val="{{ true }}">

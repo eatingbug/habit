@@ -1,10 +1,10 @@
 <div class="app tight">
   <div class="rowline">
-    <div><div class="eyebrow">오늘 · 통합 컴포저</div><h2 class="sh">지난 날 채우기</h2></div>
+    <div><div class="eyebrow">오늘 화면</div><h2 class="sh">지난 날 채워 넣기</h2></div>
     <span class="chip">독서 · 지능</span>
   </div>
 
-  <p class="hint" style="margin:0">“했는데 기록을 깜빡했다”가 미스로 남지 않게 — 되돌리기가 싸야 <b style="color:var(--text)">미기록은 미스가 아니다</b>라는 약속이 유지됩니다.</p>
+  <p class="hint" style="margin:0">해 놓고 기록만 깜빡한 날이 있죠. 그런 날은 <b style="color:var(--text)">실패로 세지 않습니다.</b> 여기서 바로 채워 넣으면 됩니다.</p>
 
   <div class="composer">
     <div class="rowline">
@@ -32,17 +32,17 @@
     </div>
 
     <div class="qadd">
-      <button class="btn pri" type="button" style="flex:1">✓ 최소 실행 (+10p)</button>
+      <button class="btn pri" type="button" style="flex:1">✓ 최소만큼 했어요 (+10쪽)</button>
       <div class="numfield">10</div>
       <span class="unit">p</span>
     </div>
 
     <div class="qadd">
-      <span class="skiprow"><span class="lbl">빠른 추가</span></span>
+      <span class="skiprow"><span class="lbl">빠르게</span></span>
       <span class="qchips">
         <button class="btn" type="button">+1</button>
-        <button class="btn" type="button">+최소</button>
-        <button class="btn" type="button">직전 6</button>
+        <button class="btn" type="button">최소만큼</button>
+        <button class="btn" type="button">지난번 6</button>
       </span>
     </div>
 
@@ -54,7 +54,7 @@
     <div class="ctrls">
       <button class="time" type="button">{{ timeLabel }}</button>
       <span class="skiprow" style="margin-left:auto">
-        <span class="lbl">건너뛰기</span>
+        <span class="lbl">못 했어요</span>
         <button class="btn ghost" type="button">깜빡함</button>
         <button class="btn ghost" type="button">너무 힘듦</button>
         <button class="btn ghost" type="button">예외</button>
@@ -64,13 +64,13 @@
 
   <sc-if value="{{ isBackfill }}" hint-placeholder-val="{{ true }}">
     <div class="banner" style="background:var(--accent-weak); border-color:color-mix(in srgb,var(--accent) 34%,transparent)">
-      <span class="bx" style="color:var(--muted)"><b style="color:var(--accent-ink)">백필</b> — 타임스탬프는 그 날짜의 <span class="num">12:00</span>으로 고정되고, 같은 날 여러 번이면 12:00:01, 12:00:02로 순서가 잡힙니다. 덮어쓰지 않고 <b style="color:var(--text)">덧붙습니다.</b></span>
+      <span class="bx" style="color:var(--muted)"><b style="color:var(--accent-ink)">지난 날 기록</b> — 시각은 그날 <span class="num">낮 12시</span>로 남습니다. 원래 있던 기록을 지우지 않고 <b style="color:var(--text)">옆에 더해집니다.</b></span>
     </div>
   </sc-if>
 
   <sc-if value="{{ atToday }}" hint-placeholder-val="{{ false }}">
     <div class="banner" style="background:var(--surface-2); border-color:var(--border)">
-      <span class="bx" style="color:var(--muted)">오늘 기록은 <b style="color:var(--text)">지금 시각</b>으로 남습니다. 시각은 정렬에만 쓰이므로 접혀 있어요.</span>
+      <span class="bx" style="color:var(--muted)">오늘 기록은 <b style="color:var(--text)">지금 시각</b>으로 남습니다. 순서를 매길 때만 쓰이니 신경 안 쓰셔도 돼요.</span>
     </div>
   </sc-if>
 
@@ -87,5 +87,5 @@
     </sc-for>
   </div>
 
-  <p class="footnote">미래 날짜와 습관 생성일 이전은 막혀 있습니다.</p>
+  <p class="footnote">아직 오지 않은 날, 습관을 만들기 전 날짜는 고를 수 없어요.</p>
 </div>

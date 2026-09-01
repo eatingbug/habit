@@ -2,7 +2,7 @@ class Component extends DCLogic {
   constructor(props) {
     super(props);
     this.state = { offset: 0 };
-    this.max = 34;
+    this.max = 13;
   }
   day(offset) {
     const days = [
@@ -32,13 +32,14 @@ class Component extends DCLogic {
           n: '독서',
           a: r.a,
           acls: 'amt',
-          r: o === 0 ? '' : '백필 · 정오 고정',
+          r: o === 0 ? '' : '지난 날 기록 · 낮 12시로 남음',
           rcls: 'backnote',
         }))
-      : [{ t: '—', n: '이 날엔 기록이 없습니다', a: 'unknown', acls: 'amt plain', r: '', rcls: 'backnote' }];
+      : [{ t: '—', n: '이 날엔 기록이 없어요', a: '기록 없음', acls: 'amt plain', r: '', rcls: 'backnote' }];
     return {
+      strip: strip,
       dateLabel: o === 0 ? '오늘 · ' + info.d : o === 1 ? '어제 · ' + info.d : info.d,
-      rangeNote: '생성일 6/1 ~ 오늘',
+      rangeNote: '만든 날부터 오늘까지',
       atToday: o === 0,
       isBackfill: o > 0,
       todayCls: o === 0 ? 'btn sel' : 'btn',
@@ -49,10 +50,10 @@ class Component extends DCLogic {
       goYesterday: () => this.setState({ offset: 1 }),
       dayState: stateName,
       progLeft: sum + ' / ' + floor + 'p',
-      progRight: sum >= floor ? '달성 ✓' : floor - sum + 'p 남음 → 달성',
+      progRight: sum >= floor ? '오늘 몫 완료 ✓' : floor - sum + '쪽 더 하면 완료',
       progStyle: 'width:' + pct + '%',
-      timeLabel: o === 0 ? '🕑 지금 14:20' : '🕑 12:00 · 정오 고정',
-      feedTitle: o === 0 ? '오늘 기록' : '이 날의 기록',
+      timeLabel: o === 0 ? '🕑 지금 14:20' : '🕑 낮 12:00으로 기록',
+      feedTitle: o === 0 ? '오늘 기록' : '이 날 기록',
       feed,
     };
   }
