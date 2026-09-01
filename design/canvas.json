@@ -1,0 +1,26 @@
+{
+  "pages": [
+    { "id": "page-1", "name": "문서에만 있던 화면" },
+    { "id": "page-2", "name": "기준 화면 (목업 재현)" }
+  ],
+  "artboards": [
+    { "file": "Main.dc.html", "page": "page-1", "x": 0, "y": 0, "w": 390, "h": 1020, "title": "습관 만들기 — 가설 세우기", "is_interactive": true },
+    { "file": "Slots.dc.html", "page": "page-1", "x": 480, "y": 0, "w": 390, "h": 920, "title": "형성 슬롯 마찰 (§8.1)" },
+    { "file": "Focus.dc.html", "page": "page-1", "x": 960, "y": 0, "w": 390, "h": 940, "title": "포커스 모드 (§8.2)", "is_interactive": true },
+    { "file": "Backfill.dc.html", "page": "page-1", "x": 1440, "y": 0, "w": 390, "h": 960, "title": "백필 · 어제 패스트패스", "is_interactive": true },
+    { "file": "YesNo.dc.html", "page": "page-1", "x": 0, "y": 1180, "w": 390, "h": 1220, "title": "예·아니오 습관 상세" },
+    { "file": "Established.dc.html", "page": "page-1", "x": 480, "y": 1180, "w": 390, "h": 1240, "title": "정착됨 — 모니터링 모드" },
+    { "file": "Star.dc.html", "page": "page-1", "x": 960, "y": 1180, "w": 390, "h": 900, "title": "⭐ 긍정 상태등" },
+    { "file": "RowSkip.dc.html", "page": "page-1", "x": 1440, "y": 1180, "w": 390, "h": 660, "title": "길게 눌러 건너뛰기" },
+    { "file": "Dashboard.dc.html", "page": "page-2", "x": 0, "y": 0, "w": 390, "h": 820, "title": "대시보드", "is_interactive": true },
+    { "file": "Today.dc.html", "page": "page-2", "x": 480, "y": 0, "w": 390, "h": 940, "title": "오늘", "is_interactive": true },
+    { "file": "HabitDetail.dc.html", "page": "page-2", "x": 960, "y": 0, "w": 390, "h": 1180, "title": "습관 상세" },
+    { "file": "Reflection.dc.html", "page": "page-2", "x": 1440, "y": 0, "w": 390, "h": 900, "title": "회고" }
+  ],
+  "annotations": [
+    { "id": "note-1", "page": "page-1", "x": 0, "y": -150, "w": 900, "text": "문서(CONCEPT/SPEC)에는 있지만 mvp/habiquest-linear.html 에는 아직 그려지지 않은 화면들입니다.\n토큰·컴포넌트는 목업에서 그대로 가져왔고, 새 UI는 그 어휘를 확장만 했습니다." },
+    { "id": "note-2", "page": "page-1", "x": 960, "y": -150, "w": 870, "text": "동작하는 것: 습관 만들기(측정 방식 전환·스탯 선택), 포커스 모드(집중 습관 고르기), 백필(날짜 스테퍼 ‹ ›).\n나머지는 정적 상태 화면입니다." },
+    { "id": "note-3", "page": "page-2", "x": 0, "y": -150, "w": 900, "text": "기존 목업 네 화면의 재현 — 비교 기준입니다. 가짜 iOS 상태바는 뺐습니다(실기기에서 진짜 상태바와 겹침).\n대시보드와 오늘은 실제로 눌러볼 수 있게 만들었습니다: +최소 / ✓ → 진행바·스트릭·XP·피드·실행취소 토스트." }
+  ],
+  "launch": { "view": "canvas", "page": "page-1" }
+}

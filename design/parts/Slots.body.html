@@ -1,0 +1,61 @@
+<div class="app">
+  <div style="opacity:.4; display:flex; flex-direction:column; gap:14px; pointer-events:none">
+    <div class="rowline">
+      <div><div class="eyebrow">새 습관</div><h2 class="sh">가설 세우기</h2></div>
+      <span class="chip">v1 설계</span>
+    </div>
+    <div class="field">
+      <span class="fl">이름 <span class="req">필수</span></span>
+      <div class="input">아침 스트레칭</div>
+    </div>
+    <div class="field">
+      <span class="fl">측정 방식 <span class="req">필수</span></span>
+      <div class="seg" role="tablist" aria-label="측정 방식">
+        <button role="tab" type="button" aria-selected="true">횟수 · 양</button>
+        <button role="tab" type="button" aria-selected="false">예 · 아니오</button>
+      </div>
+    </div>
+    <div class="field">
+      <span class="fl">바닥 <span class="req">필수</span></span>
+      <div class="qadd"><div class="numfield">3</div><div class="input" style="flex:1">분</div></div>
+    </div>
+  </div>
+
+  <div class="sheet" style="margin-top:auto">
+    <div class="rowline">
+      <span class="eyebrow">형성 중 슬롯</span>
+      <span class="num" style="font-size:11px; color:var(--warn)">3 / 3</span>
+    </div>
+    <div class="slotbar"><i class="on"></i><i class="on"></i><i class="on"></i></div>
+
+    <div>
+      <h2 class="sh" style="font-size:14.5px">3개 습관이 아직 자리를 잡는 중이에요.</h2>
+      <p class="sub" style="margin:6px 0 0">하나가 <b style="color:var(--text)">정착</b>하면 슬롯이 열립니다. 동시에 여러 개를 돌리는 것 자체가 가장 흔한 설계 실패예요.</p>
+    </div>
+
+    <div>
+      <div class="minirow">
+        <span class="dot g"></span><span class="mn">턱걸이</span>
+        <span class="chip stat">힘</span>
+        <span class="mm">반복 41 / ~66</span>
+      </div>
+      <div class="minirow">
+        <span class="dot a"></span><span class="mn">독서</span>
+        <span class="chip stat">지능</span>
+        <span class="mm">반복 23 / ~66</span>
+      </div>
+      <div class="minirow">
+        <span class="dot r"></span><span class="mn">명상</span>
+        <span class="chip stat">의지</span>
+        <span class="mm">반복 9 / ~66</span>
+      </div>
+    </div>
+
+    <div class="hint">막지는 않습니다 — 지금 상태를 보여 주고 결정은 맡깁니다.</div>
+
+    <div style="display:flex; gap:8px">
+      <button class="btn tap" type="button" style="flex:1">그래도 추가</button>
+      <button class="btn pri" type="button" style="flex:1.4">먼저 정착시키기</button>
+    </div>
+  </div>
+</div>

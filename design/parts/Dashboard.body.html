@@ -1,0 +1,58 @@
+<div class="app">
+  <div class="rowline">
+    <div>
+      <div class="eyebrow">캐릭터</div>
+      <h2 class="sh">Lv.<span class="num">7</span> · 꾸준함</h2>
+    </div>
+    <span class="chip warnc">흔들리는 습관 · <span class="num">2</span></span>
+  </div>
+
+  <div class="stats">
+    <div class="statcard">
+      <div class="top"><span class="name">힘</span><span class="lv num">7</span></div>
+      <div class="xpbar"><i style="{{ strBar }}"></i></div>
+      <div class="to">{{ strTo }}</div>
+    </div>
+    <div class="statcard">
+      <div class="top"><span class="name">지능</span><span class="lv num">5</span></div>
+      <div class="xpbar"><i style="{{ intBar }}"></i></div>
+      <div class="to">{{ intTo }}</div>
+    </div>
+    <div class="statcard">
+      <div class="top"><span class="name">의지</span><span class="lv num">6</span></div>
+      <div class="xpbar"><i style="{{ wilBar }}"></i></div>
+      <div class="to">{{ wilTo }}</div>
+    </div>
+  </div>
+
+  <div class="eyebrow">퀘스트 로그</div>
+  <div class="quests">
+    <sc-for list="{{ rows }}" as="r" hint-placeholder-count="3">
+      <div class="quest">
+        <div class="qtop">
+          <span class="{{ r.dot }}"></span><span class="qname">{{ r.name }}</span>
+          <span class="chip stat">{{ r.stat }}</span>
+          <span class="qcue" style="{{ r.cueStyle }}">{{ r.cue }}</span>
+        </div>
+        <div class="qbottom">
+          <span class="streak">🔥<span class="num">{{ r.streak }}</span></span>
+          <span class="ribbon" aria-hidden="true">
+            <sc-for list="{{ r.cells }}" as="c" hint-placeholder-count="14">
+              <span class="{{ c.cls }}"></span>
+            </sc-for>
+          </span>
+          <button class="btn ghost" type="button" onClick="{{ r.log }}">{{ r.cta }}</button>
+        </div>
+      </div>
+    </sc-for>
+  </div>
+
+  <sc-if value="{{ hasToast }}" hint-placeholder-val="{{ true }}">
+    <div class="toast">
+      <span class="rx">{{ toastMain }}</span><span>{{ toastSub }}</span>
+      <button class="undo" type="button" onClick="{{ undo }}">실행취소</button>
+    </div>
+  </sc-if>
+
+  <p class="footnote">가장 자주 하는 행동이 가장 싼 행동이 되도록 — 착지하는 자리에서 한 번의 탭.</p>
+</div>

@@ -1,0 +1,93 @@
+<div class="app tight">
+  <div class="rowline">
+    <div>
+      <div class="eyebrow">7월 8일 화요일 · 14주차</div>
+      <h2 class="sh">오늘</h2>
+    </div>
+    <div class="sub num" style="text-align:right">{{ tally }}<br>{{ xpToday }}</div>
+  </div>
+
+  <sc-if value="{{ showSave }}" hint-placeholder-val="{{ true }}">
+    <div class="banner">
+      <span class="dot r"></span>
+      <span class="bx"><b>어제 명상을 놓쳤어요.</b> 오늘 한 번이면 흐름이 이어져요.</span>
+      <button class="btn pri" type="button" style="padding:6px 10px; min-height:36px" onClick="{{ saveNow }}">✓ 완료</button>
+    </div>
+  </sc-if>
+
+  <div class="composer">
+    <div class="seg" role="tablist" aria-label="기록 대상">
+      <sc-for list="{{ tabs }}" as="t" hint-placeholder-count="4">
+        <button role="tab" type="button" aria-selected="{{ t.on }}" onClick="{{ t.pick }}">{{ t.label }}</button>
+      </sc-for>
+    </div>
+
+    <sc-if value="{{ isCount }}" hint-placeholder-val="{{ true }}">
+      <div class="qadd">
+        <button class="btn pri" type="button" style="flex:1" onClick="{{ logFloor }}">{{ floorLabel }}</button>
+        <div class="numfield">{{ staged }}</div>
+        <span class="unit">{{ unit }}</span>
+      </div>
+      <div class="qadd">
+        <span class="skiprow"><span class="lbl">빠른 추가</span></span>
+        <span class="qchips">
+          <sc-for list="{{ quick }}" as="q" hint-placeholder-count="3">
+            <button class="btn" type="button" onClick="{{ q.go }}">{{ q.label }}</button>
+          </sc-for>
+        </span>
+      </div>
+      <div class="progress">
+        <div class="pl"><span>{{ progLeft }}</span><span>{{ progRight }}</span></div>
+        <div class="ptrack"><i style="{{ progStyle }}"></i></div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isBinary }}" hint-placeholder-val="{{ false }}">
+      <button class="btn pri block" type="button" onClick="{{ logFloor }}">{{ floorLabel }}</button>
+      <div class="hint">{{ binaryNote }}</div>
+    </sc-if>
+
+    <sc-if value="{{ isFree }}" hint-placeholder-val="{{ false }}">
+      <div class="skiprow">
+        <sc-for list="{{ freeTypes }}" as="f" hint-placeholder-count="4">
+          <button class="{{ f.cls }}" type="button" onClick="{{ f.pick }}">{{ f.label }}</button>
+        </sc-for>
+      </div>
+      <div class="input ph">메모 (선택) — 오늘 무슨 일이 있었나요</div>
+      <button class="btn pri block" type="button" onClick="{{ logFree }}">자유 로그 기록</button>
+      <div class="hint">자유 로그는 XP·스탯·스트릭에 전혀 영향을 주지 않고, 회고 입력에도 들어가지 않습니다.</div>
+    </sc-if>
+
+    <sc-if value="{{ isHabit }}" hint-placeholder-val="{{ true }}">
+      <div class="ctrls">
+        <button class="time" type="button">🕑 지금 {{ clock }}</button>
+        <span class="skiprow" style="margin-left:auto">
+          <span class="lbl">건너뛰기</span>
+          <sc-for list="{{ skips }}" as="s" hint-placeholder-count="3">
+            <button class="btn ghost" type="button" onClick="{{ s.go }}">{{ s.label }}</button>
+          </sc-for>
+        </span>
+      </div>
+    </sc-if>
+  </div>
+
+  <sc-if value="{{ hasToast }}" hint-placeholder-val="{{ true }}">
+    <div class="toast">
+      <span class="rx">{{ toastMain }}</span><span>{{ toastSub }}</span>
+      <button class="undo" type="button" onClick="{{ undo }}">실행취소</button>
+    </div>
+  </sc-if>
+
+  <div class="eyebrow">오늘 기록</div>
+  <div class="feed">
+    <sc-for list="{{ feed }}" as="f" hint-placeholder-count="4">
+      <div class="{{ f.wrap }}">
+        <span class="ft">{{ f.t }}</span>
+        <span class="fb">
+          <span class="fh"><span class="fn">{{ f.name }}</span><span class="{{ f.acls }}">{{ f.amt }}</span></span>
+          <span class="{{ f.rcls }}">{{ f.reward }}</span>
+        </span>
+      </div>
+    </sc-for>
+  </div>
+</div>

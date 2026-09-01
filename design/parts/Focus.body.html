@@ -1,0 +1,45 @@
+<div class="app">
+  <div class="rowline">
+    <div><div class="eyebrow">시스템 부하</div><h2 class="sh">포커스 모드</h2></div>
+    <span class="chip warnc">형성 중 · <span class="num">5</span></span>
+  </div>
+
+  <div class="banner">
+    <span class="dot a"></span>
+    <span class="bx"><b>5개가 동시에 형성 중이에요.</b> 지금은 2개에 집중하고 나머지는 잠시 멈춰 둘까요? 자리를 잡으면 다시 데려옵니다.</span>
+  </div>
+
+  <div class="eyebrow">집중할 습관 고르기</div>
+  <div style="display:flex; flex-direction:column; gap:7px">
+    <sc-for list="{{ habits }}" as="h" hint-placeholder-count="5">
+      <button class="{{ h.cls }}" type="button" onClick="{{ h.toggle }}">
+        <span class="box">{{ h.mark }}</span>
+        <span style="display:flex; flex-direction:column; gap:2px; min-width:0">
+          <span class="pn">{{ h.name }}</span>
+          <span class="pd">{{ h.meta }}</span>
+        </span>
+        <span class="mm num" style="margin-left:auto; font-size:10.5px; color:var(--faint)">{{ h.reps }}</span>
+      </button>
+    </sc-for>
+  </div>
+
+  <div class="sheet">
+    <div class="rowline">
+      <span class="eyebrow">결과</span>
+      <span class="num" style="font-size:11px; color:var(--muted)">{{ summary }}</span>
+    </div>
+    <div class="slotbar">
+      <sc-for list="{{ slots }}" as="s" hint-placeholder-count="5">
+        <i class="{{ s.cls }}"></i>
+      </sc-for>
+    </div>
+    <div class="hint">{{ verdict }}</div>
+  </div>
+
+  <div class="banner" style="background:var(--surface-2); border-color:var(--border)">
+    <span class="bx" style="color:var(--muted)">잠시 멈춤은 <b style="color:var(--text)">삭제가 아닙니다.</b> 기록·스트릭·설계가 그대로 보관되고, 집중한 습관이 정착하면 원래 자리로 돌아옵니다.</span>
+  </div>
+
+  <button class="btn pri block" type="button">{{ cta }}</button>
+  <button class="btn ghost block" type="button">지금은 그대로 두기</button>
+</div>

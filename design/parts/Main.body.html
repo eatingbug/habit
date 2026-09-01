@@ -1,0 +1,86 @@
+<div class="app">
+  <div class="rowline">
+    <div>
+      <div class="eyebrow">새 습관</div>
+      <h2 class="sh">가설 세우기</h2>
+    </div>
+    <span class="chip">v1 설계</span>
+  </div>
+
+  <p class="hint" style="margin:0">첫 설계는 데이터가 하나도 없는 상태에서 세우는 <b style="color:var(--text)">가설</b>입니다. 가볍게 시작하고, 회고에서 고쳐 나갑니다.</p>
+
+  <div class="field">
+    <span class="fl">이름 <span class="req">필수</span></span>
+    <div class="input">턱걸이</div>
+  </div>
+
+  <div class="field">
+    <span class="fl">측정 방식 <span class="req">필수</span></span>
+    <div class="seg" role="tablist" aria-label="측정 방식">
+      <button role="tab" type="button" aria-selected="{{ isCount }}" onClick="{{ pickCount }}">횟수 · 양</button>
+      <button role="tab" type="button" aria-selected="{{ isBinary }}" onClick="{{ pickBinary }}">예 · 아니오</button>
+    </div>
+  </div>
+
+  <sc-if value="{{ isCount }}" hint-placeholder-val="{{ true }}">
+    <div class="field">
+      <span class="fl">바닥 <span class="req">필수</span></span>
+      <div class="qadd">
+        <div class="numfield">5</div>
+        <div class="input" style="flex:1">회</div>
+      </div>
+      <span class="hint">절대 실패할 수 없는 최소치(2분 규칙). 이걸 채우면 그날은 <b style="color:var(--done)">달성</b> — 스트릭 유지 + 기본 XP.</span>
+    </div>
+
+    <div class="field">
+      <span class="fl">목표 <span class="opt">선택</span></span>
+      <div class="qadd">
+        <div class="numfield">10</div>
+        <div class="input ph" style="flex:1">넘기면 보너스 XP · 강제되지 않음</div>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ isBinary }}" hint-placeholder-val="{{ false }}">
+    <div class="field">
+      <span class="fl">바닥 · 목표</span>
+      <div class="input ph">해당 없음 — 바닥 1, 목표 없음</div>
+      <span class="hint">예/아니오 습관은 채울 양이 없습니다. <b style="color:var(--text)">일관성만</b> 측정하고, 강도 대신 스트릭 마일스톤에서 보너스 XP를 받습니다.</span>
+    </div>
+  </sc-if>
+
+  <div class="field">
+    <span class="fl">스탯 <span class="req">필수</span></span>
+    <div class="chiprow">
+      <sc-for list="{{ stats }}" as="s" hint-placeholder-count="5">
+        <button class="{{ s.cls }}" type="button" onClick="{{ s.pick }}">{{ s.name }}</button>
+      </sc-for>
+    </div>
+    <span class="hint">습관이 실제 능력치로 쌓입니다 — 게임 층을 정체성에 묶어 두는 장치.</span>
+  </div>
+
+  <div class="field">
+    <span class="fl">신호 (실행 의도) <span class="opt">선택</span></span>
+    <div class="input ph">예: 모닝커피 후, 문틀 바에서</div>
+  </div>
+
+  <div class="field">
+    <span class="fl">정체성 <span class="opt">선택</span></span>
+    <div class="input ph">예: 나는 매일 단련하는 사람이다</div>
+  </div>
+
+  <div class="banner" style="background:var(--surface-2); border-color:var(--border)">
+    <span class="bx" style="color:var(--muted)">신호와 정체성은 <b style="color:var(--text)">일부러</b> 선택입니다. 비워 두면 그 자체가 첫 진단 신호가 되고, 완료율이 떨어질 때 회고가 “신호부터 채우기”를 먼저 제안합니다.</span>
+  </div>
+
+  <div class="sheet">
+    <div class="rowline">
+      <span class="eyebrow">형성 중 슬롯</span>
+      <span class="num" style="font-size:11px; color:var(--muted)">2 / 3</span>
+    </div>
+    <div class="slotbar"><i class="on"></i><i class="on"></i><i></i></div>
+    <span class="hint">한 번에 하나씩이 원칙. 아직 자리가 있습니다.</span>
+  </div>
+
+  <button class="btn pri block" type="button">습관 만들기</button>
+</div>
