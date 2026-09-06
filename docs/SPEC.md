@@ -195,10 +195,26 @@ interface Habit {
   target?:    number;            // optional stretch goal (count only; undefined for binary)
   cue?:       string;            // optional at creation (§5)
   identity?:  string;            // optional at creation (§5)
-  lifecycle:  'forming' | 'established' | 'paused';
+  lifecycle:  'forming' | 'established' | 'paused' | 'archived';
   createdAt:  string;            // ISO-8601 UTC
+  pauses?:    PauseInterval[];   // ADR-0003 — non-overlapping, `from` ASC, append-only
+}
+
+interface PauseInterval {
+  from: string;   // 'YYYY-MM-DD' — first paused date
+  to?:  string;   // 'YYYY-MM-DD' — first re-active date; absent ⇒ still paused
 }
 ```
+
+**Pause intervals (ADR-0003).** Half-open `[from, to)` — the resume date is active again.
+`lifecycle === 'paused'` ⟺ the last interval has no `to` (the open interval is
+authoritative). **`'archived'`** rides the same machinery — the reflection `archive`
+action (§4.5) appends an open interval too, so an archived habit stops classifying days
+and accrues no misses. It differs only in reading: archived habits are hidden from the
+Dashboard and read as "done with," where paused reads as "later." Both keep their entries
+and are reversible. Inside a pause interval, only the **`missed` default is suppressed**: an
+*empty* day is not classified at all (like a pre-`createdAt` date), while a day that holds
+real rows classifies normally, so pausing never claws back XP or a streak already earned.
 
 **Creation / edit invariants** (enforced by the create/edit form; assumed by the engine):
 - `floor >= 1`.
@@ -334,17 +350,39 @@ Day-state is **computed from all of a day's entries**, never stored on a row.
 `classifyEntry`/`RangeError` contract.
 
 ```typescript
+// Is this date one the engine is allowed to have an opinion about? (ADR-0003)
+// false for dates before `habit.createdAt` and for dates inside a `PauseInterval`.
+function isDateInScope(habit: Habit, date: string): boolean
+
 function classifyDay(
   entries: HabitEntry[], habit: Habit, date: string, today: string
 ): DayState
 ```
+
+> **Scope lives in one predicate, not in the classifier's return type.** `classifyDay`
+> stays **total** — it always returns a `DayState`. Everything that walks a date range
+> (`computeStreak`, `engagementStreak`, `milestoneBonusXP`, `successRate`,
+> `floorCompletionRate`, `consecutiveMissCount`, `atRiskToday`, the heatmap, the §6.4
+> backfill prompt) calls `isDateInScope` **first** and simply skips out-of-scope dates.
+> The alternative — a `DayState | undefined` return — would copy the same transparency
+> rule into eight call sites; a fourth `'out_of_scope'` union member would push a value
+> with no rendering into every UI switch and conflate two different questions ("what
+> happened that day?" vs. "does that day count?"). One predicate, one rule, one test.
+>
+> **Exception, per ADR-0003:** an out-of-scope date that *holds rows* still classifies
+> normally — the scope check only suppresses the empty-day `missed` default, so pausing
+> never claws back XP or a streak already earned. Consumers therefore skip a date only
+> when it is both out of scope **and** has no rows.
 `entries` are all rows for one `(habitId, date)`. The classifier needs `date` and
 `today` to tell an open day from a missed one (ADR-0001). Algorithm:
 
 1. Partition into **activity rows** (`actual > 0`, no `skipReason`) and **skip rows**
    (`actual: 0`, `skipReason` present).
-2. If there are **no rows** → `'pending'` when `date === today`, else `'missed'`.
-   (Dates before `habit.createdAt` are not classified at all.)
+2. If there are **no rows** → `'pending'` when `date === today`, else `'missed'` —
+   **unless the date is out of classification scope**, in which case the day has no state
+   at all. Out of scope = before `habit.createdAt`, or inside a `PauseInterval`
+   (ADR-0003). Note the asymmetry: an out-of-scope date with rows still classifies
+   normally — the scope check only suppresses the empty-day `missed` default.
 3. If there is **≥1 activity row**, compute `sum = Σ actual` (the aggregation
    function is always **SUM** in V1 — see note) and classify by the sum; skip rows
    are ignored ("positive activity overrides skip"). Classify `done` first, then
@@ -419,7 +457,13 @@ function computeXP(entries: HabitEntry[], habit: Habit): number
 function milestoneBonusXP(entries: HabitEntry[]): number   // yes/no streak milestones
 function computeStreak(entries: HabitEntry[], today: string): number
 function levelForXP(xp: number): number
-function computeStatLevel(entries: HabitEntry[], habit: Habit): number
+
+// A stat's level is a function of the STAT, not of one habit: it sums the XP of every
+// habit mapped to that stat, then looks the level up. Anything that reports a level must
+// use this, so the log-time toast and the Dashboard can never disagree.
+type HabitWithEntries = { habit: Habit; entries: HabitEntry[] };
+function computeStatXP(statId: string, all: HabitWithEntries[]): number
+function computeStatLevel(statId: string, all: HabitWithEntries[]): number
 
 // C1 — what THIS log just unlocked, for immediate log-time feedback (§6.2)
 type LogEffect = {
@@ -431,7 +475,14 @@ type LogEffect = {
   showedUp:          boolean;   // a partial log — engagement, not floor XP (C3)
   savedAtRiskDay:    boolean;   // this log resolved an atRiskToday save window (§4.3)
 };
-function describeLogEffect(before: HabitEntry[], after: HabitEntry[], habit: Habit): LogEffect
+// `siblings` = the other habits mapped to the same stat (with their entries), needed so
+// `statLevelUp` is computed on the stat's total XP rather than this habit's alone.
+// `siblings` is REQUIRED (pass `[]` when the stat holds no other habit). Making it
+// optional would let a caller silently fall back to this habit's XP alone — the exact
+// bug this signature exists to prevent, and one no type error would catch.
+function describeLogEffect(
+  before: HabitEntry[], after: HabitEntry[], habit: Habit, siblings: HabitWithEntries[]
+): LogEffect
 ```
 
 All scoring operates on **day aggregates** (entries grouped by `date`, summed),
@@ -459,11 +510,14 @@ not individual rows.
   of it — the streak is recomputed, never stored, so recovery is automatic.
 - **`levelForXP`** = highest index in `TUNING.statLevelThresholds` whose threshold
   ≤ the XP.
-- **Stat level** = `levelForXP(computeXP(entries, habit))` — cumulative XP drives
-  the level. The Dashboard sums each stat's per-habit XP, then looks up the level
-  (and the character level = the highest stat level).
+- **Stat level** = `levelForXP(computeStatXP(statId, all))` — the summed cumulative XP of
+  **every habit mapped to that stat** drives the level (character level = the highest stat
+  level). Habit→Stat is 1:N, so a per-habit level would disagree with the Dashboard the
+  moment two habits share a stat; there is exactly one level definition and everything
+  reads it, including `describeLogEffect.statLevelUp`.
 - **`describeLogEffect`** (C1) = a **pure delta**: it diffs `computeXP` / level / streak
-  between `before` and `after` a single log and tags *which* term moved (floor crossed,
+  between `before` and `after` a single log and tags *which* term moved — `statLevelUp` over
+  the **stat's** total XP (`siblings` included), the rest over this habit (floor crossed,
   above-floor intensity, target, streak milestone, stat level-up), plus `showedUp` for a
   `partial` and `savedAtRiskDay` when the log closed a §4.3 save window. Because scoring
   is already a pure function of the whole entry set, the delta is exact and essentially
@@ -507,7 +561,14 @@ this to show the 🔴 status light and the "don't miss twice" nudge.
 
 ```typescript
 function diagnose(habit: Habit, entries: HabitEntry[], asOfDate: string): DiagnosisFlag[]
+
+// the two rates below — deliberately different populations (see next block)
+function successRate(entries: HabitEntry[], habit: Habit, asOfDate: string, window: number): number | null
+function floorCompletionRate(entries: HabitEntry[], habit: Habit, asOfDate: string, window: number, opts?: { excludePartial?: boolean }): number | null
 ```
+Both return `null` for "not enough data" (below the min-sample guard, or no engaged days);
+`excludePartial` serves the demotion consumer (§4.7). Both need `habit` and `asOfDate`
+because day-state now depends on the date and on pause scope (ADR-0001 / ADR-0003).
 
 Runs all four rules in order; returns an array of `DiagnosisFlag` (may be empty).
 All rules read **day-states** (§4.1), not rows.
@@ -567,13 +628,23 @@ if (floorCompletionRate(entries, window=28) < TUNING.diagnosis.lowFloorRateThres
       evidence: `${Math.round(rate*100)}% floor-completion in the last 28 days` }
 ```
 
-**Rule 2 — Cue clustering**
+**Rule 2 — Cue clustering** *(non-exception `skip` days only)*
 ```
-if (skips cluster on the same weekday in the last 28 days — 2+ misses on day X, 0 on others)
+if (non-exception `skip` days cluster on the same weekday in the last 28 days
+    — 2+ on day X, 0 on others)
   → { component: 'cue', severity: 'warning',
       message: `Your ${dayName} cue keeps failing.`,
-      evidence: `${n} of your ${total} misses fell on ${dayName}s` }
+      evidence: `${n} of your ${total} marked-not-done days fell on ${dayName}s` }
 ```
+
+> **`missed` days are excluded from the clustering — deliberately.** The earlier wording
+> said "misses," which under ADR-0001 would include unrecorded days and so break the
+> §7.3 invariant (*a `missed` day never produces a component attribution*). It would also
+> manufacture exactly the false signal ADR-0001 names by example — *"you keep missing
+> Tuesdays"* read off days that say nothing about **why**. Rule 2 therefore reads the same
+> population as `floorCompletionRate`'s reason-bearing side: non-`exception` `skip` days.
+> A weekday cluster of unrecorded days is handled by the bulk-backfill prompt (§6.4), and
+> once those days are resolved into `skip` rows they enter this rule normally.
 
 **Rule 3 — Stagnation** *(count habits only)*
 ```
@@ -702,8 +773,13 @@ Transitions:
   same window. The partial-excluded rate is **required** by the scoped fairness rule
   (§3.2): an honest `partial`-logger must not be evicted from Established (principle 11)
   when a silent non-logger would not be.
-- `* → paused`: explicit user action only (not triggered automatically).
-- `paused → forming/established`: explicit resume action only.
+- `* → paused`: explicit user action only (not triggered automatically). Appends a
+  `PauseInterval { from: today }` (ADR-0003).
+- `* → archived`: explicit user action only — the reflection `archive` action (§4.5).
+  Appends an open `PauseInterval` exactly as `paused` does; the habit is additionally
+  hidden from the Dashboard. Reversible (resume closes the interval).
+- `paused → forming/established`: explicit resume action only. Closes the open interval
+  with `to: today`; the pre-pause streak re-joins because the gap was never classified.
 
 ---
 
@@ -972,10 +1048,10 @@ File: `src/domain/**/*.test.ts`
 
 | Test suite | Cases to cover |
 |---|---|
-| `classify.test.ts` | `classifyDay`: no rows → `pending` when the date is today, `missed` when it is past (ADR-0001); sum ≥ floor → done; sum ≥ target → over; `0 < sum < floor` → partial; only-skip → skip; **`done` precedes `over` and `over ⇒ done`; defensive `target <= floor` (and any binary target) → not `over`**; activity row overrides skip rows on the same day; `effectiveSkipReason` = latest skip **under the `(timestamp ASC, id ASC)` total order (equal-timestamp determinism; permutation-invariant)**; `isMissDay` (`missed` → miss; skip non-exception → miss; partial/pending/exception → not a miss); backfilling a `missed` date reclassifies it and clears the miss; yes/no multiple "done" rows idempotent |
-| `score.test.ts` | count XP on day-sums (base + target bonus + above-floor intensity + streak milestone); partial day earns 0 floor XP; binary XP (base + decaying milestones, **once per day** for multiple done rows); `milestoneBonusXP` decay / `missed`-resets-run (and backfill restores it) / break-rebuild / idempotent; `levelForXP` boundaries; stat level = XP threshold lookup; **`describeLogEffect` delta: floor-crossed / pushed-to-over / level-up / milestone / `showedUp` on partial / `savedAtRiskDay`** |
-| `streak.test.ts` | 0, 1, 2 consecutive misses; **`missed` days break the streak and backfilling one re-joins the runs on either side**; `partial` and `pending` days do not break streak; exception skip does not count; **`engagementStreak` counts done/over/partial (⊇ `computeStreak`); `atRiskToday` true iff `today−1` miss/break AND today pending/partial; `showedUpDays`** |
-| `diagnose.test.ts` | each of the 4 rules fires on exact threshold; rules below threshold do not fire; Rule 3 suppressed for binary; **Rule 5 skip-reason attribution (cue/floor/identity thresholds; exception never counted; component dedup keeps higher severity)**; **min-sample guard: Rules 1 & 4 silent below `minEngagedDaysForRate`**; empty flags for healthy habit |
+| `classify.test.ts` | **`isDateInScope`: false before `createdAt` and inside a `PauseInterval` (half-open `[from, to)` — the resume date is in scope again), true otherwise; an empty in-pause day is skipped by consumers while an in-pause day that holds rows still classifies normally (ADR-0003)**; `classifyDay`: no rows → `pending` when the date is today, `missed` when it is past (ADR-0001); sum ≥ floor → done; sum ≥ target → over; `0 < sum < floor` → partial; only-skip → skip; **`done` precedes `over` and `over ⇒ done`; defensive `target <= floor` (and any binary target) → not `over`**; activity row overrides skip rows on the same day; `effectiveSkipReason` = latest skip **under the `(timestamp ASC, id ASC)` total order (equal-timestamp determinism; permutation-invariant)**; `isMissDay` (`missed` → miss; skip non-exception → miss; partial/pending/exception → not a miss); backfilling a `missed` date reclassifies it and clears the miss; yes/no multiple "done" rows idempotent |
+| `score.test.ts` | count XP on day-sums (base + target bonus + above-floor intensity + streak milestone); partial day earns 0 floor XP; binary XP (base + decaying milestones, **once per day** for multiple done rows); `milestoneBonusXP` decay / `missed`-resets-run (and backfill restores it) / break-rebuild / idempotent; `levelForXP` boundaries; **stat level sums every habit mapped to the stat; the discriminating case — two habits on one stat, neither crossing a threshold alone, together crossing it — must make `describeLogEffect.statLevelUp` true, which only the `siblings` path can satisfy**; **`describeLogEffect` delta: floor-crossed / pushed-to-over / level-up / milestone / `showedUp` on partial / `savedAtRiskDay`** |
+| `streak.test.ts` | **out-of-scope days are transparent: an empty day inside a `PauseInterval` neither extends nor breaks a streak, and resuming re-joins the pre-pause run; a paused habit never fires `atRiskToday` and accrues no `consecutiveMissCount` (ADR-0003)**; 0, 1, 2 consecutive misses; **`missed` days break the streak and backfilling one re-joins the runs on either side**; `partial` and `pending` days do not break streak; exception skip does not count; **`engagementStreak` counts done/over/partial (⊇ `computeStreak`); `atRiskToday` true iff `today−1` miss/break AND today pending/partial; `showedUpDays`** |
+| `diagnose.test.ts` | each of the 4 rules fires on exact threshold; rules below threshold do not fire; **Rule 2 clusters non-exception `skip` days only — a weekday cluster made purely of `missed` days raises no flag (§7.3 invariant), and the same days converted to `skip` rows do raise it**; Rule 3 suppressed for binary; **Rule 5 skip-reason attribution (cue/floor/identity thresholds; exception never counted; component dedup keeps higher severity)**; **min-sample guard: Rules 1 & 4 silent below `minEngagedDaysForRate`**; empty flags for healthy habit |
 | `recommend.test.ts` | priority order — critical cue > critical identity > floor warning > cue warning > stagnation; keep on empty flags |
 | `statusLight.test.ts` | Forming 🔴 at consecutive-miss threshold; **Established 🔴 on decline ONLY with latest week ≤ target (decline floor-guard); decline from a peak (all > target) → not 🔴**; 🟡 on one flag; **lifecycle-aware `personal_best` (Established = intensity best; Forming = consistency/streak best)**; `weeklyActualTotals` shape; stable on healthy |
 | `backfillPrompt.test.ts` | ADR-0002: prompt fires at the consecutive-`missed` threshold and at the 14-day rate threshold, and not below either; it lists only `missed` dates on/after `createdAt`; filling a listed date reclassifies it and re-runs the streak (never a new day-state row); marking not-done writes a skip with the chosen reason; **no diagnosis flag is ever emitted for `missed` days themselves** |
@@ -1051,6 +1127,10 @@ must hold for any entry set). Volume/performance is **not** a V1 criterion
 | decline from peak (guarded) | Established, weekly totals `12,11,10,9`, target 8 | **no 🔴** (all > target — decline floor-guard, C5) |
 | decline toward floor | Established, weekly totals `9,8,7,6`, target 8 | 🔴 intervention (latest ≤ target) |
 | skip-reason threshold (Rule 5) | 2 `cue` skips in 28d | cue-component warning fires |
+| weekday cluster of unrecorded days | 3 `missed` Tuesdays, nothing else | **no Rule 2 flag** (`missed` never attributes a component) |
+| the same days marked not-done | 3 `skip(cue)` Tuesdays | Rule 2 cue warning fires |
+| paused fortnight, no rows | `pauses: [{from: D, to: D+14}]`, no entries in it | those days unclassified; streak spans the gap; no miss, no `atRiskToday` |
+| paused fortnight with a logged day | same, one `done` row inside it | that day still `done` and still earns XP (pause suppresses only the empty-day default) |
 
 **Invariants:**
 - A day with **≥1 activity row (`actual > 0`)** never classifies as `skip`.
@@ -1058,6 +1138,11 @@ must hold for any entry set). Volume/performance is **not** a V1 criterion
   (ADR-0002); it only counts toward the streak break, the miss count and `successRate`.
 - A `partial` or `pending` day is **never** a miss (never breaks streak / never
   increments `consecutiveMissCount`).
+- **Pause never costs (ADR-0003).** An unclassified day (pre-`createdAt`, or an empty day
+  inside a `PauseInterval`) is **transparent** — it neither extends nor breaks a streak,
+  is excluded from both sides of every rate, never registers as a miss, and never fires
+  `atRiskToday`. Adding a pause interval must not lower XP, streak, or any rate for days
+  that already hold rows.
 - **Engagement ⊇ floor.** `engagementStreak` counts `done`/`over`/`partial`;
   `computeStreak` counts `done`/`over` only — so `engagementStreak >= computeStreak`
   always, and a `partial` day extends engagement but never XP or the floor-streak (C3).
@@ -1105,7 +1190,8 @@ habiquest/
 │   │   ├── diagnose.ts  + diagnose.test.ts
 │   │   ├── recommend.ts + recommend.test.ts
 │   │   ├── statusLight.ts + statusLight.test.ts
-│   │   └── lifecycle.ts + lifecycle.test.ts
+│   │   ├── lifecycle.ts + lifecycle.test.ts
+│   │   └── backfill.ts  + backfillPrompt.test.ts   # ADR-0002 bulk-backfill query
 │   │
 │   ├── data/                     # Repository layer
 │   │   ├── HabitRepository.ts    # Interface
