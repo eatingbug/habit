@@ -252,6 +252,16 @@ describe('dayStates — the one shared walk over a date range', () => {
     ]);
   });
 
+  it('carries a skip reason only on an only-skip day, never on one activity overrode', () => {
+    // `ClassifiedDay` is the shared walk every consumer reads, and §4.4 Rule 5
+    // attributes a component from a skip reason — so a day the user actually completed
+    // must not hand out the reason of a skip row it overrode (§4.1 step 3).
+    const entries = [skip('2026-03-08', 'floor', '07:00:00'), activity('2026-03-08', 6, '21:00:00')];
+    const walked = dayStates(COUNT, entries, '2026-03-08', '2026-03-08', '2026-03-10');
+    expect(walked[0].state).toBe('done');
+    expect(walked[0].skipReason).toBeUndefined();
+  });
+
   it('reports the day sum and the effective skip reason alongside each state', () => {
     const entries = [activity('2026-03-08', 2), activity('2026-03-08', 1), skip('2026-03-09', 'floor')];
     const walked = dayStates(COUNT, entries, '2026-03-08', '2026-03-09', '2026-03-10');

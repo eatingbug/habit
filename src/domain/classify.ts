@@ -120,6 +120,19 @@ export function isMissDay(state: DayState, entries: HabitEntry[]): boolean {
   return false;
 }
 
+/**
+ * Did this day meet its floor? `done`, or its `over` upgrade — `over ⇒ done` (§4.1).
+ *
+ * Defined here, beside `isMissDay`, because five call sites across the domain, the
+ * hooks and the screens need it: duplicating the comparison is how `over` eventually
+ * gets forgotten at one of them and a target-beating day stops counting as done.
+ * Takes the state (not a `ClassifiedDay`) so a caller holding an optional day — a
+ * paused day has no state at all, ADR-0003 — can ask directly.
+ */
+export function isFloorMet(state: DayState | undefined): boolean {
+  return state === 'done' || state === 'over';
+}
+
 /** One classified day, as produced by `dayStates`. */
 export interface ClassifiedDay {
   date: string;
@@ -170,7 +183,12 @@ export function dayStates(
       state,
       sum: rows.filter(isActivityRow).reduce((total, entry) => total + entry.actual, 0),
       isMiss: isMissDay(state, rows),
-      skipReason: effectiveSkipReason(rows),
+      // Only an only-skip day carries a reason. A day whose activity overrode its skip
+      // rows (§4.1 step 3) must not surface one: `ClassifiedDay` is the shared walk
+      // every consumer reads, and §4.4 Rule 5 attributes a component from a skip
+      // reason — a `done` day handing out an earlier skip's reason would attribute a
+      // failure to a day the user actually completed.
+      skipReason: state === 'skip' ? effectiveSkipReason(rows) : undefined,
       entries: sortDayRows(rows),
     });
   }
