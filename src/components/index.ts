@@ -24,4 +24,5 @@ export {
   type TextFieldProps,
 } from './TextField';
 export { Toast, type ToastProps } from './Toast';
+export { ToastOverlay, type ToastOverlayProps } from './ToastOverlay';
 export { Eyebrow, Footnote, Hint, type TextBlockProps } from './Typography';

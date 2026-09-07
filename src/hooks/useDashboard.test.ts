@@ -84,11 +84,11 @@ async function dashboardWatchingLoading(repository: HabitRepository) {
 
 async function log(
   result: { current: DashboardView },
-  habitId: string,
+  target: Habit,
   actual: number,
 ): Promise<void> {
   await act(async () => {
-    await result.current.logActivity(habitId, actual);
+    await result.current.logActivity(target, actual);
   });
 }
 
@@ -228,7 +228,7 @@ describe('useDashboard', () => {
       expect(result.current.rows[0].hasActivityToday).toBe(false);
       expect(result.current.rows[0].oneTapAmount).toBe(5);
 
-      await log(result, 'h1', result.current.rows[0].oneTapAmount);
+      await log(result, result.current.rows[0].habit, result.current.rows[0].oneTapAmount);
 
       expect(result.current.rows[0].hasActivityToday).toBe(true);
       expect(result.current.rows[0].oneTapAmount).toBe(1);
@@ -241,7 +241,7 @@ describe('useDashboard', () => {
       expect(stateOn(result.current.rows[0].cells, TODAY)).toBe('pending');
       const settledAt = seen.length;
 
-      await log(result, 'h1', 5);
+      await log(result, result.current.rows[0].habit, 5);
 
       expect(stateOn(result.current.rows[0].cells, TODAY)).toBe('done');
       expect(result.current.rows[0].cells).toHaveLength(TUNING.heatmapDays);
@@ -256,9 +256,9 @@ describe('useDashboard', () => {
         new LocalRepository(await seed([habit({ target: 6 })])),
       );
 
-      await log(result, 'h1', 5);
+      await log(result, result.current.rows[0].habit, 5);
       expect(stateOn(result.current.rows[0].cells, TODAY)).toBe('done');
-      await log(result, 'h1', 1);
+      await log(result, result.current.rows[0].habit, 1);
 
       expect(stateOn(result.current.rows[0].cells, TODAY)).toBe('over');
     });
@@ -273,7 +273,7 @@ describe('useDashboard', () => {
       expect(result.current.rows[0].hasActivityToday).toBe(false);
       expect(result.current.rows[0].oneTapAmount).toBe(1);
 
-      await log(result, 'b1', 1);
+      await log(result, result.current.rows[0].habit, 1);
 
       // Binary's floor is 1, so one row is the whole day: the control is completed.
       expect(stateOn(result.current.rows[0].cells, TODAY)).toBe('done');
@@ -295,7 +295,7 @@ describe('useDashboard', () => {
     it('undoes the tap it just made and puts the day back to pending', async () => {
       const result = await dashboard(new LocalRepository(await seed([habit()])));
 
-      await log(result, 'h1', 5);
+      await log(result, result.current.rows[0].habit, 5);
       expect(result.current.toast?.detail).toBe('+5reps');
 
       await act(async () => {

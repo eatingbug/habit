@@ -500,4 +500,58 @@ describe('useToday', () => {
       expect(dayOf(result.current, 'h1')?.sum).toBe(7);
     });
   });
+  describe('the target nudge (C7a)', () => {
+    it('stays silent below the floor and fires once the day is floor-met', async () => {
+      // No target at all — the habit that C7a is nudging.
+      const result = await todayScreen(
+        new LocalRepository(await seed([habit({ target: undefined })])),
+      );
+
+      expect(rowOf(result.current, 'h1').suggestTarget).toBe(false);
+
+      await log(result, 'h1', 2);
+      expect(dayOf(result.current, 'h1')?.state).toBe('partial');
+      expect(rowOf(result.current, 'h1').suggestTarget).toBe(false);
+
+      await log(result, 'h1', 3);
+      expect(dayOf(result.current, 'h1')?.state).toBe('done');
+      expect(rowOf(result.current, 'h1').suggestTarget).toBe(true);
+    });
+
+    it('stays silent when a valid target already exists', async () => {
+      const result = await todayScreen(new LocalRepository(await seed([habit()])));
+
+      await log(result, 'h1', 5);
+
+      expect(dayOf(result.current, 'h1')?.state).toBe('done');
+      expect(rowOf(result.current, 'h1').suggestTarget).toBe(false);
+    });
+
+    it('treats a corrupt target <= floor as no target, mirroring §4.1', async () => {
+      const result = await todayScreen(
+        new LocalRepository(await seed([habit({ floor: 5, target: 3 })])),
+      );
+
+      await log(result, 'h1', 5);
+
+      // `classifyDay` ignores that target, so the nudge must read it the same way.
+      expect(dayOf(result.current, 'h1')?.state).toBe('done');
+      expect(rowOf(result.current, 'h1').suggestTarget).toBe(true);
+    });
+
+    it('never nudges a binary habit, which has no amount to target', async () => {
+      const result = await todayScreen(new LocalRepository(await seed([binary()])));
+
+      await log(result, 'b1', 1);
+
+      expect(dayOf(result.current, 'b1')?.state).toBe('done');
+      expect(rowOf(result.current, 'b1').suggestTarget).toBe(false);
+    });
+  });
+
+  it('throws rather than dropping a log for a habit it cannot resolve', async () => {
+    const result = await todayScreen(new LocalRepository(await seed([habit()])));
+
+    await expect(result.current.logActivity('nobody', 5)).rejects.toThrow(/nobody/);
+  });
 });

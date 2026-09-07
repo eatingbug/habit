@@ -11,11 +11,12 @@ import {
   Hint,
   NumberField,
   SegmentedControl,
-  Toast,
+  ToastOverlay,
 } from '@/components';
 import { isFloorMet } from '@/domain/classify';
 import { weekdayOf } from '@/domain/dates';
 import { useToday, type TodayFeedItem, type TodayHabitRow } from '@/hooks/useToday';
+import { timestampAtLocalTime } from '@/lib/device';
 import type { DayState } from '@/models';
 import { useTheme } from '@/theme/ThemeProvider';
 import { FONT_FAMILY, FONT_SIZE, SPACE } from '@/theme/tokens';
@@ -105,24 +106,6 @@ function chipLabel(amount: number, floor: number): string {
   return `지난번 ${amount}`;
 }
 
-/**
- * The B3 time override → an ISO `timestamp`. Built from the **local** wall clock the
- * user typed, because that is what the feed reads back (`clockOf`); a naive
- * `${date}T${hh}:${mm}Z` would show a time offset from what they entered. `date` is
- * untouched — the row still belongs to this day (§3.3).
- *
- * `undefined` for an out-of-range entry, which leaves the default "now" in place.
- */
-function overrideTimestamp(date: string, hour: string, minute: string): string | undefined {
-  const h = Number(hour);
-  const m = Number(minute);
-  if (!Number.isInteger(h) || !Number.isInteger(m)) return undefined;
-  if (h < 0 || h > 23 || m < 0 || m > 59) return undefined;
-
-  const [year, month, day] = date.split('-').map(Number);
-  return new Date(year, month - 1, day, h, m).toISOString();
-}
-
 function Composer({
   row,
   date,
@@ -172,14 +155,21 @@ function Composer({
   const preview = canLog ? previewOf(parsed) : null;
   const { sum, floor, remaining } = row.progress;
 
+  /**
+   * An explicit override must never be silently discarded. The revealed fields are
+   * prefilled from now, so an invalid pair means the user typed one — so the log
+   * controls go disabled until it reads as a time, exactly as the amount field's own
+   * `canLog` gate works. No new error copy for a state the user is mid-edit on.
+   */
+  const timestamp = timeOpen ? timestampAtLocalTime(date, hour, minute) : undefined;
+  const timeUsable = !timeOpen || timestamp != null;
+
   async function submit(actual: number) {
     if (saving) return;
     setSaving(true);
     setError(null);
     try {
-      await onLog(actual, {
-        timestamp: timeOpen ? overrideTimestamp(date, hour, minute) : undefined,
-      });
+      await onLog(actual, { timestamp });
       // Only the amount resets. An open time reveal is an explicit override the user
       // chose, and a second log of the same session belongs at the same time.
       setStaged(null);
@@ -210,7 +200,7 @@ function Composer({
         label={oneTapLabel}
         variant="pri"
         block
-        disabled={saving || binaryDone}
+        disabled={saving || binaryDone || !timeUsable}
         onPress={() => submit(row.oneTapAmount)}
       />
 
@@ -229,7 +219,7 @@ function Composer({
             <Text style={[styles.unit, { color: colors.muted }]}>{unit}</Text>
             <Button
               label="기록"
-              disabled={!canLog || saving}
+              disabled={!canLog || saving || !timeUsable}
               onPress={() => submit(parsed)}
               tap
               style={styles.grow}
@@ -269,6 +259,9 @@ function Composer({
               {unit} {stateLabel(preview.state)}
             </Hint>
           )}
+          {/* C7a — once the day is floor-met, nudge the optional 목표. The 최고기록
+              half of that nudge waits for #20, which already owns `personal_best`. */}
+          {row.suggestTarget && <Hint>목표 — 더 하고 싶은 양 · 안 채워도 괜찮아요</Hint>}
         </>
       )}
 
@@ -342,76 +335,77 @@ export default function Today() {
   const selected = rows.find((row) => row.habit.id === selectedId) ?? rows[0];
 
   return (
-    <ScrollView
-      style={{ backgroundColor: colors.surface }}
-      contentContainerStyle={styles.screen}
-      keyboardShouldPersistTaps="handled"
-    >
-      <View style={styles.rowline}>
-        <View>
-          <Eyebrow>{headerDate(date)}</Eyebrow>
-          <Text style={[styles.heading, { color: colors.text }]}>오늘</Text>
+    <View style={[styles.fill, { backgroundColor: colors.surface }]}>
+      <ScrollView
+        style={styles.fill}
+        contentContainerStyle={styles.screen}
+        keyboardShouldPersistTaps="handled"
+      >
+        <View style={styles.rowline}>
+          <View>
+            <Eyebrow>{headerDate(date)}</Eyebrow>
+            <Text style={[styles.heading, { color: colors.text }]}>오늘</Text>
+          </View>
+          <View>
+            <Text style={[styles.tally, { color: colors.muted }]}>
+              완료 {questsDone} · 로그 {logCount}
+            </Text>
+            <Text style={[styles.tally, { color: colors.text }]}>+{xpToday} XP</Text>
+          </View>
         </View>
-        <View>
-          <Text style={[styles.tally, { color: colors.muted }]}>
-            완료 {questsDone} · 로그 {logCount}
+
+        {loading ? (
+          <Text style={[styles.notice, { color: colors.muted }]}>불러오는 중…</Text>
+        ) : rows.length === 0 ? (
+          <Text style={[styles.notice, { color: colors.muted }]}>
+            아직 습관이 없습니다. 먼저 습관을 하나 만들어 주세요.
           </Text>
-          <Text style={[styles.tally, { color: colors.text }]}>+{xpToday} XP</Text>
-        </View>
-      </View>
+        ) : (
+          <>
+            {/* The target selector. "자유 로그" joins it in #16. */}
+            {rows.length > 1 && (
+              <SegmentedControl
+                label="기록 대상"
+                options={rows.map((row) => ({ value: row.habit.id, label: row.habit.name }))}
+                value={selected.habit.id}
+                onChange={setSelectedId}
+              />
+            )}
 
-      {loading ? (
-        <Text style={[styles.notice, { color: colors.muted }]}>불러오는 중…</Text>
-      ) : rows.length === 0 ? (
-        <Text style={[styles.notice, { color: colors.muted }]}>
-          아직 습관이 없습니다. 먼저 습관을 하나 만들어 주세요.
-        </Text>
-      ) : (
-        <>
-          {/* The target selector. "자유 로그" joins it in #16. */}
-          {rows.length > 1 && (
-            <SegmentedControl
-              label="기록 대상"
-              options={rows.map((row) => ({ value: row.habit.id, label: row.habit.name }))}
-              value={selected.habit.id}
-              onChange={setSelectedId}
+            {/* Keyed by habit: switching targets remounts, so a staged amount can never
+                be logged against the habit it was not typed for. */}
+            <Composer
+              key={selected.habit.id}
+              row={selected}
+              date={date}
+              previewOf={(stagedAmount) => previewOf(selected.habit.id, stagedAmount)}
+              onLog={(actual, opts) => logActivity(selected.habit.id, actual, opts)}
             />
-          )}
+          </>
+        )}
 
-          {/* Keyed by habit: switching targets remounts, so a staged amount can never
-              be logged against the habit it was not typed for. */}
-          <Composer
-            key={selected.habit.id}
-            row={selected}
-            date={date}
-            previewOf={(stagedAmount) => previewOf(selected.habit.id, stagedAmount)}
-            onLog={(actual, opts) => logActivity(selected.habit.id, actual, opts)}
-          />
-        </>
-      )}
+        <Eyebrow>오늘 기록</Eyebrow>
+        {feed.length === 0 ? (
+          <Text style={[styles.notice, { color: colors.muted }]}>오늘 기록이 아직 없어요.</Text>
+        ) : (
+          <View style={styles.feed}>
+            {feed.map((item) => (
+              <FeedRow key={item.entry.id} item={item} />
+            ))}
+          </View>
+        )}
+      </ScrollView>
 
-      {/* B6 — the undo toast doubles as the "it registered" confirmation that one-tap
-          logging otherwise lacks (§6.2). */}
-      {toast != null && (
-        <Toast message={toast.message} detail={toast.detail} onUndo={() => void undoLast()} />
-      )}
-
-      <Eyebrow>오늘 기록</Eyebrow>
-      {feed.length === 0 ? (
-        <Text style={[styles.notice, { color: colors.muted }]}>오늘 기록이 아직 없어요.</Text>
-      ) : (
-        <View style={styles.feed}>
-          {feed.map((item) => (
-            <FeedRow key={item.entry.id} item={item} />
-          ))}
-        </View>
-      )}
-    </ScrollView>
+      <ToastOverlay toast={toast} onUndo={() => void undoLast()} />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { padding: SPACE.xl, paddingBottom: SPACE.xxl, gap: SPACE.lg },
+  fill: { flex: 1 },
+  // The extra bottom room is the overlay toast's: it floats above the scroll, so the
+  // last feed row has to be able to scroll clear of it.
+  screen: { padding: SPACE.xl, paddingBottom: SPACE.xxl * 3, gap: SPACE.lg },
   rowline: {
     flexDirection: 'row',
     alignItems: 'flex-start',

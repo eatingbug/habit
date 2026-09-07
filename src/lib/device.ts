@@ -20,6 +20,35 @@ export function localToday(): string {
 }
 
 /**
+ * The B3 time override (§6.2): a `date` plus the hour and minute the user typed → an
+ * ISO `timestamp`. Built from the **local** wall clock, for the same reason
+ * `localToday` avoids `toISOString()` — the feed reads the row back with
+ * `getHours()`, so a naive `${date}T${hh}:${mm}:00Z` would display a time the user
+ * never entered wherever the offset is non-zero.
+ *
+ * `undefined` for anything that is not a real time of day, so the caller can refuse
+ * to log rather than silently substituting "now" for an explicit override. `date` is
+ * untouched: `timestamp` orders within a day and never moves a row between days
+ * (§3.3).
+ */
+export function timestampAtLocalTime(
+  date: string,
+  hour: string,
+  minute: string,
+): string | undefined {
+  const h = Number(hour);
+  const m = Number(minute);
+  // `Number('')` is 0, which `Number.isInteger` accepts — an empty field would
+  // otherwise stamp local midnight.
+  if (hour.trim().length === 0 || minute.trim().length === 0) return undefined;
+  if (!Number.isInteger(h) || !Number.isInteger(m)) return undefined;
+  if (h < 0 || h > 23 || m < 0 || m > 59) return undefined;
+
+  const [year, month, day] = date.split('-').map(Number);
+  return new Date(year, month - 1, day, h, m).toISOString();
+}
+
+/**
  * `crypto.randomUUID` exists on web and on modern Hermes builds but not everywhere, so
  * the fallback is a real path, not a theoretical one.
  */

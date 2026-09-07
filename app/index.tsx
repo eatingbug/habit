@@ -1,7 +1,7 @@
 import { useRouter } from 'expo-router';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { Button, Card, Chip, Eyebrow, Footnote, Heatmap, Toast } from '@/components';
+import { Button, Card, Chip, Eyebrow, Footnote, Heatmap, ToastOverlay } from '@/components';
 import { useDashboard, type DashboardRow } from '@/hooks/useDashboard';
 import { useTheme } from '@/theme/ThemeProvider';
 import { FONT_SIZE, RADIUS, SPACE } from '@/theme/tokens';
@@ -18,9 +18,14 @@ import { FONT_SIZE, RADIUS, SPACE } from '@/theme/tokens';
  */
 
 /**
- * The row's one-tap label (§6.1 B1) — copy from the design canvas. Every reading is
- * derived in `useDashboard`, because there are no component render tests here
- * (jest.config.js) and a label computed in JSX would be untested.
+ * The row's one-tap label (§6.1 B1) — copy from the design canvas
+ * (`design/parts/Dashboard.logic.js:61`).
+ *
+ * The *readings* it branches on (`hasActivityToday`) are derived in `useDashboard`
+ * from the shared `logAffordances`, where the hook tests can reach them; the *copy* is
+ * applied here, in the screen. Today's composer has its own cascade because its count
+ * strings differ — a shared helper there would be a false abstraction over two
+ * genuinely different sets of words.
  */
 function oneTapLabel(row: DashboardRow): string {
   if (row.habit.kind === 'binary') return row.hasActivityToday ? '✓ 했어요' : '✓ 완료';
@@ -66,7 +71,7 @@ function HabitRow({
         <Pressable
           onPress={onPress}
           accessibilityRole="button"
-          accessibilityLabel={`${row.habit.name} 기록 보기`}
+          accessibilityLabel={row.habit.name}
           style={styles.strip}
         >
           <Heatmap cells={row.cells} />
@@ -91,67 +96,67 @@ export default function Dashboard() {
   const { rows, loading, logActivity, toast, undoLast } = useDashboard();
 
   return (
-    <ScrollView
-      style={{ backgroundColor: colors.surface }}
-      contentContainerStyle={styles.screen}
-    >
-      <View style={styles.header}>
-        <Text style={[styles.title, { color: colors.text }]}>대시보드</Text>
-        <Pressable
-          onPress={toggle}
-          style={[styles.toggle, { borderColor: colors.border, backgroundColor: colors.surface2 }]}
-        >
-          <Text style={[styles.toggleText, { color: colors.muted }]}>
-            {preference === 'system' ? '자동' : preference === 'light' ? '라이트' : '다크'}
-          </Text>
-        </Pressable>
-      </View>
-
-      <Eyebrow>오늘의 습관</Eyebrow>
-
-      {loading ? (
-        <Text style={[styles.notice, { color: colors.muted }]}>불러오는 중…</Text>
-      ) : rows.length === 0 ? (
-        <Text style={[styles.notice, { color: colors.muted }]}>아직 습관이 없습니다.</Text>
-      ) : (
-        <View style={styles.quests}>
-          {rows.map((row) => (
-            <HabitRow
-              key={row.habit.id}
-              row={row}
-              onPress={() => router.push(`/habit/${row.habit.id}`)}
-              onLog={() => void logActivity(row.habit.id, row.oneTapAmount)}
-            />
-          ))}
+    <View style={[styles.fill, { backgroundColor: colors.surface }]}>
+      <ScrollView style={styles.fill} contentContainerStyle={styles.screen}>
+        <View style={styles.header}>
+          <Text style={[styles.title, { color: colors.text }]}>대시보드</Text>
+          <Pressable
+            onPress={toggle}
+            style={[styles.toggle, { borderColor: colors.border, backgroundColor: colors.surface2 }]}
+          >
+            <Text style={[styles.toggleText, { color: colors.muted }]}>
+              {preference === 'system' ? '자동' : preference === 'light' ? '라이트' : '다크'}
+            </Text>
+          </Pressable>
         </View>
-      )}
+
+        <Eyebrow>오늘의 습관</Eyebrow>
+
+        {loading ? (
+          <Text style={[styles.notice, { color: colors.muted }]}>불러오는 중…</Text>
+        ) : rows.length === 0 ? (
+          <Text style={[styles.notice, { color: colors.muted }]}>아직 습관이 없습니다.</Text>
+        ) : (
+          <View style={styles.quests}>
+            {rows.map((row) => (
+              <HabitRow
+                key={row.habit.id}
+                row={row}
+                onPress={() => router.push(`/habit/${row.habit.id}`)}
+                onLog={() => void logActivity(row.habit, row.oneTapAmount)}
+              />
+            ))}
+          </View>
+        )}
+
+        <Button label="오늘 기록하기" block onPress={() => router.push('/today')} />
+
+        <Button
+          label="+ 습관 만들기"
+          variant="pri"
+          block
+          onPress={() => router.push('/habit/new')}
+        />
+
+        {rows.length > 0 && (
+          <Footnote>
+            테두리만 있는 칸은 기록이 없어 실패로 잡힌 날입니다. 그 날을 채워 넣으면 회복돼요.
+          </Footnote>
+        )}
+      </ScrollView>
 
       {/* B6 — the undo toast doubles as the "it registered" confirmation that one-tap
-          logging otherwise lacks (§6.2). */}
-      {toast != null && (
-        <Toast message={toast.message} detail={toast.detail} onUndo={() => void undoLast()} />
-      )}
-
-      <Button label="오늘 기록하기" block onPress={() => router.push('/today')} />
-
-      <Button
-        label="+ 습관 만들기"
-        variant="pri"
-        block
-        onPress={() => router.push('/habit/new')}
-      />
-
-      {rows.length > 0 && (
-        <Footnote>
-          테두리만 있는 칸은 기록이 없어 실패로 잡힌 날입니다. 그 날을 채워 넣으면 회복돼요.
-        </Footnote>
-      )}
-    </ScrollView>
+          logging otherwise lacks (§6.2), so it must not scroll out of reach. */}
+      <ToastOverlay toast={toast} onUndo={() => void undoLast()} />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { padding: SPACE.xl, paddingBottom: SPACE.xxl, gap: SPACE.lg },
+  fill: { flex: 1 },
+  // The extra bottom room is the overlay toast's: it floats above the scroll, so the
+  // last row has to be able to scroll clear of it.
+  screen: { padding: SPACE.xl, paddingBottom: SPACE.xxl * 3, gap: SPACE.lg },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   title: { fontSize: FONT_SIZE.xl, fontWeight: '600', letterSpacing: -0.2 },
   toggle: {

@@ -63,8 +63,7 @@ function stepClock() {
   };
 }
 
-/** `forToast: null` is the "habit vanished mid-render" fixture, not "use the default". */
-function quickLog(repository: HabitRepository, forToast: Habit | null = habit()) {
+function quickLog(repository: HabitRepository) {
   let reloads = 0;
   const { result } = renderHook(
     () =>
@@ -74,7 +73,6 @@ function quickLog(repository: HabitRepository, forToast: Habit | null = habit())
         onChange: () => {
           reloads += 1;
         },
-        habitOf: () => forToast ?? undefined,
       }),
     { wrapper: wrapperFor(repository) },
   );
@@ -83,12 +81,12 @@ function quickLog(repository: HabitRepository, forToast: Habit | null = habit())
 
 async function log(
   result: { current: QuickLog },
-  habitId: string,
+  target: Habit,
   actual: number,
   opts?: { timestamp?: string },
 ): Promise<void> {
   await act(async () => {
-    await result.current.logActivity(habitId, actual, opts);
+    await result.current.logActivity(target, actual, opts);
   });
 }
 
@@ -114,7 +112,7 @@ describe('useQuickLog', () => {
 
     expect(result.current.toast).toBeNull();
 
-    await log(result, 'h1', 3);
+    await log(result, habit(), 3);
 
     const rows = await rowsIn(repository);
     expect(rows).toHaveLength(1);
@@ -126,9 +124,9 @@ describe('useQuickLog', () => {
 
   it('reads ✓ 완료 on a binary habit rather than the floor unit', async () => {
     const binary = habit({ id: 'b1', kind: 'binary', floor: 1, floorUnit: 'time' });
-    const { result } = quickLog(await repositoryWith([binary]), binary);
+    const { result } = quickLog(await repositoryWith([binary]));
 
-    await log(result, 'b1', 1);
+    await log(result, binary, 1);
 
     expect(result.current.toast?.detail).toBe('✓ 완료');
   });
@@ -137,8 +135,8 @@ describe('useQuickLog', () => {
     const repository = await repositoryWith();
     const { result } = quickLog(repository);
 
-    await log(result, 'h1', 5);
-    await log(result, 'h1', 1);
+    await log(result, habit(), 5);
+    await log(result, habit(), 1);
 
     const rows = await rowsIn(repository);
     expect(rows).toHaveLength(2);
@@ -150,7 +148,7 @@ describe('useQuickLog', () => {
     const repository = await repositoryWith([habit()], [seededRow()]);
     const { result, reloads } = quickLog(repository);
 
-    await log(result, 'h1', 5);
+    await log(result, habit(), 5);
     const appended = result.current.toast?.entryId;
     expect(appended).not.toBe('seeded');
 
@@ -173,7 +171,7 @@ describe('useQuickLog', () => {
     );
     const { result } = quickLog(repository);
 
-    await log(result, 'h1', 5);
+    await log(result, habit(), 5);
     await act(async () => {
       await result.current.undoLast();
     });
@@ -190,7 +188,7 @@ describe('useQuickLog', () => {
     });
     expect(reloads()).toBe(0);
 
-    await log(result, 'h1', 5);
+    await log(result, habit(), 5);
     await act(async () => {
       await result.current.undoLast();
     });
@@ -205,7 +203,7 @@ describe('useQuickLog', () => {
     const repository = await repositoryWith();
     const { result } = quickLog(repository);
 
-    await log(result, 'h1', 3);
+    await log(result, habit(), 3);
     await act(async () => {
       result.current.dismissToast();
     });
@@ -218,8 +216,8 @@ describe('useQuickLog', () => {
     const repository = await repositoryWith();
     const { result } = quickLog(repository);
 
-    await expect(result.current.logActivity('h1', 0)).rejects.toThrow(RangeError);
-    await expect(result.current.logActivity('h1', -3)).rejects.toThrow(RangeError);
+    await expect(result.current.logActivity(habit(), 0)).rejects.toThrow(RangeError);
+    await expect(result.current.logActivity(habit(), -3)).rejects.toThrow(RangeError);
 
     expect(await rowsIn(repository)).toEqual([]);
     expect(result.current.toast).toBeNull();
@@ -230,22 +228,12 @@ describe('useQuickLog', () => {
     const { result } = quickLog(repository);
     const at = new Date(`${TODAY}T02:34:00.000Z`).toISOString();
 
-    await log(result, 'h1', 3, { timestamp: at });
+    await log(result, habit(), 3, { timestamp: at });
 
     const rows = await rowsIn(repository);
     expect(rows[0].timestamp).toBe(at);
     expect(rows[0].date).toBe(TODAY);
   });
-  it('falls back to the bare amount when the habit cannot be resolved', async () => {
-    const { result } = quickLog(await repositoryWith(), null);
-
-    await log(result, 'h1', 3);
-
-    // The row was written either way and undo still works — a toast is not the place
-    // to surface a data defect.
-    expect(result.current.toast?.detail).toBe('+3');
-  });
-
   describe('the undo window (§6.2 B6)', () => {
     beforeEach(() => {
       jest.useFakeTimers();
@@ -257,7 +245,7 @@ describe('useQuickLog', () => {
     it('keeps the toast until TUNING.undoToastMs elapses, then retires it', async () => {
       const { result } = quickLog(await repositoryWith());
 
-      await log(result, 'h1', 5);
+      await log(result, habit(), 5);
       await act(async () => {
         jest.advanceTimersByTime(TUNING.undoToastMs - 1);
       });
@@ -272,11 +260,11 @@ describe('useQuickLog', () => {
     it('restarts the window on a second append instead of inheriting the first one', async () => {
       const { result } = quickLog(await repositoryWith());
 
-      await log(result, 'h1', 5);
+      await log(result, habit(), 5);
       await act(async () => {
         jest.advanceTimersByTime(TUNING.undoToastMs - 1);
       });
-      await log(result, 'h1', 1);
+      await log(result, habit(), 1);
 
       // The first toast's remaining millisecond must not retire the second toast.
       await act(async () => {
@@ -294,7 +282,7 @@ describe('useQuickLog', () => {
       const repository = await repositoryWith();
       const { result } = quickLog(repository);
 
-      await log(result, 'h1', 5);
+      await log(result, habit(), 5);
       const written = (await rowsIn(repository))[0].id;
 
       await act(async () => {

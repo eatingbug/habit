@@ -2,11 +2,18 @@ import { useEffect, useState } from 'react';
 
 import { TUNING } from '@/config/tuning';
 import { useRepository } from '@/context/RepositoryContext';
+import { type ClassifiedDay, isFloorMet } from '@/domain/classify';
 import { newId } from '@/lib/device';
 import type { Habit } from '@/models';
 
 /**
  * The one-tap logging primitive — SPEC §6.1 / §6.2 (B1) and its undo toast (B6).
+ *
+ * This module owns the whole of "one tap logs" — both the **write** (`useQuickLog`)
+ * and the **reading that shapes the control** (`logAffordances`). Splitting those was
+ * the mistake the first cut made: the amount a tap appends was then computed
+ * identically in two hooks, and "does today already hold activity?" ended up with two
+ * different implementations whose equivalence nothing named.
  *
  * Both logging surfaces go through this hook: Today's composer and the Dashboard row.
  * There is deliberately **one** append/undo implementation, because the undo rule is
@@ -50,7 +57,7 @@ export interface QuickLog {
    * Rejects `actual <= 0` — §3.3's invariant. A zero amount is not an activity row;
    * the state that means "didn't do it" is a skip row, which carries a reason.
    */
-  logActivity(habitId: string, actual: number, opts?: { timestamp?: string }): Promise<void>;
+  logActivity(habit: Habit, actual: number, opts?: { timestamp?: string }): Promise<void>;
   /**
    * Delete the row the toast names, by id. A no-op with no toast — including after
    * the toast's window elapsed, which is the whole point of the window.
@@ -66,28 +73,53 @@ export interface QuickLogOptions {
   now?: () => Date;
   /** Called after both the append and the undo, so the consumer reloads. */
   onChange: () => void;
-  /** The habit the row belongs to. `undefined` only if it vanished mid-render. */
-  habitOf(habitId: string): Habit | undefined;
 }
 
 /**
  * The toast's detail line (§6.2 B6 copy). It cannot be built from `floorUnit` alone:
  * a binary habit carries `floorUnit: 'time'`, so `+1${floorUnit}` would render
  * `+1time`. Its detail is the fixed `✓ 완료` instead.
- *
- * A missing habit falls back to the bare amount. A toast is not the place to surface
- * a data defect — the row was written either way, and undo still works.
  */
-function detailOf(habit: Habit | undefined, actual: number): string {
-  if (habit == null) return `+${actual}`;
+function detailOf(habit: Habit, actual: number): string {
   return habit.kind === 'binary' ? '✓ 완료' : `+${actual}${habit.floorUnit}`;
+}
+
+/** What a one-tap control on a habit's day should do and say it does (§6.1 B1). */
+export interface LogAffordances {
+  /**
+   * Does today already hold at least one **activity** row? The control then reads
+   * `+1 더` rather than offering the whole minimum again.
+   */
+  hasActivityToday: boolean;
+  /** What one tap appends: the `floor` on the day's first record, otherwise 1. */
+  oneTapAmount: number;
+}
+
+/**
+ * The one derivation behind both one-tap controls — Today's composer and the
+ * Dashboard row. `day` is optional because an empty paused day has no state at all
+ * (ADR-0003) and is still loggable.
+ *
+ * The activity test is read off the **day's state**, which is legitimate only because
+ * of §4.1's precedence: activity overrides skip, so `partial`/`done`/`over` are
+ * exactly the states a day with ≥1 activity row can hold, and `skip`/`missed`/
+ * `pending` are exactly those it cannot. A day carrying only a reason-tagged skip is
+ * therefore still on its first record and still offers the full minimum.
+ */
+export function logAffordances(habit: Habit, day: ClassifiedDay | undefined): LogAffordances {
+  const hasActivityToday = day != null && (day.state === 'partial' || isFloorMet(day.state));
+
+  return {
+    hasActivityToday,
+    // Binary has no amount: its floor is 1 and a row is always `actual: 1` (§3.3).
+    oneTapAmount: habit.kind === 'count' && !hasActivityToday ? habit.floor : 1,
+  };
 }
 
 export function useQuickLog({
   today,
   now = () => new Date(),
   onChange,
-  habitOf,
 }: QuickLogOptions): QuickLog {
   const repository = useRepository();
   const [toast, setToast] = useState<QuickLogToast | null>(null);
@@ -102,15 +134,16 @@ export function useQuickLog({
    * the timer of a toast that was undone or replaced. Retiring goes through
    * `dismissToast`, so there is one way for a toast to end.
    */
+  const liveToastId = toast?.entryId;
   useEffect(() => {
-    if (toast == null) return;
+    if (liveToastId == null) return;
 
     const timer = setTimeout(dismissToast, TUNING.undoToastMs);
     return () => clearTimeout(timer);
-  }, [toast?.entryId]);
+  }, [liveToastId]);
 
   async function logActivity(
-    habitId: string,
+    habit: Habit,
     actual: number,
     opts: { timestamp?: string } = {},
   ): Promise<void> {
@@ -124,14 +157,14 @@ export function useQuickLog({
 
     await repository.upsertEntry({
       id: entryId,
-      habitId,
+      habitId: habit.id,
       // `date` is the authoritative day (§3.3); `timestamp` only orders within it.
       date: today,
       timestamp: opts.timestamp ?? now().toISOString(),
       actual,
     });
 
-    setToast({ entryId, message: '기록됨', detail: detailOf(habitOf(habitId), actual) });
+    setToast({ entryId, message: '기록됨', detail: detailOf(habit, actual) });
     onChange();
   }
 

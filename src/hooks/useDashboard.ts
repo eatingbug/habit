@@ -2,13 +2,13 @@ import { useEffect, useState } from 'react';
 
 import { TUNING } from '@/config/tuning';
 import { useRepository } from '@/context/RepositoryContext';
-import { isFloorMet } from '@/domain/classify';
+import { dayStates } from '@/domain/classify';
 import { windowEndingAt } from '@/domain/dates';
 import { heatCells, type HeatCell } from '@/domain/heatLevel';
 import { localToday } from '@/lib/device';
 import type { Habit, Stat } from '@/models';
 
-import { useQuickLog, type QuickLogToast } from './useQuickLog';
+import { logAffordances, useQuickLog, type QuickLogToast } from './useQuickLog';
 
 /**
  * The Dashboard's data path — SPEC §6.1.
@@ -29,16 +29,15 @@ export interface DashboardRow {
   /** `TUNING.heatmapDays` cells, ascending, ending today. */
   cells: HeatCell[];
   /**
-   * True once today holds at least one activity row — the one-tap control reads
-   * `+1 더` instead of `+최소` (§6.1 B1). Derived here rather than in the screen
-   * because there are no component render tests (jest.config.js).
+   * The one-tap control's readings, from the shared `logAffordances` (§6.1 B1) — the
+   * same derivation Today's composer uses. Derived in the hook rather than in the
+   * screen because there are no component render tests (jest.config.js).
    *
-   * On a **binary** habit this is also the "already done" reading: its floor is 1, so
-   * any activity row makes the day `done` and the control is shown completed and
-   * disabled.
+   * On a **binary** habit `hasActivityToday` is also the "already done" reading: its
+   * floor is 1, so any activity row makes the day `done` and the control is shown
+   * completed and disabled.
    */
   hasActivityToday: boolean;
-  /** What one tap appends: the `floor` on today's first record, otherwise 1. */
   oneTapAmount: number;
 }
 
@@ -48,11 +47,13 @@ export interface DashboardView {
   /**
    * One-tap logging on the row (§6.1 B1) with its 실행취소 toast (B6) — the same
    * primitive Today's composer uses, so there is only one append/undo implementation.
+   *
+   * Takes the habit itself: the row the screen is rendering already holds it, so
+   * there is nothing to look up and no "habit not found" branch to write.
    */
-  logActivity(habitId: string, actual: number): Promise<void>;
+  logActivity(habit: Habit, actual: number, opts?: { timestamp?: string }): Promise<void>;
   toast: QuickLogToast | null;
   undoLast(): Promise<void>;
-  dismissToast(): void;
 }
 
 function statFor(statId: string): Stat | undefined {
@@ -86,25 +87,16 @@ export function useDashboard({ today = localToday() }: { today?: string } = {}):
 
       const loaded = await Promise.all(
         visible.map(async (habit) => {
-          const cells = heatCells(
-            habit,
-            await repository.getEntries(habit.id, from, to),
-            from,
-            to,
-            today,
-          );
-          // Today is the strip's last cell. `partial` and floor-met are exactly the
-          // states an activity row produces; `skip` and `missed` are not, so a
-          // reason-tagged day still offers the full `+최소`.
-          const state = cells[cells.length - 1]?.state;
-          const hasActivityToday = state === 'partial' || isFloorMet(state);
+          const entries = await repository.getEntries(habit.id, from, to);
 
           return {
             habit,
             stat: statFor(habit.statId),
-            cells,
-            hasActivityToday,
-            oneTapAmount: habit.kind === 'count' && !hasActivityToday ? habit.floor : 1,
+            cells: heatCells(habit, entries, from, to, today),
+            // The one-tap control reads a classified day, not a heat cell: a cell is a
+            // *rendering* instruction, and deriving an affordance from one is how this
+            // drifted away from Today's identical derivation once already.
+            ...logAffordances(habit, dayStates(habit, entries, today, today, today)[0]),
           };
         }),
       );
@@ -125,7 +117,6 @@ export function useDashboard({ today = localToday() }: { today?: string } = {}):
   const quick = useQuickLog({
     today,
     onChange: () => setVersion((current) => current + 1),
-    habitOf: (habitId) => rows.find((row) => row.habit.id === habitId)?.habit,
   });
 
   return {
@@ -134,6 +125,5 @@ export function useDashboard({ today = localToday() }: { today?: string } = {}):
     logActivity: quick.logActivity,
     toast: quick.toast,
     undoLast: quick.undoLast,
-    dismissToast: quick.dismissToast,
   };
 }

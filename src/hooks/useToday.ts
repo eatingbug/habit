@@ -13,7 +13,7 @@ import { computeXP } from '@/domain/score';
 import { localToday } from '@/lib/device';
 import type { DayState, Habit, HabitEntry } from '@/models';
 
-import { useQuickLog, type QuickLogToast } from './useQuickLog';
+import { logAffordances, useQuickLog, type QuickLogToast } from './useQuickLog';
 
 /**
  * Today's recording path — SPEC §6.2.
@@ -64,6 +64,12 @@ export interface TodayHabitRow {
   oneTapAmount: number;
   /** The day's progress-to-floor line (C7a). `remaining` clamps at 0. */
   progress: { sum: number; floor: number; remaining: number };
+  /**
+   * True when the day is floor-met and the habit has no **effective** target, so the
+   * screen can suggest setting one (C7a: "최소량을 넘기면 … 목표를 넌지시 권한다").
+   * A `target <= floor` counts as no target, mirroring §4.1's defensive read.
+   */
+  suggestTarget: boolean;
 }
 
 /** One line of the chronological feed (§6.2). Free logs interleave here in #16. */
@@ -113,7 +119,6 @@ export interface TodayView {
   /** The live 실행취소 toast for a one-tap/quick-chip append (B6). */
   toast: QuickLogToast | null;
   undoLast(): Promise<void>;
-  dismissToast(): void;
 }
 
 /**
@@ -125,24 +130,37 @@ function activityRows(entries: HabitEntry[]): HabitEntry[] {
   return sortDayRows(entries.filter((entry) => entry.actual > 0 && entry.skipReason == null));
 }
 
-/** The B1/B2/C7a derivations for one habit's day. */
-function derive(habit: Habit, rowsToday: HabitEntry[]) {
-  const activity = activityRows(rowsToday);
-  const last = activity[activity.length - 1];
-  const sum = activity.reduce((total, entry) => total + entry.actual, 0);
-  const hasActivityToday = activity.length > 0;
-  const previous = last?.actual;
+/**
+ * Everything the composer reads off one habit's day — the prefilled amount, the quick
+ * chips, the progress line and the target nudge — plus the shared one-tap affordances.
+ */
+function composerReadings(habit: Habit, day: ClassifiedDay | undefined) {
+  const activity = activityRows(day?.entries ?? []);
+  // The day's sum is the domain's (`dayStates`), never a second reduce of our own: two
+  // sums drift, and the visible failure is one line contradicting the next.
+  const sum = day?.sum ?? 0;
+  const previous = activity[activity.length - 1]?.actual;
 
   return {
-    hasActivityToday,
+    ...logAffordances(habit, day),
     defaultAmount: previous ?? habit.floor,
     // Binary has no amount to stage, so it has no chips.
     quickChips:
       habit.kind === 'count'
         ? [...new Set([1, habit.floor, ...(previous == null ? [] : [previous])])]
         : [],
-    oneTapAmount: habit.kind === 'count' && !hasActivityToday ? habit.floor : 1,
     progress: { sum, floor: habit.floor, remaining: Math.max(0, habit.floor - sum) },
+    // C7a's second half. `target != null && target > floor` mirrors `effectiveTarget`
+    // in `src/domain/classify.ts` — the same defensive read, not a new rule; a
+    // `target <= floor` is meaningless and reads as no target at all (§3.2 / §4.1).
+    //
+    // The 최고기록 half of the nudge is deliberately **not** here: `personal_best`
+    // already exists in the parked `statusLight.ts` and lands with #20. A second
+    // implementation would be the duplication that module was written to prevent.
+    suggestTarget:
+      habit.kind === 'count' &&
+      !(habit.target != null && habit.target > habit.floor) &&
+      isFloorMet(day?.state),
   };
 }
 
@@ -207,10 +225,10 @@ export function useToday({
       const allRows = perHabit.flatMap((entry) => entry.rowsToday);
 
       const next: Loaded = {
-        rows: perHabit.map(({ habit, day, rowsToday }) => ({
+        rows: perHabit.map(({ habit, day }) => ({
           habit,
           day,
-          ...derive(habit, rowsToday),
+          ...composerReadings(habit, day),
         })),
         // One sort over the merged rows, so the feed's order is the domain's total
         // order across habits and not a per-habit concatenation.
@@ -238,12 +256,23 @@ export function useToday({
     return loaded.rows.find((row) => row.habit.id === habitId);
   }
 
-  const quick = useQuickLog({
-    today,
-    now,
-    onChange: reload,
-    habitOf: (habitId) => rowFor(habitId)?.habit,
-  });
+  const quick = useQuickLog({ today, now, onChange: reload });
+
+  /**
+   * #10's public signature, kept: the screen names a habit by id and this resolves it
+   * from the loaded rows. A miss is a programmer error — the selector's options *are*
+   * `rows` — so it throws rather than dropping the write on the floor.
+   */
+  async function logActivity(
+    habitId: string,
+    actual: number,
+    opts?: { timestamp?: string },
+  ): Promise<void> {
+    const row = rowFor(habitId);
+    if (row == null) throw new Error(`기록할 습관을 찾지 못했습니다: ${habitId}`);
+
+    await quick.logActivity(row.habit, actual, opts);
+  }
 
   function previewOf(habitId: string, staged: number): { sum: number; state: DayState } | null {
     const row = rowFor(habitId);
@@ -262,7 +291,7 @@ export function useToday({
     };
 
     return {
-      sum: row.progress.sum + staged,
+      sum: (row.day?.sum ?? 0) + staged,
       state: classifyDay([...entries, synthetic], row.habit, today, today),
     };
   }
@@ -277,10 +306,9 @@ export function useToday({
     ).length,
     logCount: loaded.feed.length,
     xpToday: loaded.xpToday,
-    logActivity: quick.logActivity,
+    logActivity,
     previewOf,
     toast: quick.toast,
     undoLast: quick.undoLast,
-    dismissToast: quick.dismissToast,
   };
 }
