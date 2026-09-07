@@ -7,7 +7,7 @@ import { LocalRepository, MemoryKV, type HabitRepository, type KVStore } from '@
 import { addDays } from '@/domain/dates';
 import type { Habit } from '@/models';
 
-import { useToday, type TodayView } from './useToday';
+import { useToday, type TodayHabitRow, type TodayView } from './useToday';
 
 /**
  * The hook seam (jest.config.js): a real `LocalRepository` over `MemoryKV`, so the
@@ -91,10 +91,17 @@ async function log(
   result: { current: TodayView },
   habitId: string,
   actual: number,
+  opts?: { timestamp?: string },
 ): Promise<void> {
   await act(async () => {
-    await result.current.logActivity(habitId, actual);
+    await result.current.logActivity(habitId, actual, opts);
   });
+}
+
+function rowOf(view: TodayView, habitId: string): TodayHabitRow {
+  const row = view.rows.find((r) => r.habit.id === habitId);
+  if (row == null) throw new Error(`no row for ${habitId}`);
+  return row;
 }
 
 describe('useToday', () => {
@@ -283,5 +290,214 @@ describe('useToday', () => {
     // …but a paused day that holds rows classifies normally and still earns.
     expect(dayOf(result.current, 'paused')?.state).toBe('done');
     expect(result.current.xpToday).toBe(TUNING.xpPerFloorCompletion);
+  });
+  describe('one-tap logging and undo (#11)', () => {
+    it('undoes the row it just appended and reverts the day to pending', async () => {
+      const repository = new LocalRepository(await seed([habit()]));
+      const result = await todayScreen(repository);
+
+      await log(result, 'h1', 5);
+      expect(dayOf(result.current, 'h1')?.state).toBe('done');
+      expect(result.current.toast?.detail).toBe('+5reps');
+
+      await act(async () => {
+        await result.current.undoLast();
+      });
+
+      expect(dayOf(result.current, 'h1')?.state).toBe('pending');
+      expect(result.current.logCount).toBe(0);
+      expect(result.current.xpToday).toBe(0);
+      expect(result.current.toast).toBeNull();
+    });
+
+    it('undoes only the named row, leaving an earlier row of the same day alone', async () => {
+      const repository = new LocalRepository(await seed([habit()]));
+      await repository.upsertEntry({
+        id: 'earlier',
+        habitId: 'h1',
+        date: TODAY,
+        timestamp: `${TODAY}T07:00:00.000Z`,
+        actual: 2,
+      });
+      const result = await todayScreen(repository);
+
+      await log(result, 'h1', 5);
+      expect(dayOf(result.current, 'h1')?.state).toBe('done');
+
+      await act(async () => {
+        await result.current.undoLast();
+      });
+
+      // By `id`, not "the newest row": the seeded fact survives and the day falls
+      // back to what that one row alone says.
+      expect(dayOf(result.current, 'h1')?.entries.map((e) => e.id)).toEqual(['earlier']);
+      expect(dayOf(result.current, 'h1')?.state).toBe('partial');
+    });
+
+    it('appends on a second one-tap rather than overwriting the first (§3.3)', async () => {
+      const result = await todayScreen(new LocalRepository(await seed([habit()])));
+
+      await log(result, 'h1', rowOf(result.current, 'h1').oneTapAmount);
+      await log(result, 'h1', rowOf(result.current, 'h1').oneTapAmount);
+
+      const day = dayOf(result.current, 'h1');
+      expect(day?.entries).toHaveLength(2);
+      expect(day?.entries.map((e) => e.actual)).toEqual([5, 1]);
+      expect(day?.sum).toBe(6);
+      expect(result.current.logCount).toBe(2);
+    });
+
+    it('flips hasActivityToday and oneTapAmount after the day\u2019s first record', async () => {
+      const result = await todayScreen(new LocalRepository(await seed([habit()])));
+
+      expect(rowOf(result.current, 'h1').hasActivityToday).toBe(false);
+      expect(rowOf(result.current, 'h1').oneTapAmount).toBe(5);
+
+      await log(result, 'h1', 5);
+
+      expect(rowOf(result.current, 'h1').hasActivityToday).toBe(true);
+      expect(rowOf(result.current, 'h1').oneTapAmount).toBe(1);
+    });
+
+    it('leaves a skip-only day reading as its first record (a skip row is not activity)', async () => {
+      const repository = new LocalRepository(await seed([habit()]));
+      await repository.upsertEntry({
+        id: 'skipped',
+        habitId: 'h1',
+        date: TODAY,
+        timestamp: `${TODAY}T07:00:00.000Z`,
+        actual: 0,
+        skipReason: 'cue',
+      });
+      const result = await todayScreen(repository);
+
+      expect(dayOf(result.current, 'h1')?.state).toBe('skip');
+      expect(rowOf(result.current, 'h1').hasActivityToday).toBe(false);
+      expect(rowOf(result.current, 'h1').oneTapAmount).toBe(5);
+      // `actual: 0` is not a legal staged amount, so it must never become the default.
+      expect(rowOf(result.current, 'h1').defaultAmount).toBe(5);
+    });
+
+    it('keeps a binary habit at one tap with no amount chips', async () => {
+      const result = await todayScreen(new LocalRepository(await seed([binary()])));
+
+      expect(rowOf(result.current, 'b1').oneTapAmount).toBe(1);
+      expect(rowOf(result.current, 'b1').quickChips).toEqual([]);
+      expect(result.current.previewOf('b1', 1)?.state).toBe('done');
+
+      await log(result, 'b1', 1);
+
+      expect(result.current.toast?.detail).toBe('✓ 완료');
+      expect(rowOf(result.current, 'b1').oneTapAmount).toBe(1);
+    });
+  });
+
+  describe('smart defaults, quick chips and progress (#11)', () => {
+    it('prefills the floor on the first record and the previous amount afterwards', async () => {
+      const result = await todayScreen(new LocalRepository(await seed([habit()])));
+
+      expect(rowOf(result.current, 'h1').defaultAmount).toBe(5);
+
+      await log(result, 'h1', 2);
+      expect(rowOf(result.current, 'h1').defaultAmount).toBe(2);
+
+      await log(result, 'h1', 3);
+      expect(rowOf(result.current, 'h1').defaultAmount).toBe(3);
+    });
+
+    it('takes 직전값 from the last row under the domain total order, not repository order', async () => {
+      const repository = new LocalRepository(await seed([habit()]));
+      // Written newest-first, so a naive "last element" read would answer 2.
+      for (const [id, at, actual] of [
+        ['late', '11:00', 4],
+        ['early', '08:00', 2],
+      ] as const) {
+        await repository.upsertEntry({
+          id,
+          habitId: 'h1',
+          date: TODAY,
+          timestamp: `${TODAY}T${at}:00.000Z`,
+          actual,
+        });
+      }
+      const result = await todayScreen(repository);
+
+      expect(rowOf(result.current, 'h1').defaultAmount).toBe(4);
+      expect(rowOf(result.current, 'h1').quickChips).toEqual([1, 5, 4]);
+    });
+
+    it('orders the chips +1 / 최소량 / 직전값 and omits 직전값 on the first record', async () => {
+      const result = await todayScreen(new LocalRepository(await seed([habit()])));
+
+      expect(rowOf(result.current, 'h1').quickChips).toEqual([1, 5]);
+
+      await log(result, 'h1', 2);
+      expect(rowOf(result.current, 'h1').quickChips).toEqual([1, 5, 2]);
+
+      // A 직전값 that repeats the floor is deduped rather than shown twice.
+      await log(result, 'h1', 5);
+      expect(rowOf(result.current, 'h1').quickChips).toEqual([1, 5]);
+    });
+
+    it('counts remaining down to 0 at the floor and never below it', async () => {
+      const result = await todayScreen(new LocalRepository(await seed([habit()])));
+
+      expect(rowOf(result.current, 'h1').progress).toEqual({ sum: 0, floor: 5, remaining: 5 });
+
+      await log(result, 'h1', 2);
+      expect(rowOf(result.current, 'h1').progress).toEqual({ sum: 2, floor: 5, remaining: 3 });
+
+      await log(result, 'h1', 3);
+      expect(rowOf(result.current, 'h1').progress).toEqual({ sum: 5, floor: 5, remaining: 0 });
+
+      await log(result, 'h1', 4);
+      expect(rowOf(result.current, 'h1').progress).toEqual({ sum: 9, floor: 5, remaining: 0 });
+    });
+
+    it('previews the staged amount through the real classifier', async () => {
+      const result = await todayScreen(new LocalRepository(await seed([habit()])));
+
+      expect(result.current.previewOf('h1', 2)).toEqual({ sum: 2, state: 'partial' });
+      expect(result.current.previewOf('h1', 5)).toEqual({ sum: 5, state: 'done' });
+      expect(result.current.previewOf('h1', 8)).toEqual({ sum: 8, state: 'over' });
+      expect(result.current.previewOf('nobody', 5)).toBeNull();
+
+      await log(result, 'h1', 3);
+
+      // The preview adds to what the day already holds, not to nothing.
+      expect(result.current.previewOf('h1', 2)).toEqual({ sum: 5, state: 'done' });
+      expect(result.current.previewOf('h1', 1)).toEqual({ sum: 4, state: 'partial' });
+    });
+
+    it('previews and progresses an empty paused day, which has no state at all', async () => {
+      const result = await todayScreen(
+        new LocalRepository(
+          await seed([habit({ id: 'paused', lifecycle: 'paused', pauses: [{ from: TODAY }] })]),
+        ),
+      );
+
+      // ADR-0003: no `ClassifiedDay`, but the composer still has to work.
+      expect(dayOf(result.current, 'paused')).toBeUndefined();
+      expect(rowOf(result.current, 'paused').progress).toEqual({
+        sum: 0,
+        floor: 5,
+        remaining: 5,
+      });
+      expect(result.current.previewOf('paused', 5)).toEqual({ sum: 5, state: 'done' });
+    });
+
+    it('orders a time-overridden row by the time the user typed (B3)', async () => {
+      const result = await todayScreen(new LocalRepository(await seed([habit()])));
+
+      await log(result, 'h1', 3);
+      await log(result, 'h1', 4, { timestamp: `${TODAY}T02:00:00.000Z` });
+
+      const stamps = result.current.feed.map((item) => item.entry.timestamp);
+      expect(stamps[0]).toBe(`${TODAY}T02:00:00.000Z`);
+      expect([...stamps].sort()).toEqual(stamps);
+      // `date` is unchanged by the override — the row is still today's (§3.3).
+      expect(result.current.feed.every((item) => item.entry.date === TODAY)).toBe(true);
+      expect(dayOf(result.current, 'h1')?.sum).toBe(7);
+    });
   });
 });

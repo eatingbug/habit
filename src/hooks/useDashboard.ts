@@ -2,10 +2,13 @@ import { useEffect, useState } from 'react';
 
 import { TUNING } from '@/config/tuning';
 import { useRepository } from '@/context/RepositoryContext';
+import { isFloorMet } from '@/domain/classify';
 import { windowEndingAt } from '@/domain/dates';
 import { heatCells, type HeatCell } from '@/domain/heatLevel';
 import { localToday } from '@/lib/device';
 import type { Habit, Stat } from '@/models';
+
+import { useQuickLog, type QuickLogToast } from './useQuickLog';
 
 /**
  * The Dashboard's data path — SPEC §6.1.
@@ -25,11 +28,31 @@ export interface DashboardRow {
   stat?: Stat;
   /** `TUNING.heatmapDays` cells, ascending, ending today. */
   cells: HeatCell[];
+  /**
+   * True once today holds at least one activity row — the one-tap control reads
+   * `+1 더` instead of `+최소` (§6.1 B1). Derived here rather than in the screen
+   * because there are no component render tests (jest.config.js).
+   *
+   * On a **binary** habit this is also the "already done" reading: its floor is 1, so
+   * any activity row makes the day `done` and the control is shown completed and
+   * disabled.
+   */
+  hasActivityToday: boolean;
+  /** What one tap appends: the `floor` on today's first record, otherwise 1. */
+  oneTapAmount: number;
 }
 
 export interface DashboardView {
   rows: DashboardRow[];
   loading: boolean;
+  /**
+   * One-tap logging on the row (§6.1 B1) with its 실행취소 toast (B6) — the same
+   * primitive Today's composer uses, so there is only one append/undo implementation.
+   */
+  logActivity(habitId: string, actual: number): Promise<void>;
+  toast: QuickLogToast | null;
+  undoLast(): Promise<void>;
+  dismissToast(): void;
 }
 
 function statFor(statId: string): Stat | undefined {
@@ -40,6 +63,13 @@ export function useDashboard({ today = localToday() }: { today?: string } = {}):
   const repository = useRepository();
   const [rows, setRows] = useState<DashboardRow[]>([]);
   const [loading, setLoading] = useState(true);
+  /**
+   * Bumped by a write, so the load effect is the single place that reads. `loading` is
+   * raised only for the first load, never for a reload — matching `useToday`: a
+   * one-tap log must not blank the row it just changed, and "loading" would describe a
+   * row that is already on screen (§6.1: the row updates in place).
+   */
+  const [version, setVersion] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -55,11 +85,28 @@ export function useDashboard({ today = localToday() }: { today?: string } = {}):
       const visible = habits.filter((habit) => habit.lifecycle !== 'archived');
 
       const loaded = await Promise.all(
-        visible.map(async (habit) => ({
-          habit,
-          stat: statFor(habit.statId),
-          cells: heatCells(habit, await repository.getEntries(habit.id, from, to), from, to, today),
-        })),
+        visible.map(async (habit) => {
+          const cells = heatCells(
+            habit,
+            await repository.getEntries(habit.id, from, to),
+            from,
+            to,
+            today,
+          );
+          // Today is the strip's last cell. `partial` and floor-met are exactly the
+          // states an activity row produces; `skip` and `missed` are not, so a
+          // reason-tagged day still offers the full `+최소`.
+          const state = cells[cells.length - 1]?.state;
+          const hasActivityToday = state === 'partial' || isFloorMet(state);
+
+          return {
+            habit,
+            stat: statFor(habit.statId),
+            cells,
+            hasActivityToday,
+            oneTapAmount: habit.kind === 'count' && !hasActivityToday ? habit.floor : 1,
+          };
+        }),
       );
 
       if (!cancelled) {
@@ -68,13 +115,25 @@ export function useDashboard({ today = localToday() }: { today?: string } = {}):
       }
     }
 
-    setLoading(true);
     void load();
 
     return () => {
       cancelled = true;
     };
-  }, [repository, today]);
+  }, [repository, today, version]);
 
-  return { rows, loading };
+  const quick = useQuickLog({
+    today,
+    onChange: () => setVersion((current) => current + 1),
+    habitOf: (habitId) => rows.find((row) => row.habit.id === habitId)?.habit,
+  });
+
+  return {
+    rows,
+    loading,
+    logActivity: quick.logActivity,
+    toast: quick.toast,
+    undoLast: quick.undoLast,
+    dismissToast: quick.dismissToast,
+  };
 }

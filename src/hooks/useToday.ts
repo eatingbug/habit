@@ -1,11 +1,19 @@
 import { useEffect, useState } from 'react';
 
 import { useRepository } from '@/context/RepositoryContext';
-import { type ClassifiedDay, dayStates, isFloorMet, sortDayRows } from '@/domain/classify';
+import {
+  type ClassifiedDay,
+  classifyDay,
+  dayStates,
+  isFloorMet,
+  sortDayRows,
+} from '@/domain/classify';
 import { compareDates, dateOf } from '@/domain/dates';
 import { computeXP } from '@/domain/score';
-import { localToday, newId } from '@/lib/device';
-import type { Habit, HabitEntry } from '@/models';
+import { localToday } from '@/lib/device';
+import type { DayState, Habit, HabitEntry } from '@/models';
+
+import { useQuickLog, type QuickLogToast } from './useQuickLog';
 
 /**
  * Today's recording path — SPEC §6.2.
@@ -35,6 +43,27 @@ export interface TodayHabitRow {
    * into a paused day is legitimate and still earns (§7.3).
    */
   day?: ClassifiedDay;
+  /**
+   * What the amount field starts prefilled with (B2). The day's first record gets the
+   * habit's `floor` — "I did my minimum" is the dominant case; from the second record
+   * on it gets the day's last amount, because a second log is usually another helping
+   * of the same size.
+   */
+  defaultAmount: number;
+  /**
+   * The quick-add chips (B2): `+1` / `+최소량` / `직전값`, in that order and deduped —
+   * `직전값` is absent on the day's first record because there is no previous amount.
+   */
+  quickChips: number[];
+  /** True once the day holds at least one **activity** row — the control reads `+1 더`. */
+  hasActivityToday: boolean;
+  /**
+   * What one tap appends (B1): the `floor` on the day's first record, otherwise 1 —
+   * the second tap is "+1 더", not a second whole minimum. Binary is always 1.
+   */
+  oneTapAmount: number;
+  /** The day's progress-to-floor line (C7a). `remaining` clamps at 0. */
+  progress: { sum: number; floor: number; remaining: number };
 }
 
 /** One line of the chronological feed (§6.2). Free logs interleave here in #16. */
@@ -67,8 +96,54 @@ export interface TodayView {
    *
    * Rejects `actual <= 0` — §3.3's invariant. A zero amount is not an activity row;
    * the state that means "didn't do it" is a skip row, which carries a reason.
+   *
+   * `opts.timestamp` is the B3 time reveal: it overrides the default "now" for
+   * ordering only — `date` is still today (§3.3).
    */
-  logActivity(habitId: string, actual: number): Promise<void>;
+  logActivity(habitId: string, actual: number, opts?: { timestamp?: string }): Promise<void>;
+  /**
+   * What the day would become if `staged` were appended now (C7a) — the composer's
+   * "→ 5/5 성공" preview. `null` only when `habitId` names no visible habit.
+   *
+   * The state comes from the real `classifyDay` over the day's rows plus a synthetic
+   * one, never from a local `sum >= floor` comparison: a second copy of that rule is
+   * how `over` and the defensive `target <= floor` read eventually drift apart (§4.1).
+   */
+  previewOf(habitId: string, staged: number): { sum: number; state: DayState } | null;
+  /** The live 실행취소 toast for a one-tap/quick-chip append (B6). */
+  toast: QuickLogToast | null;
+  undoLast(): Promise<void>;
+  dismissToast(): void;
+}
+
+/**
+ * A day's **activity** rows only, in the domain total order (§7.3) — skip rows carry
+ * `actual: 0`, which is not a legal staged amount and must never become a default or
+ * a chip. Order comes from `sortDayRows`, never from the repository's array order.
+ */
+function activityRows(entries: HabitEntry[]): HabitEntry[] {
+  return sortDayRows(entries.filter((entry) => entry.actual > 0 && entry.skipReason == null));
+}
+
+/** The B1/B2/C7a derivations for one habit's day. */
+function derive(habit: Habit, rowsToday: HabitEntry[]) {
+  const activity = activityRows(rowsToday);
+  const last = activity[activity.length - 1];
+  const sum = activity.reduce((total, entry) => total + entry.actual, 0);
+  const hasActivityToday = activity.length > 0;
+  const previous = last?.actual;
+
+  return {
+    hasActivityToday,
+    defaultAmount: previous ?? habit.floor,
+    // Binary has no amount to stage, so it has no chips.
+    quickChips:
+      habit.kind === 'count'
+        ? [...new Set([1, habit.floor, ...(previous == null ? [] : [previous])])]
+        : [],
+    oneTapAmount: habit.kind === 'count' && !hasActivityToday ? habit.floor : 1,
+    progress: { sum, floor: habit.floor, remaining: Math.max(0, habit.floor - sum) },
+  };
 }
 
 interface Loaded {
@@ -94,6 +169,10 @@ export function useToday({
    * changed, and "loading" here would describe a screen that is already on screen.
    */
   const [version, setVersion] = useState(0);
+
+  function reload() {
+    setVersion((current) => current + 1);
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -128,7 +207,11 @@ export function useToday({
       const allRows = perHabit.flatMap((entry) => entry.rowsToday);
 
       const next: Loaded = {
-        rows: perHabit.map(({ habit, day }) => ({ habit, day })),
+        rows: perHabit.map(({ habit, day, rowsToday }) => ({
+          habit,
+          day,
+          ...derive(habit, rowsToday),
+        })),
         // One sort over the merged rows, so the feed's order is the domain's total
         // order across habits and not a per-habit concatenation.
         feed: sortDayRows(allRows).map((entry) => ({
@@ -151,21 +234,37 @@ export function useToday({
     };
   }, [repository, today, version]);
 
-  async function logActivity(habitId: string, actual: number): Promise<void> {
-    if (!(actual > 0)) {
-      throw new RangeError('활동 기록의 양은 0보다 커야 합니다 — 0은 건너뛰기입니다 (§3.3).');
-    }
+  function rowFor(habitId: string): TodayHabitRow | undefined {
+    return loaded.rows.find((row) => row.habit.id === habitId);
+  }
 
-    await repository.upsertEntry({
-      id: newId(),
+  const quick = useQuickLog({
+    today,
+    now,
+    onChange: reload,
+    habitOf: (habitId) => rowFor(habitId)?.habit,
+  });
+
+  function previewOf(habitId: string, staged: number): { sum: number; state: DayState } | null {
+    const row = rowFor(habitId);
+    if (row == null) return null;
+
+    // A paused day holds no `ClassifiedDay` at all (ADR-0003), but it is still
+    // loggable — so the rows come from `day?.entries ?? []`, not from a `day != null`
+    // gate that would leave the composer with no preview.
+    const entries = row.day?.entries ?? [];
+    const synthetic: HabitEntry = {
+      id: 'preview',
       habitId,
-      // `date` is the authoritative day (§3.3); `timestamp` only orders within it.
       date: today,
       timestamp: now().toISOString(),
-      actual,
-    });
+      actual: staged,
+    };
 
-    setVersion((current) => current + 1);
+    return {
+      sum: row.progress.sum + staged,
+      state: classifyDay([...entries, synthetic], row.habit, today, today),
+    };
   }
 
   return {
@@ -178,6 +277,10 @@ export function useToday({
     ).length,
     logCount: loaded.feed.length,
     xpToday: loaded.xpToday,
-    logActivity,
+    logActivity: quick.logActivity,
+    previewOf,
+    toast: quick.toast,
+    undoLast: quick.undoLast,
+    dismissToast: quick.dismissToast,
   };
 }

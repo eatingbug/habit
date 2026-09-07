@@ -1,7 +1,7 @@
 import { useRouter } from 'expo-router';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { Button, Card, Chip, Eyebrow, Footnote, Heatmap } from '@/components';
+import { Button, Card, Chip, Eyebrow, Footnote, Heatmap, Toast } from '@/components';
 import { useDashboard, type DashboardRow } from '@/hooks/useDashboard';
 import { useTheme } from '@/theme/ThemeProvider';
 import { FONT_SIZE, RADIUS, SPACE } from '@/theme/tokens';
@@ -11,18 +11,43 @@ import { FONT_SIZE, RADIUS, SPACE } from '@/theme/tokens';
  *
  * The artboard is the finished design, so it shows more than this screen renders. The
  * stat cards / XP bars (#17), the status lights and the "손볼 습관 N개" aggregate (#20),
- * one-tap logging (#11), long-press skip chips (#12) and the streak count (#14) each
- * belong to a later ticket and are left out rather than stubbed: a hardcoded number
- * would read as data the user does not have. What ships here is the row itself — name,
- * stat tag, and the `TUNING.heatmapDays` heatmap.
+ * long-press skip chips (#12) and the streak count (#14) each belong to a later ticket
+ * and are left out rather than stubbed: a hardcoded number would read as data the user
+ * does not have. What ships here is the row itself — name, stat tag, the
+ * `TUNING.heatmapDays` heatmap, and the one-tap log with its 실행취소 toast (#11).
  */
 
-function HabitRow({ row, onPress }: { row: DashboardRow; onPress: () => void }) {
+/**
+ * The row's one-tap label (§6.1 B1) — copy from the design canvas. Every reading is
+ * derived in `useDashboard`, because there are no component render tests here
+ * (jest.config.js) and a label computed in JSX would be untested.
+ */
+function oneTapLabel(row: DashboardRow): string {
+  if (row.habit.kind === 'binary') return row.hasActivityToday ? '✓ 했어요' : '✓ 완료';
+  return row.hasActivityToday ? '+1 더' : '+최소';
+}
+
+function HabitRow({
+  row,
+  onPress,
+  onLog,
+}: {
+  row: DashboardRow;
+  onPress: () => void;
+  onLog: () => void;
+}) {
   const { colors } = useTheme();
+  // Binary's floor is 1, so one row is the whole day: the control has nothing left to
+  // append and reads as completed instead (AC — 완료 후 비활성).
+  const done = row.habit.kind === 'binary' && row.hasActivityToday;
 
   return (
-    <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={row.habit.name}>
-      <Card>
+    <Card>
+      {/* The navigating press target is the row *body* only (§6.1: tapping the row
+          opens the habit). The one-tap control is its sibling, not its child — nested
+          inside it, a click on web could reach both handlers and navigate away from
+          the row the user just logged into. */}
+      <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={row.habit.name}>
         <View style={styles.qtop}>
           <Text style={[styles.qname, { color: colors.text }]} numberOfLines={1}>
             {row.habit.name}
@@ -36,18 +61,34 @@ function HabitRow({ row, onPress }: { row: DashboardRow; onPress: () => void }) 
             </Text>
           )}
         </View>
-        <View style={styles.qbottom}>
+      </Pressable>
+      <View style={styles.qbottom}>
+        <Pressable
+          onPress={onPress}
+          accessibilityRole="button"
+          accessibilityLabel={`${row.habit.name} 기록 보기`}
+          style={styles.strip}
+        >
           <Heatmap cells={row.cells} />
-        </View>
-      </Card>
-    </Pressable>
+        </Pressable>
+        <Button
+          label={oneTapLabel(row)}
+          variant={done ? 'sel' : 'pri'}
+          tap
+          mono={row.habit.kind === 'count'}
+          disabled={done}
+          onPress={onLog}
+          style={styles.onetap}
+        />
+      </View>
+    </Card>
   );
 }
 
 export default function Dashboard() {
   const { colors, preference, toggle } = useTheme();
   const router = useRouter();
-  const { rows, loading } = useDashboard();
+  const { rows, loading, logActivity, toast, undoLast } = useDashboard();
 
   return (
     <ScrollView
@@ -79,9 +120,16 @@ export default function Dashboard() {
               key={row.habit.id}
               row={row}
               onPress={() => router.push(`/habit/${row.habit.id}`)}
+              onLog={() => void logActivity(row.habit.id, row.oneTapAmount)}
             />
           ))}
         </View>
+      )}
+
+      {/* B6 — the undo toast doubles as the "it registered" confirmation that one-tap
+          logging otherwise lacks (§6.2). */}
+      {toast != null && (
+        <Toast message={toast.message} detail={toast.detail} onUndo={() => void undoLast()} />
       )}
 
       <Button label="오늘 기록하기" block onPress={() => router.push('/today')} />
@@ -121,4 +169,10 @@ const styles = StyleSheet.create({
   // squeeze the name or the heatmap.
   qcue: { fontSize: FONT_SIZE.sm, marginLeft: 'auto', maxWidth: 120, flexShrink: 1 },
   qbottom: { flexDirection: 'row', alignItems: 'center', gap: 9 },
+  // The strip carries `.ribbon`'s `flex: 1` up to the row, so the heatmap still takes
+  // every pixel the one-tap control leaves.
+  strip: { flex: 1, minWidth: 0 },
+  // `.ribbon` already claims the slack with `flex: 1`; the control must not be
+  // squeezed below §6.0's 44px tap target on a narrow row.
+  onetap: { flexShrink: 0 },
 });
