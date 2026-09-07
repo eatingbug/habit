@@ -8,6 +8,8 @@
  * hairline border plus a faint shadow.
  */
 
+import { Platform } from 'react-native';
+
 export type ThemeName = 'light' | 'dark';
 
 export interface Palette {
@@ -93,3 +95,22 @@ export const RADIUS = { sm: 7, md: 10, pill: 999 } as const;
 
 /** A small modular scale (§6.0). */
 export const FONT_SIZE = { xs: 10, sm: 11, base: 12.5, md: 13.5, lg: 16, xl: 20, xxl: 28 } as const;
+
+/**
+ * The `--mono` / `--sans` stacks from `design/_tokens.css`. RN takes a single family
+ * name rather than a stack, so each platform gets the one member it actually ships.
+ *
+ * `mono` is not decoration: §6.0 requires tabular numerals for counts and XP, so every
+ * numeric readout pairs this family with `fontVariant: ['tabular-nums']`.
+ */
+export const FONT_FAMILY = {
+  sans: Platform.select({ ios: 'System', android: 'sans-serif', default: 'system-ui' }),
+  mono: Platform.select({
+    ios: 'Menlo',
+    android: 'monospace',
+    default: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+  }),
+} as const;
+
+/** Minimum tap target for a control that logs something (§6.0). */
+export const TAP_TARGET = 44;

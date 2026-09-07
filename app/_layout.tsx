@@ -1,6 +1,7 @@
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 
+import { RepositoryProvider } from '@/context/RepositoryContext';
 import { ThemeProvider, useTheme } from '@/theme/ThemeProvider';
 
 function Shell() {
@@ -15,7 +16,10 @@ function Shell() {
           headerShadowVisible: false,
           contentStyle: { backgroundColor: colors.surface },
         }}
-      />
+      >
+        <Stack.Screen name="habit/new" options={{ title: '습관 만들기' }} />
+        <Stack.Screen name="habit/[id]" options={{ title: '습관' }} />
+      </Stack>
     </>
   );
 }
@@ -23,7 +27,11 @@ function Shell() {
 export default function RootLayout() {
   return (
     <ThemeProvider>
-      <Shell />
+      {/* Persistence lives above every screen — the provider defaults to
+          `new LocalRepository(createKVStore())`, so this mount is the whole wiring (§8). */}
+      <RepositoryProvider>
+        <Shell />
+      </RepositoryProvider>
     </ThemeProvider>
   );
 }
