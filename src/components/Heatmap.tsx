@@ -1,4 +1,4 @@
-import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
+import { StyleSheet, View, type ViewStyle } from 'react-native';
 
 import type { HeatCell, HeatFill, HeatTone } from '@/domain/heatLevel';
 import { useTheme } from '@/theme/ThemeProvider';
@@ -7,7 +7,6 @@ import { SPACE } from '@/theme/tokens';
 
 export interface HeatmapProps {
   cells: HeatCell[];
-  style?: StyleProp<ViewStyle>;
 }
 
 /**
@@ -52,12 +51,12 @@ function skinOf(colors: Palette, tone: HeatTone, fill: HeatFill): ViewStyle {
   }
 }
 
-export function Heatmap({ cells, style }: HeatmapProps) {
+export function Heatmap({ cells }: HeatmapProps) {
   const { colors } = useTheme();
 
   return (
     <View
-      style={[styles.ribbon, style]}
+      style={styles.ribbon}
       // The canvas marks the ribbon `aria-hidden`: it is a summary of days that the
       // row's own text already names, not 20 separate controls.
       accessibilityElementsHidden
