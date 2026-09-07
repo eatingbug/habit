@@ -23,7 +23,13 @@ export interface ToastOverlayProps {
  * not assume it is an overlay. Both logging surfaces (§6.1, §6.2) need this, so it is
  * one component instead of the same absolute block copied into two screens.
  *
- * `pointerEvents: 'box-none'` lets taps through the padded area to the content behind.
+ * Two distinct mechanisms, easily confused:
+ * - returning `null` with no toast is what keeps the overlay from covering the screen
+ *   at all when nothing is live — there is no invisible layer to tap through;
+ * - `pointerEvents: 'box-none'` covers the case *while* a toast is live: the wrapper
+ *   spans the screen's full width, so without it the empty strip either side of the
+ *   `Toast` would intercept taps meant for the content beneath. The `Toast` itself
+ *   still receives its own presses.
  */
 export function ToastOverlay({ toast, onUndo }: ToastOverlayProps) {
   if (toast == null) return null;
@@ -34,6 +40,15 @@ export function ToastOverlay({ toast, onUndo }: ToastOverlayProps) {
     </View>
   );
 }
+
+/**
+ * Bottom padding a scrolling screen must add so its last row can scroll clear of the
+ * floating toast. Stated once, here, because the overlay is the only thing that knows
+ * how tall it is: `SPACE.xl` of inset plus the `Toast`'s own height — a single line of
+ * `FONT_SIZE.sm` text inside `SPACE.md + 1` vertical padding, about 40px — plus a gap
+ * so the last row does not sit flush against it.
+ */
+export const TOAST_OVERLAY_CLEARANCE = SPACE.xl + 40 + SPACE.xl;
 
 const styles = StyleSheet.create({
   overlay: { position: 'absolute', left: SPACE.xl, right: SPACE.xl, bottom: SPACE.xl },

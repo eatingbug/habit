@@ -8,7 +8,12 @@ import { heatCells, type HeatCell } from '@/domain/heatLevel';
 import { localToday } from '@/lib/device';
 import type { Habit, Stat } from '@/models';
 
-import { logAffordances, useQuickLog, type QuickLogToast } from './useQuickLog';
+import {
+  logAffordances,
+  useQuickLog,
+  type LogAffordances,
+  type QuickLogToast,
+} from './useQuickLog';
 
 /**
  * The Dashboard's data path — SPEC §6.1.
@@ -22,23 +27,12 @@ import { logAffordances, useQuickLog, type QuickLogToast } from './useQuickLog';
  *   edge, in this file's default.
  */
 
-export interface DashboardRow {
+export interface DashboardRow extends LogAffordances {
   habit: Habit;
   /** Absent when `habit.statId` names no configured stat — a data defect, not a state. */
   stat?: Stat;
   /** `TUNING.heatmapDays` cells, ascending, ending today. */
   cells: HeatCell[];
-  /**
-   * The one-tap control's readings, from the shared `logAffordances` (§6.1 B1) — the
-   * same derivation Today's composer uses. Derived in the hook rather than in the
-   * screen because there are no component render tests (jest.config.js).
-   *
-   * On a **binary** habit `hasActivityToday` is also the "already done" reading: its
-   * floor is 1, so any activity row makes the day `done` and the control is shown
-   * completed and disabled.
-   */
-  hasActivityToday: boolean;
-  oneTapAmount: number;
 }
 
 export interface DashboardView {

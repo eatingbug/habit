@@ -84,14 +84,25 @@ function detailOf(habit: Habit, actual: number): string {
   return habit.kind === 'binary' ? '✓ 완료' : `+${actual}${habit.floorUnit}`;
 }
 
-/** What a one-tap control on a habit's day should do and say it does (§6.1 B1). */
+/**
+ * What a one-tap control on a habit's day should do and say it does (§6.1 B1). Both
+ * `TodayHabitRow` and `DashboardRow` extend this, so these two fields are documented
+ * in one place instead of drifting apart in two row types.
+ */
 export interface LogAffordances {
   /**
-   * Does today already hold at least one **activity** row? The control then reads
+   * Does the day already hold at least one **activity** row? The control then reads
    * `+1 더` rather than offering the whole minimum again.
+   *
+   * On a **binary** habit this is also the "already done" reading: its floor is 1, so
+   * any activity row makes the day `done` and the control is shown completed and
+   * disabled.
    */
   hasActivityToday: boolean;
-  /** What one tap appends: the `floor` on the day's first record, otherwise 1. */
+  /**
+   * What one tap appends: the `floor` on the day's first record, otherwise 1 — the
+   * second tap is "+1 더", not a second whole minimum. Binary is always 1.
+   */
   oneTapAmount: number;
 }
 

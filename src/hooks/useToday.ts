@@ -13,7 +13,12 @@ import { computeXP } from '@/domain/score';
 import { localToday } from '@/lib/device';
 import type { DayState, Habit, HabitEntry } from '@/models';
 
-import { logAffordances, useQuickLog, type QuickLogToast } from './useQuickLog';
+import {
+  logAffordances,
+  useQuickLog,
+  type LogAffordances,
+  type QuickLogToast,
+} from './useQuickLog';
 
 /**
  * Today's recording path — SPEC §6.2.
@@ -34,7 +39,7 @@ import { logAffordances, useQuickLog, type QuickLogToast } from './useQuickLog';
  * recording — and why a later backfill repairs a past day for free (ADR-0001).
  */
 
-export interface TodayHabitRow {
+export interface TodayHabitRow extends LogAffordances {
   habit: Habit;
   /**
    * Today for this habit, classified. **Absent** only when today is out of
@@ -55,13 +60,6 @@ export interface TodayHabitRow {
    * `직전값` is absent on the day's first record because there is no previous amount.
    */
   quickChips: number[];
-  /** True once the day holds at least one **activity** row — the control reads `+1 더`. */
-  hasActivityToday: boolean;
-  /**
-   * What one tap appends (B1): the `floor` on the day's first record, otherwise 1 —
-   * the second tap is "+1 더", not a second whole minimum. Binary is always 1.
-   */
-  oneTapAmount: number;
   /** The day's progress-to-floor line (C7a). `remaining` clamps at 0. */
   progress: { sum: number; floor: number; remaining: number };
   /**
@@ -269,7 +267,11 @@ export function useToday({
     opts?: { timestamp?: string },
   ): Promise<void> {
     const row = rowFor(habitId);
-    if (row == null) throw new Error(`기록할 습관을 찾지 못했습니다: ${habitId}`);
+    // Deliberately not user-facing Korean: the selector's options *are* `rows`, so a
+    // miss is a bug in the caller, and `Composer`'s catch would otherwise show the
+    // user "기록하지 못했어요" for a state that cannot occur. The one assertion string
+    // in this file that should read as a defect report.
+    if (row == null) throw new Error(`useToday.logActivity: unknown habitId ${habitId}`);
 
     await quick.logActivity(row.habit, actual, opts);
   }
@@ -291,7 +293,8 @@ export function useToday({
     };
 
     return {
-      sum: (row.day?.sum ?? 0) + staged,
+      // The one sum, from `progress` — which takes it from the domain's `day.sum`.
+      sum: row.progress.sum + staged,
       state: classifyDay([...entries, synthetic], row.habit, today, today),
     };
   }

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Keyboard, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import {
   Banner,
@@ -11,6 +11,7 @@ import {
   Hint,
   NumberField,
   SegmentedControl,
+  TOAST_OVERLAY_CLEARANCE,
   ToastOverlay,
 } from '@/components';
 import { isFloorMet } from '@/domain/classify';
@@ -166,6 +167,15 @@ function Composer({
 
   async function submit(actual: number) {
     if (saving) return;
+    /**
+     * The amount and time fields are done being used the moment a log commits, and a
+     * raised soft keyboard would hide the bottom-pinned undo toast — on iOS the window
+     * does not resize for the keyboard, so an absolutely positioned overlay stays
+     * behind it and B6's 실행취소 is unreachable for the whole `TUNING.undoToastMs`.
+     * Dismissing needs no layout change; wrapping the screen in a
+     * `KeyboardAvoidingView` would alter every other surface on it.
+     */
+    Keyboard.dismiss();
     setSaving(true);
     setError(null);
     try {
@@ -260,8 +270,16 @@ function Composer({
             </Hint>
           )}
           {/* C7a — once the day is floor-met, nudge the optional 목표. The 최고기록
-              half of that nudge waits for #20, which already owns `personal_best`. */}
-          {row.suggestTarget && <Hint>목표 — 더 하고 싶은 양 · 안 채워도 괜찮아요</Hint>}
+              half of that nudge waits for #20, which already owns `personal_best`.
+
+              `더 하고 싶은 양` is reused from the creation form's 목표 field
+              (`design/parts/Main.body.html:39`), which is the canvas's only wording
+              for what a target is; it is true anywhere. That line's trailing
+              `· 안 채워도 괜찮아요` is dropped — it describes leaving a *form field*
+              blank, and this screen has no target field to leave unfilled. The canvas
+              has no target-suggestion string for Today or Habit Detail, so nothing
+              replaces it rather than inventing a sentence. */}
+          {row.suggestTarget && <Hint>목표 — 더 하고 싶은 양</Hint>}
         </>
       )}
 
@@ -403,9 +421,7 @@ export default function Today() {
 
 const styles = StyleSheet.create({
   fill: { flex: 1 },
-  // The extra bottom room is the overlay toast's: it floats above the scroll, so the
-  // last feed row has to be able to scroll clear of it.
-  screen: { padding: SPACE.xl, paddingBottom: SPACE.xxl * 3, gap: SPACE.lg },
+  screen: { padding: SPACE.xl, paddingBottom: TOAST_OVERLAY_CLEARANCE, gap: SPACE.lg },
   rowline: {
     flexDirection: 'row',
     alignItems: 'flex-start',

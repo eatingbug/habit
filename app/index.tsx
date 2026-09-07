@@ -1,7 +1,16 @@
 import { useRouter } from 'expo-router';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { Button, Card, Chip, Eyebrow, Footnote, Heatmap, ToastOverlay } from '@/components';
+import {
+  Button,
+  Card,
+  Chip,
+  Eyebrow,
+  Footnote,
+  Heatmap,
+  TOAST_OVERLAY_CLEARANCE,
+  ToastOverlay,
+} from '@/components';
 import { useDashboard, type DashboardRow } from '@/hooks/useDashboard';
 import { useTheme } from '@/theme/ThemeProvider';
 import { FONT_SIZE, RADIUS, SPACE } from '@/theme/tokens';
@@ -18,8 +27,11 @@ import { FONT_SIZE, RADIUS, SPACE } from '@/theme/tokens';
  */
 
 /**
- * The row's one-tap label (§6.1 B1) — copy from the design canvas
- * (`design/parts/Dashboard.logic.js:61`).
+ * The row's one-tap label (§6.1 B1) — copy from the design canvas.
+ * `✓ 완료` / `✓ 했어요` / `+1 더` come from `design/parts/Dashboard.logic.js:61`;
+ * `+최소` is the row one-tap's own label in `design/parts/RowSkip.body.html:17` and
+ * `design/parts/Star.body.html:28` (that same file's `cta` reads `최소만큼`, which is
+ * the *composer's* wording — the row uses the short form).
  *
  * The *readings* it branches on (`hasActivityToday`) are derived in `useDashboard`
  * from the shared `logAffordances`, where the hook tests can reach them; the *copy* is
@@ -51,8 +63,17 @@ function HabitRow({
       {/* The navigating press target is the row *body* only (§6.1: tapping the row
           opens the habit). The one-tap control is its sibling, not its child — nested
           inside it, a click on web could reach both handlers and navigate away from
-          the row the user just logged into. */}
-      <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={row.habit.name}>
+          the row the user just logged into.
+
+          Both siblings are buttons, so each needs an accessible name that says what
+          it *does*; the habit's name alone would give two controls one identity. An
+          a11y label is an affordance description, not screen copy, so the canvas
+          citation rule (which only covers visible strings) does not reach these. */}
+      <Pressable
+        onPress={onPress}
+        accessibilityRole="button"
+        accessibilityLabel={`${row.habit.name} 습관 열기`}
+      >
         <View style={styles.qtop}>
           <Text style={[styles.qname, { color: colors.text }]} numberOfLines={1}>
             {row.habit.name}
@@ -71,13 +92,14 @@ function HabitRow({
         <Pressable
           onPress={onPress}
           accessibilityRole="button"
-          accessibilityLabel={row.habit.name}
+          accessibilityLabel={`${row.habit.name} 기록 보기`}
           style={styles.strip}
         >
           <Heatmap cells={row.cells} />
         </Pressable>
         <Button
           label={oneTapLabel(row)}
+          accessibilityLabel={`${row.habit.name} ${oneTapLabel(row)}`}
           variant={done ? 'sel' : 'pri'}
           tap
           mono={row.habit.kind === 'count'}
@@ -154,9 +176,7 @@ export default function Dashboard() {
 
 const styles = StyleSheet.create({
   fill: { flex: 1 },
-  // The extra bottom room is the overlay toast's: it floats above the scroll, so the
-  // last row has to be able to scroll clear of it.
-  screen: { padding: SPACE.xl, paddingBottom: SPACE.xxl * 3, gap: SPACE.lg },
+  screen: { padding: SPACE.xl, paddingBottom: TOAST_OVERLAY_CLEARANCE, gap: SPACE.lg },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   title: { fontSize: FONT_SIZE.xl, fontWeight: '600', letterSpacing: -0.2 },
   toggle: {

@@ -23,6 +23,11 @@ export interface ButtonProps {
   tap?: boolean;
   /** Counts read in mono (§6.0) — e.g. the "+5" one-tap chips. */
   mono?: boolean;
+  /**
+   * Overrides the accessible name when `label` alone is ambiguous out of context —
+   * several rows each offering "+최소" need to say *which* habit. Defaults to `label`.
+   */
+  accessibilityLabel?: string;
   style?: StyleProp<ViewStyle>;
 }
 
@@ -41,6 +46,7 @@ export function Button({
   disabled,
   tap,
   mono,
+  accessibilityLabel,
   style,
 }: ButtonProps) {
   const { colors } = useTheme();
@@ -71,6 +77,7 @@ export function Button({
   return (
     <Pressable
       accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel ?? label}
       accessibilityState={{ disabled: !!disabled, selected: variant === 'sel' }}
       disabled={disabled}
       onPress={onPress}
