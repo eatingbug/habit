@@ -104,4 +104,15 @@ export const TUNING = {
 
   /** Heatmap width on the Dashboard row (§6.1). */
   heatmapDays: 20,
+
+  /**
+   * How long the 실행취소 toast stays live after a one-tap append (§6.2 B6).
+   * TODO §12.x: tune the duration empirically.
+   *
+   * The **number** is a placeholder; the **mechanism** is not. Without a window the
+   * toast survives until the next append, so 실행취소 stays armed indefinitely and a
+   * press an hour later silently deletes a row the user has long forgotten recording.
+   * Losing a stored fact that way is a §7.3 concern, not a polish item.
+   */
+  undoToastMs: 6000,
 } as const;

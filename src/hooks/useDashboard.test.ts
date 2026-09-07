@@ -1,4 +1,4 @@
-import { renderHook, waitFor } from '@testing-library/react-native';
+import { act, renderHook, waitFor } from '@testing-library/react-native';
 import { createElement, type ReactNode } from 'react';
 
 import { TUNING } from '@/config/tuning';
@@ -7,7 +7,7 @@ import { LocalRepository, MemoryKV, type HabitRepository, type KVStore } from '@
 import { addDays } from '@/domain/dates';
 import type { Habit, HabitEntry, SkipReason } from '@/models';
 
-import { useDashboard } from './useDashboard';
+import { useDashboard, type DashboardView } from './useDashboard';
 
 /**
  * The hook seam (jest.config.js): a real `LocalRepository` over `MemoryKV`, so the
@@ -61,6 +61,39 @@ async function dashboard(repository: HabitRepository, today = TODAY) {
   });
   await waitFor(() => expect(result.current.loading).toBe(false));
   return result;
+}
+
+/**
+ * Same as `dashboard`, but keeps every `loading` value the hook has rendered — the
+ * §6.1 "the row updates in place" criterion is a claim about the reloads, not just
+ * about the value that happens to be current at the end.
+ */
+async function dashboardWatchingLoading(repository: HabitRepository) {
+  const seen: boolean[] = [];
+  const { result } = renderHook(
+    () => {
+      const view = useDashboard({ today: TODAY });
+      seen.push(view.loading);
+      return view;
+    },
+    { wrapper: wrapperFor(repository) },
+  );
+  await waitFor(() => expect(result.current.loading).toBe(false));
+  return { result, seen };
+}
+
+async function log(
+  result: { current: DashboardView },
+  target: Habit,
+  actual: number,
+): Promise<void> {
+  await act(async () => {
+    await result.current.logActivity(target, actual);
+  });
+}
+
+function stateOn(cells: { date: string; state?: string }[], date: string): string | undefined {
+  return cells.find((cell) => cell.date === date)?.state;
 }
 
 async function seed(habits: Habit[], entries: HabitEntry[] = []): Promise<KVStore> {
@@ -187,5 +220,91 @@ describe('useDashboard', () => {
     expect(new Set(tuples).size).toBe(4);
     // …and the unpainted cell is a fifth reading, not a re-use of pending's.
     expect(new Set([...tuples, tupleOn(cells, FROM)]).size).toBe(5);
+  });
+  describe('one-tap logging on the row (#11)', () => {
+    it('offers the floor as the first tap and reads +1 더 afterwards', async () => {
+      const result = await dashboard(new LocalRepository(await seed([habit()])));
+
+      expect(result.current.rows[0].hasActivityToday).toBe(false);
+      expect(result.current.rows[0].oneTapAmount).toBe(5);
+
+      await log(result, result.current.rows[0].habit, result.current.rows[0].oneTapAmount);
+
+      expect(result.current.rows[0].hasActivityToday).toBe(true);
+      expect(result.current.rows[0].oneTapAmount).toBe(1);
+    });
+
+    it('turns today\u2019s cell done in place, without ever raising loading again', async () => {
+      const { result, seen } = await dashboardWatchingLoading(
+        new LocalRepository(await seed([habit()])),
+      );
+      expect(stateOn(result.current.rows[0].cells, TODAY)).toBe('pending');
+      const settledAt = seen.length;
+
+      await log(result, result.current.rows[0].habit, 5);
+
+      expect(stateOn(result.current.rows[0].cells, TODAY)).toBe('done');
+      expect(result.current.rows[0].cells).toHaveLength(TUNING.heatmapDays);
+      // Not one render in the reload said "loading" — the row the user just logged
+      // into must never blank out (§6.1).
+      expect(seen.slice(settledAt)).not.toContain(true);
+      expect(result.current.loading).toBe(false);
+    });
+
+    it('appends a second tap instead of overwriting, and sums to over', async () => {
+      const result = await dashboard(
+        new LocalRepository(await seed([habit({ target: 6 })])),
+      );
+
+      await log(result, result.current.rows[0].habit, 5);
+      expect(stateOn(result.current.rows[0].cells, TODAY)).toBe('done');
+      await log(result, result.current.rows[0].habit, 1);
+
+      expect(stateOn(result.current.rows[0].cells, TODAY)).toBe('over');
+    });
+
+    it('shows a binary habit as already complete after one ✓', async () => {
+      const result = await dashboard(
+        new LocalRepository(
+          await seed([habit({ id: 'b1', kind: 'binary', floor: 1, floorUnit: 'time' })]),
+        ),
+      );
+
+      expect(result.current.rows[0].hasActivityToday).toBe(false);
+      expect(result.current.rows[0].oneTapAmount).toBe(1);
+
+      await log(result, result.current.rows[0].habit, 1);
+
+      // Binary's floor is 1, so one row is the whole day: the control is completed.
+      expect(stateOn(result.current.rows[0].cells, TODAY)).toBe('done');
+      expect(result.current.rows[0].hasActivityToday).toBe(true);
+      expect(result.current.toast?.detail).toBe('✓ 완료');
+    });
+
+    it('still offers the full floor on a day that holds only a reason-tagged skip', async () => {
+      const result = await dashboard(
+        new LocalRepository(await seed([habit()], [skip('h1', TODAY, 'cue')])),
+      );
+
+      expect(stateOn(result.current.rows[0].cells, TODAY)).toBe('skip');
+      // A skip row is `actual: 0` — not activity, so this is still today's first record.
+      expect(result.current.rows[0].hasActivityToday).toBe(false);
+      expect(result.current.rows[0].oneTapAmount).toBe(5);
+    });
+
+    it('undoes the tap it just made and puts the day back to pending', async () => {
+      const result = await dashboard(new LocalRepository(await seed([habit()])));
+
+      await log(result, result.current.rows[0].habit, 5);
+      expect(result.current.toast?.detail).toBe('+5reps');
+
+      await act(async () => {
+        await result.current.undoLast();
+      });
+
+      expect(stateOn(result.current.rows[0].cells, TODAY)).toBe('pending');
+      expect(result.current.rows[0].hasActivityToday).toBe(false);
+      expect(result.current.toast).toBeNull();
+    });
   });
 });

@@ -2,10 +2,18 @@ import { useEffect, useState } from 'react';
 
 import { TUNING } from '@/config/tuning';
 import { useRepository } from '@/context/RepositoryContext';
+import { dayStates } from '@/domain/classify';
 import { windowEndingAt } from '@/domain/dates';
 import { heatCells, type HeatCell } from '@/domain/heatLevel';
 import { localToday } from '@/lib/device';
 import type { Habit, Stat } from '@/models';
+
+import {
+  logAffordances,
+  useQuickLog,
+  type LogAffordances,
+  type QuickLogToast,
+} from './useQuickLog';
 
 /**
  * The Dashboard's data path — SPEC §6.1.
@@ -19,7 +27,7 @@ import type { Habit, Stat } from '@/models';
  *   edge, in this file's default.
  */
 
-export interface DashboardRow {
+export interface DashboardRow extends LogAffordances {
   habit: Habit;
   /** Absent when `habit.statId` names no configured stat — a data defect, not a state. */
   stat?: Stat;
@@ -30,6 +38,16 @@ export interface DashboardRow {
 export interface DashboardView {
   rows: DashboardRow[];
   loading: boolean;
+  /**
+   * One-tap logging on the row (§6.1 B1) with its 실행취소 toast (B6) — the same
+   * primitive Today's composer uses, so there is only one append/undo implementation.
+   *
+   * Takes the habit itself: the row the screen is rendering already holds it, so
+   * there is nothing to look up and no "habit not found" branch to write.
+   */
+  logActivity(habit: Habit, actual: number, opts?: { timestamp?: string }): Promise<void>;
+  toast: QuickLogToast | null;
+  undoLast(): Promise<void>;
 }
 
 function statFor(statId: string): Stat | undefined {
@@ -40,6 +58,13 @@ export function useDashboard({ today = localToday() }: { today?: string } = {}):
   const repository = useRepository();
   const [rows, setRows] = useState<DashboardRow[]>([]);
   const [loading, setLoading] = useState(true);
+  /**
+   * Bumped by a write, so the load effect is the single place that reads. `loading` is
+   * raised only for the first load, never for a reload — matching `useToday`: a
+   * one-tap log must not blank the row it just changed, and "loading" would describe a
+   * row that is already on screen (§6.1: the row updates in place).
+   */
+  const [version, setVersion] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -55,11 +80,19 @@ export function useDashboard({ today = localToday() }: { today?: string } = {}):
       const visible = habits.filter((habit) => habit.lifecycle !== 'archived');
 
       const loaded = await Promise.all(
-        visible.map(async (habit) => ({
-          habit,
-          stat: statFor(habit.statId),
-          cells: heatCells(habit, await repository.getEntries(habit.id, from, to), from, to, today),
-        })),
+        visible.map(async (habit) => {
+          const entries = await repository.getEntries(habit.id, from, to);
+
+          return {
+            habit,
+            stat: statFor(habit.statId),
+            cells: heatCells(habit, entries, from, to, today),
+            // The one-tap control reads a classified day, not a heat cell: a cell is a
+            // *rendering* instruction, and deriving an affordance from one is how this
+            // drifted away from Today's identical derivation once already.
+            ...logAffordances(habit, dayStates(habit, entries, today, today, today)[0]),
+          };
+        }),
       );
 
       if (!cancelled) {
@@ -68,13 +101,23 @@ export function useDashboard({ today = localToday() }: { today?: string } = {}):
       }
     }
 
-    setLoading(true);
     void load();
 
     return () => {
       cancelled = true;
     };
-  }, [repository, today]);
+  }, [repository, today, version]);
 
-  return { rows, loading };
+  const quick = useQuickLog({
+    today,
+    onChange: () => setVersion((current) => current + 1),
+  });
+
+  return {
+    rows,
+    loading,
+    logActivity: quick.logActivity,
+    toast: quick.toast,
+    undoLast: quick.undoLast,
+  };
 }
