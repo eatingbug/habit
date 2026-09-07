@@ -8,9 +8,11 @@
 export const TUNING = {
   // §12.2 — Stat taxonomy (1:N habit→stat, leaning default).
   // TODO §12.2: finalize the list and its cardinality.
+  // Names follow `mvp/habiquest-linear.html` and the `design/` canvas, which the
+  // visual-authority rule makes canonical for user-facing copy.
   stats: [
-    { id: 'strength', name: '체력', icon: '💪' },
-    { id: 'intelligence', name: '지성', icon: '📖' },
+    { id: 'strength', name: '힘', icon: '💪' },
+    { id: 'intelligence', name: '지능', icon: '📖' },
     { id: 'willpower', name: '의지', icon: '🧘' },
   ],
 
