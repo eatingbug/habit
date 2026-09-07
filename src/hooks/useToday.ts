@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 
 import { useRepository } from '@/context/RepositoryContext';
-import { dayStates, sortDayRows, type ClassifiedDay } from '@/domain/classify';
+import { type ClassifiedDay, dayStates, isFloorMet, sortDayRows } from '@/domain/classify';
 import { compareDates, dateOf } from '@/domain/dates';
 import { computeXP } from '@/domain/score';
 import { localToday, newId } from '@/lib/device';
@@ -174,7 +174,7 @@ export function useToday({
     rows: loaded.rows,
     feed: loaded.feed,
     questsDone: loaded.rows.filter(
-      (row) => row.day?.state === 'done' || row.day?.state === 'over',
+      (row) => isFloorMet(row.day?.state),
     ).length,
     logCount: loaded.feed.length,
     xpToday: loaded.xpToday,

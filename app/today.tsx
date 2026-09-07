@@ -11,6 +11,7 @@ import {
   NumberField,
   SegmentedControl,
 } from '@/components';
+import { isFloorMet } from '@/domain/classify';
 import { weekdayOf } from '@/domain/dates';
 import { useToday, type TodayFeedItem, type TodayHabitRow } from '@/hooks/useToday';
 import type { DayState } from '@/models';
@@ -132,7 +133,7 @@ function Composer({
         {row.day != null && (
           <Chip
             label={stateLabel(row.day.state)}
-            variant={row.day.state === 'done' || row.day.state === 'over' ? 'good' : 'neutral'}
+            variant={isFloorMet(row.day.state) ? 'good' : 'neutral'}
           />
         )}
       </View>

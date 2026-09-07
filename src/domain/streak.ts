@@ -1,7 +1,7 @@
 import { TUNING } from '@/config/tuning';
 import type { Habit, HabitEntry } from '@/models';
 
-import { type ClassifiedDay, dayStates, isDateInScope } from './classify';
+import { type ClassifiedDay, dayStates, isDateInScope, isFloorMet } from './classify';
 import { addDays, compareDates, dateOf } from './dates';
 
 /**
@@ -36,13 +36,9 @@ function classifiedDays(
   return dayStates(habit, entries, compareDates(from, birth) < 0 ? birth : from, to, today);
 }
 
-function isFloorMet(day: ClassifiedDay): boolean {
-  return day.state === 'done' || day.state === 'over';
-}
-
 /** Engagement = a day that holds real activity, floor met or not (§4.3 C3). */
 function isEngaged(day: ClassifiedDay): boolean {
-  return isFloorMet(day) || day.state === 'partial';
+  return isFloorMet(day.state) || day.state === 'partial';
 }
 
 /**
@@ -68,7 +64,7 @@ function runEndingLast(days: ClassifiedDay[], extend: (day: ClassifiedDay) => bo
 export function computeStreak(entries: HabitEntry[], habit: Habit, today: string): number {
   return runEndingLast(
     classifiedDays(habit, entries, dateOf(habit.createdAt), today, today),
-    isFloorMet,
+    (day) => isFloorMet(day.state),
   );
 }
 
@@ -105,7 +101,7 @@ export function consecutiveMissCount(
   let count = 0;
   for (let i = days.length - 1; i >= 0; i -= 1) {
     if (days[i].isMiss) count += 1;
-    else if (isFloorMet(days[i])) break;
+    else if (isFloorMet(days[i].state)) break;
     // `pending`, `partial` and exception skips are transparent, as everywhere else.
   }
   return count;

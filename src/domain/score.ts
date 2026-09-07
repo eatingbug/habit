@@ -1,7 +1,7 @@
 import { TUNING } from '@/config/tuning';
 import type { Habit, HabitEntry } from '@/models';
 
-import { type ClassifiedDay, classifyDay, dayStates, sortDayRows } from './classify';
+import { type ClassifiedDay, classifyDay, dayStates, isFloorMet, sortDayRows } from './classify';
 import { compareDates, dateOf } from './dates';
 import { atRiskToday, computeStreak } from './streak';
 
@@ -58,10 +58,6 @@ function historyDays(habit: Habit, entries: HabitEntry[]): ClassifiedDay[] {
   return dayStates(habit, entries, dateOf(habit.createdAt), last, last);
 }
 
-function isFloorMet(day: ClassifiedDay): boolean {
-  return day.state === 'done' || day.state === 'over';
-}
-
 /**
  * Lengths of the maximal runs of floor-met days, oldest first.
  *
@@ -75,7 +71,7 @@ function floorRuns(days: ClassifiedDay[]): number[] {
   let current = 0;
 
   for (const day of days) {
-    if (isFloorMet(day)) current += 1;
+    if (isFloorMet(day.state)) current += 1;
     else if (day.isMiss) {
       if (current > 0) runs.push(current);
       current = 0;
@@ -132,7 +128,7 @@ export function milestoneBonusXP(entries: HabitEntry[], habit: Habit): number {
  */
 export function computeXP(entries: HabitEntry[], habit: Habit): number {
   const days = historyDays(habit, entries);
-  const floorMet = days.filter(isFloorMet);
+  const floorMet = days.filter((day) => isFloorMet(day.state));
 
   let xp = floorMet.length * TUNING.xpPerFloorCompletion;
   if (habit.kind !== 'count') return xp + milestoneBonusXP(entries, habit);
@@ -215,8 +211,8 @@ export function describeLogEffect(
   const logDate = added[added.length - 1].date;
   const stateBefore = classifyDay(rowsOn(before, logDate), habit, logDate, logDate);
   const stateAfter = classifyDay(rowsOn(after, logDate), habit, logDate, logDate);
-  const metBefore = stateBefore === 'done' || stateBefore === 'over';
-  const metAfter = stateAfter === 'done' || stateAfter === 'over';
+  const metBefore = isFloorMet(stateBefore);
+  const metAfter = isFloorMet(stateAfter);
 
   const runBefore = computeStreak(before, habit, logDate);
   const runAfter = computeStreak(after, habit, logDate);
