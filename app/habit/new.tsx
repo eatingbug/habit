@@ -16,6 +16,7 @@ import {
 } from '@/components';
 import { TUNING } from '@/config/tuning';
 import { useRepository } from '@/context/RepositoryContext';
+import { newId } from '@/lib/device';
 import type { Habit, HabitKind } from '@/models';
 import { useTheme } from '@/theme/ThemeProvider';
 import { FONT_SIZE, SPACE } from '@/theme/tokens';
@@ -36,20 +37,6 @@ import { FONT_SIZE, SPACE } from '@/theme/tokens';
  * The artboard's bottom `.sheet` (the Forming-slot soft cap) is deliberately omitted —
  * SPEC §1.3 defers slots to V2.
  */
-
-/**
- * `crypto.randomUUID` exists on web and on modern Hermes builds but not everywhere, so
- * the fallback is a real path, not a theoretical one. One caller, so it lives here
- * instead of becoming a utility module.
- */
-function newId(): string {
-  const webCrypto = globalThis.crypto;
-  if (typeof webCrypto?.randomUUID === 'function') return webCrypto.randomUUID();
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-    const r = Math.floor(Math.random() * 16);
-    return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
-  });
-}
 
 const KIND_OPTIONS: { value: HabitKind; label: string }[] = [
   { value: 'count', label: '횟수 · 양' },
