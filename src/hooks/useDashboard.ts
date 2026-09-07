@@ -4,6 +4,7 @@ import { TUNING } from '@/config/tuning';
 import { useRepository } from '@/context/RepositoryContext';
 import { windowEndingAt } from '@/domain/dates';
 import { heatCells, type HeatCell } from '@/domain/heatLevel';
+import { localToday } from '@/lib/device';
 import type { Habit, Stat } from '@/models';
 
 /**
@@ -29,18 +30,6 @@ export interface DashboardRow {
 export interface DashboardView {
   rows: DashboardRow[];
   loading: boolean;
-}
-
-/**
- * 'YYYY-MM-DD' for the device's *local* day. A date string is the user's declared
- * local day (§3.3), so `toISOString()` is wrong here: east or west of UTC it would
- * label the wrong cell `pending`.
- */
-function localToday(): string {
-  const now = new Date();
-  const month = `${now.getMonth() + 1}`.padStart(2, '0');
-  const day = `${now.getDate()}`.padStart(2, '0');
-  return `${now.getFullYear()}-${month}-${day}`;
 }
 
 function statFor(statId: string): Stat | undefined {

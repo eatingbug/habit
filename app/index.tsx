@@ -84,6 +84,8 @@ export default function Dashboard() {
         </View>
       )}
 
+      <Button label="오늘 기록하기" block onPress={() => router.push('/today')} />
+
       <Button
         label="+ 습관 만들기"
         variant="pri"
