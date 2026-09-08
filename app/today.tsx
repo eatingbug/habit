@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Keyboard, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Keyboard, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import {
   Banner,
@@ -19,20 +19,30 @@ import {
 import { SKIP_REASON_LABELS } from '@/config/copy';
 import { isFloorMet } from '@/domain/classify';
 import { weekdayOf } from '@/domain/dates';
-import { useToday, type TodayFeedItem, type TodayHabitRow } from '@/hooks/useToday';
+import {
+  useToday,
+  type DeleteEffect,
+  type TodayFeedItem,
+  type TodayHabitRow,
+} from '@/hooks/useToday';
 import { timestampAtLocalTime } from '@/lib/device';
-import type { DayState, SkipReason } from '@/models';
+import type { DayState, HabitEntry, SkipReason } from '@/models';
 import { useTheme } from '@/theme/ThemeProvider';
-import { FONT_FAMILY, FONT_SIZE, SPACE } from '@/theme/tokens';
+import { FONT_FAMILY, FONT_SIZE, SPACE, TAP_TARGET } from '@/theme/tokens';
 
 /**
  * Today — SPEC §6.2; layout from `design/parts/Today.body.html`, copy from the
  * design canvas.
  *
- * The artboard is the finished design, so it shows more than this screen renders.
- * Tap-to-edit (#13), the 어제 stepper (#14), free logs (#16), the reward toast (#17)
- * and the at-risk save banner (#18) each belong to a later ticket and are left out
- * rather than stubbed — a hardcoded number would read as data the user does not have.
+ * The artboard is the finished design, so it shows more than this screen renders. The
+ * 어제 stepper (#14), free logs (#16), the reward toast (#17) and the at-risk save
+ * banner (#18) each belong to a later ticket and are left out rather than stubbed — a
+ * hardcoded number would read as data the user does not have.
+ *
+ * #13 added the correction path: a feed line is a **control**, and tapping it swaps the
+ * composer for `EntryEditor` on that one row. Every judgment behind the delete confirm
+ * is `useToday.deletePreview`'s, not this file's — there are no component render tests
+ * (jest.config.js), so a condition written here would be a condition nothing asserts.
  *
  * What ships here is the low-friction path: pick a habit, press one control (or a
  * quick chip), and see the row appear in the feed with the day's state recomputed.
@@ -80,7 +90,15 @@ function stateLabel(state: DayState): string {
   }
 }
 
-function FeedRow({ item }: { item: TodayFeedItem }) {
+/**
+ * One feed line. Since #13 it is a **control**: pressing it opens `EntryEditor` on that
+ * row, so it carries §6.0's 44px minimum and a button role.
+ *
+ * `accessibilityLabel` is assembled rather than left to the three child `Text`s: a
+ * screen reader would otherwise announce "07:10 독서 +3쪽" with no hint that the line
+ * does anything. An a11y label describes the affordance, so no canvas citation applies.
+ */
+function FeedRow({ item, onPress }: { item: TodayFeedItem; onPress: () => void }) {
   const { colors } = useTheme();
   /**
    * §3.3's row discriminator — the *presence of a reason*, never `actual === 0`. A
@@ -100,8 +118,19 @@ function FeedRow({ item }: { item: TodayFeedItem }) {
         ? '✓ 완료'
         : `${item.entry.actual}${item.habit.floorUnit}`;
 
+  const note = item.entry.note;
+
   return (
-    <View style={[styles.feedItem, { borderColor: colors.border }]}>
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`${clockOf(item.entry.timestamp)} ${item.habit.name} ${amount} — 수정`}
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.feedItem,
+        { borderColor: colors.border },
+        pressed && { backgroundColor: colors.accentWeak },
+      ]}
+    >
       <View style={styles.feedRow}>
         <Text style={[styles.feedTime, { color: colors.faint }]}>
           {clockOf(item.entry.timestamp)}
@@ -118,7 +147,15 @@ function FeedRow({ item }: { item: TodayFeedItem }) {
           {SKIP_REASON_LABELS[reason]}
         </Text>
       )}
-    </View>
+      {/* AC 3 — the first screen that *reads* `note` back. Canvas source:
+          `design/parts/HabitDetail.body.html:49` (`메모: 어깨 뻐근함`), the only place
+          the canvas ever displays one, on the same `.backnote` second line this row
+          already uses for the reason. Shown for an activity row too: `note` is a field
+          of the row (§3.3), not of the skip path. */}
+      {note != null && (
+        <Text style={[styles.feedNote, { color: colors.faint }]}>메모: {note}</Text>
+      )}
+    </Pressable>
   );
 }
 
@@ -434,6 +471,288 @@ function Composer({
   );
 }
 
+/**
+ * The delete confirm's body (#13 AC 5/6). Assembled from `DeleteEffect`, so every
+ * clause is something the hook derived and a test asserts — the screen adds no
+ * judgment of its own.
+ *
+ * **Copy: 캔버스 출처 없음 — 신규 문구.** `design/parts/` holds no delete confirm at
+ * all. 근거: `design/parts/Backfill.body.html:67` is the canvas's one consequence
+ * notice, and it names **what changes** before anything else ("원래 있던 기록을
+ * 지우지 않고 옆에 더해집니다. 실패로 잡혀 있던 날이면 성공으로 바뀌고 …"). These
+ * lines follow that register, in the same order: the loss first, then the day's new
+ * reading through `stateLabel`, which is the map the rest of this screen already uses.
+ *
+ * Two things are deliberately **absent**, per the ticket's own analysis:
+ * - no `missed` and no streak count. Today is still open, so an emptied today falls
+ *   back to `pending` (ADR-0001) — nothing breaks, and there is no figure to quote.
+ *   That warning belongs to a past-dated screen (#15).
+ * - nothing about the day's state when `stateAfter` is `undefined` (a paused date,
+ *   ADR-0003): the engine has no opinion, so neither does the sentence.
+ */
+function deleteConfirmLines(effect: DeleteEffect): string[] {
+  const lines: string[] = [];
+  if (effect.emptiesDay) {
+    lines.push(`이 기록을 지우면 오늘 ${effect.habit.name}에 남는 기록이 없어요.`);
+  }
+  if (effect.carriesMiss) {
+    lines.push("실패로 세고 있던 '못 함' 기록이 사라져요.");
+  }
+  if (effect.stateAfter != null) {
+    lines.push(`지운 뒤 오늘: ${stateLabel(effect.stateAfter)}`);
+  }
+  return lines;
+}
+
+/** Which shape the edited row is being given — §3.3's two row kinds, as a choice. */
+type RowKind = 'activity' | 'skip';
+
+/**
+ * The row editor (#13) — the composer, reopened on **one existing row** with its `id`
+ * preserved. It replaces `Composer` on screen rather than sitting beside it: the two
+ * would otherwise offer two different "record this habit" controls at once, and the
+ * ticket asks for the composer to open filled in, not for a third card.
+ *
+ * It is a local component, not a `src/components` export: there is one caller. #15's
+ * journal is the second, and can lift it then (CLAUDE.md §2).
+ *
+ * The whole row is passed to `onSave`, because the write **replaces** the stored
+ * element — an omitted `timestamp` would silently reorder the feed (§3.3). So the time
+ * reveal is prefilled from *this row's* stamp, not from now, and an untouched reveal
+ * passes the original string through verbatim.
+ */
+function EntryEditor({
+  item,
+  onSave,
+  onDelete,
+  previewDelete,
+  onClose,
+}: {
+  item: TodayFeedItem;
+  onSave: (entry: HabitEntry) => Promise<void>;
+  onDelete: (entryId: string) => Promise<void>;
+  previewDelete: (entryId: string) => DeleteEffect | null;
+  onClose: () => void;
+}) {
+  const { colors } = useTheme();
+  const { entry, habit } = item;
+  const isCount = habit.kind === 'count';
+  const unit = habit.floorUnit;
+
+  const [kind, setKind] = useState<RowKind>(entry.skipReason == null ? 'activity' : 'skip');
+  const [amount, setAmount] = useState(`${entry.actual > 0 ? entry.actual : habit.floor}`);
+  const [reason, setReason] = useState<SkipReason | undefined>(entry.skipReason);
+  const [note, setNote] = useState(entry.note ?? '');
+  const [timeOpen, setTimeOpen] = useState(false);
+  const [hour, setHour] = useState(clockOf(entry.timestamp).slice(0, 2));
+  const [minute, setMinute] = useState(clockOf(entry.timestamp).slice(3, 5));
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  /** The pending confirm, from `deletePreview` — `null` means none is up. */
+  const [confirming, setConfirming] = useState<DeleteEffect | null>(null);
+
+  const parsed = Number(amount);
+  // Binary rows carry no amount to edit: their `actual` is always 1 (§3.3).
+  const amountUsable =
+    !isCount || (amount.trim().length > 0 && Number.isFinite(parsed) && parsed > 0);
+  // The same shape gate `useQuickLog.editEntry` enforces, so the control is disabled
+  // rather than the write rejected: a skip row is nothing without its reason.
+  const canSave = kind === 'skip' ? reason != null : amountUsable;
+
+  const timestamp = timeOpen ? timestampAtLocalTime(entry.date, hour, minute) : entry.timestamp;
+  const timeUsable = timestamp != null;
+
+  async function save() {
+    if (saving || !canSave || !timeUsable) return;
+
+    Keyboard.dismiss();
+    setSaving(true);
+    setError(null);
+    try {
+      const trimmed = note.trim();
+      await onSave({
+        ...entry,
+        timestamp,
+        // Both fields move together — §3.3's discriminator is absolute, so a
+        // transition sets the amount *and* the reason, never one of the two.
+        actual: kind === 'skip' ? 0 : isCount ? parsed : 1,
+        skipReason: kind === 'skip' ? reason : undefined,
+        note: trimmed.length > 0 ? trimmed : undefined,
+      });
+      onClose();
+    } catch {
+      setError('기록을 고치지 못했어요. 잠시 뒤 다시 눌러 주세요.');
+      setSaving(false);
+    }
+  }
+
+  /** AC 4 — with no `DeleteEffect` there is nothing to warn about, so it just goes. */
+  function requestDelete() {
+    const effect = previewDelete(entry.id);
+    if (effect == null) void remove();
+    else setConfirming(effect);
+  }
+
+  async function remove() {
+    if (saving) return;
+
+    Keyboard.dismiss();
+    setSaving(true);
+    setError(null);
+    try {
+      await onDelete(entry.id);
+      onClose();
+    } catch {
+      setError('기록을 지우지 못했어요. 잠시 뒤 다시 눌러 주세요.');
+      setSaving(false);
+      setConfirming(null);
+    }
+  }
+
+  return (
+    <Card>
+      <View style={styles.composerHead}>
+        <Text style={[styles.composerName, { color: colors.text }]} numberOfLines={1}>
+          {habit.name}
+        </Text>
+        {/* 캔버스 출처 없음 — 신규 문구. 근거: the canvas's edit affordance is
+            `design/parts/HabitDetail.body.html:38` (`수정`, a `btn ghost`), which is a
+            *button*, not a heading; this chip names the card that button opens, and
+            `기록` is the word this screen already uses for a row (`오늘 기록`). */}
+        <Chip label={`${clockOf(entry.timestamp)} 기록 수정`} variant="neutral" />
+      </View>
+
+      {/* AC 2 — the activity ↔ skip transition, as the row's kind. 캔버스 출처 없음 —
+          신규 문구: the canvas has no such switch. 근거: `못 했어요` is the canvas's own
+          label for the skip affordance (`design/parts/Backfill.body.html:57`), and
+          `했어요` is the counterpart already on this screen's binary one-tap control
+          (`✓ 했어요`). */}
+      <SegmentedControl
+        label="기록 종류"
+        options={[
+          { value: 'activity', label: '했어요' },
+          { value: 'skip', label: '못 했어요' },
+        ]}
+        value={kind}
+        onChange={setKind}
+      />
+
+      {kind === 'activity'
+        ? isCount && (
+            <View style={styles.amountRow}>
+              <NumberField
+                accessibilityLabel="고칠 양"
+                value={amount}
+                onChangeText={(next) => {
+                  setAmount(next);
+                  setError(null);
+                }}
+                placeholder={`${habit.floor}`}
+              />
+              <Text style={[styles.unit, { color: colors.muted }]}>{unit}</Text>
+            </View>
+          )
+        : /* The reason is required for a skip row, so the chips are the row's own
+             selection rather than the day's (`selected={reason}`, not
+             `row.skipReasonToday`): this edits one row, not the day's answer. */
+          <SkipReasonChips
+            label="건너뛰기"
+            habitName={habit.name}
+            selected={reason}
+            disabled={saving}
+            onPick={setReason}
+          />}
+
+      {/* AC 3 — the note, editable at last. Placeholder reused from the composer's
+          skip note (`design/parts/Today.body.html:56`, front half), which is where the
+          only note field the canvas draws lives. Shown for both row kinds: SPEC §6.2
+          puts an optional note on the activity path too, and the composer's own comment
+          parked that field here. */}
+      <TextField
+        accessibilityLabel="메모"
+        value={note}
+        onChangeText={setNote}
+        placeholder="메모 (선택)"
+      />
+
+      {/* B3's reveal, prefilled from *this row's* stamp — reopening it and pressing
+          저장 must not restamp the row to now and reorder the feed (§3.3). */}
+      {timeOpen ? (
+        <View style={styles.amountRow}>
+          <NumberField
+            accessibilityLabel="시"
+            value={hour}
+            onChangeText={setHour}
+            placeholder="시"
+          />
+          <Text style={[styles.unit, { color: colors.muted }]}>:</Text>
+          <NumberField
+            accessibilityLabel="분"
+            value={minute}
+            onChangeText={setMinute}
+            placeholder="분"
+          />
+        </View>
+      ) : (
+        <Button
+          label={`🕑 ${clockOf(entry.timestamp)}`}
+          variant="ghost"
+          onPress={() => setTimeOpen(true)}
+          style={styles.time}
+        />
+      )}
+
+      {confirming == null ? (
+        <View style={styles.editActions}>
+          {/* 캔버스 출처 없음 — 신규 문구 (`저장`·`취소`·`삭제`). 근거: the canvas
+              draws no edit form, so it names none of these three; they are the
+              conventional Korean labels for the three actions and assert nothing about
+              the domain. 삭제 keeps the 44px minimum (§6.0) via `tap`, as every control
+              that writes on this screen does. */}
+          <Button
+            label="저장"
+            variant="pri"
+            disabled={saving || !canSave || !timeUsable}
+            onPress={() => void save()}
+            style={styles.grow}
+          />
+          <Button label="취소" variant="ghost" disabled={saving} onPress={onClose} tap />
+          <Button label="삭제" disabled={saving} onPress={requestDelete} tap />
+        </View>
+      ) : (
+        <View style={styles.confirm}>
+          {/* `Banner` (caution tint) is this screen's existing device for a line the
+              user has to read before acting; it wraps its children in one `Text`, so
+              the clauses join into one paragraph in the order the hook derived. */}
+          <Banner>{deleteConfirmLines(confirming).join(' ')}</Banner>
+          {/* 캔버스 출처 없음 — 신규 문구. 근거: a plain `삭제`/`취소` pair here would
+              repeat the labels of the row above it and read as the same two buttons, so
+              the confirm answers in the first person, as the canvas's own reassurance
+              copy does (`안 채워도 괜찮아요`, `신경 안 쓰셔도 돼요`). */}
+          <View style={styles.editActions}>
+            <Button
+              label="지울게요"
+              variant="pri"
+              disabled={saving}
+              onPress={() => void remove()}
+              style={styles.grow}
+            />
+            <Button
+              label="그대로 둘게요"
+              variant="ghost"
+              disabled={saving}
+              onPress={() => setConfirming(null)}
+              tap
+            />
+          </View>
+        </View>
+      )}
+
+      {error != null && <Banner>{error}</Banner>}
+    </Card>
+  );
+}
+
 export default function Today() {
   const { colors } = useTheme();
   const {
@@ -447,12 +766,22 @@ export default function Today() {
     logActivity,
     logSkip,
     previewOf,
+    editEntry,
+    removeEntry,
+    deletePreview,
     toast,
     undoLast,
   } = useToday();
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  /**
+   * The feed row being edited (#13). Held as an **id**, and the item derived from the
+   * live feed each render: the editor then closes itself on a delete, and on any reload
+   * that drops the row, with no cleanup effect to keep in step.
+   */
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   const selected = rows.find((row) => row.habit.id === selectedId) ?? rows[0];
+  const editing = feed.find((item) => item.entry.id === editingId);
 
   return (
     <View style={[styles.fill, { backgroundColor: colors.surface }]}>
@@ -482,8 +811,11 @@ export default function Today() {
           </Text>
         ) : (
           <>
-            {/* The target selector. "자유 로그" joins it in #16. */}
-            {rows.length > 1 && (
+            {/* The target selector, withheld while a row is being edited: the editor is
+                about one row that already names its habit, and switching the *logging*
+                target underneath it would change nothing it shows.
+                "자유 로그" joins the selector in #16. */}
+            {rows.length > 1 && editing == null && (
               <SegmentedControl
                 label="기록 대상"
                 options={rows.map((row) => ({ value: row.habit.id, label: row.habit.name }))}
@@ -492,16 +824,31 @@ export default function Today() {
               />
             )}
 
-            {/* Keyed by habit: switching targets remounts, so a staged amount can never
-                be logged against the habit it was not typed for. */}
-            <Composer
-              key={selected.habit.id}
-              row={selected}
-              date={date}
-              previewOf={(stagedAmount) => previewOf(selected.habit.id, stagedAmount)}
-              onLog={(actual, opts) => logActivity(selected.habit.id, actual, opts)}
-              onSkip={(reason, opts) => logSkip(selected.habit, reason, opts)}
-            />
+            {/* The editor takes the composer's place on the screen while it is open —
+                its habit comes from the tapped **feed item**, never from `selected`,
+                which is the logging target and may well be a different habit.
+
+                Both are keyed: switching targets or tapping a second feed row remounts,
+                so no staged amount can ever be written to the row it was not typed for. */}
+            {editing != null ? (
+              <EntryEditor
+                key={editing.entry.id}
+                item={editing}
+                onSave={editEntry}
+                onDelete={removeEntry}
+                previewDelete={deletePreview}
+                onClose={() => setEditingId(null)}
+              />
+            ) : (
+              <Composer
+                key={selected.habit.id}
+                row={selected}
+                date={date}
+                previewOf={(stagedAmount) => previewOf(selected.habit.id, stagedAmount)}
+                onLog={(actual, opts) => logActivity(selected.habit.id, actual, opts)}
+                onSkip={(reason, opts) => logSkip(selected.habit, reason, opts)}
+              />
+            )}
           </>
         )}
 
@@ -511,7 +858,11 @@ export default function Today() {
         ) : (
           <View style={styles.feed}>
             {feed.map((item) => (
-              <FeedRow key={item.entry.id} item={item} />
+              <FeedRow
+                key={item.entry.id}
+                item={item}
+                onPress={() => setEditingId(item.entry.id)}
+              />
             ))}
           </View>
         )}
@@ -556,12 +907,21 @@ const styles = StyleSheet.create({
   // own class (see `SkipReasonChips`).
   skipGroup: { borderTopWidth: 1, paddingTop: SPACE.md, gap: SPACE.md - 2 },
   time: { alignSelf: 'flex-start' },
+  editActions: { flexDirection: 'row', alignItems: 'center', gap: SPACE.md - 2 },
+  confirm: { gap: SPACE.md },
   unit: { fontSize: FONT_SIZE.sm },
   grow: { flex: 1 },
   feed: { gap: SPACE.sm },
   // The hairline and vertical rhythm move to the item, so a skip row's reason line
   // sits inside the same separated block as the amount it explains.
-  feedItem: { borderBottomWidth: 1, paddingVertical: SPACE.md, gap: SPACE.xs },
+  // §6.0's 44px minimum: since #13 the row is the control that opens the editor.
+  feedItem: {
+    borderBottomWidth: 1,
+    paddingVertical: SPACE.md,
+    gap: SPACE.xs,
+    justifyContent: 'center',
+    minHeight: TAP_TARGET,
+  },
   feedRow: { flexDirection: 'row', alignItems: 'center', gap: SPACE.md },
   feedTime: {
     fontSize: FONT_SIZE.sm,

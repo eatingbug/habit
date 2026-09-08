@@ -380,6 +380,163 @@ describe('useQuickLog', () => {
     });
   });
 
+  describe('editEntry and removeEntry — the row correction path (#13)', () => {
+    async function edit(result: { current: QuickLog }, entry: HabitEntry): Promise<void> {
+      await act(async () => {
+        await result.current.editEntry(entry);
+      });
+    }
+
+    it('rewrites the row in place and never adds a second one (AC 1)', async () => {
+      const repository = await repositoryWith([habit()], [seededRow()]);
+      const { result, reloads } = quickLog(repository);
+
+      await edit(result, seededRow({ actual: 7, note: '한 챕터 더' }));
+
+      const rows = await rowsIn(repository);
+      // One row, same id — the repository upserts by id, so a correction can never
+      // leave the original behind as a duplicate.
+      expect(rows).toHaveLength(1);
+      expect(rows[0].id).toBe('seeded');
+      expect(rows[0].actual).toBe(7);
+      expect(rows[0].note).toBe('한 챕터 더');
+      expect(reloads()).toBe(1);
+    });
+
+    it('keeps date and timestamp when the caller passes them through', async () => {
+      const repository = await repositoryWith([habit()], [seededRow()]);
+      const { result } = quickLog(repository);
+
+      await edit(result, seededRow({ actual: 4 }));
+
+      // `upsertEntry` *replaces* the element, so this pins the caller contract: an
+      // omitted `timestamp` would silently reorder the day (§3.3's ordering key).
+      const rows = await rowsIn(repository);
+      expect(rows[0].timestamp).toBe(`${TODAY}T07:00:00.000Z`);
+      expect(rows[0].date).toBe(TODAY);
+    });
+
+    it('turns an activity row into a skip row, setting both fields (§3.3)', async () => {
+      const repository = await repositoryWith([habit()], [seededRow()]);
+      const { result } = quickLog(repository);
+
+      await edit(result, seededRow({ actual: 0, skipReason: 'floor', note: '너무 피곤' }));
+
+      const rows = await rowsIn(repository);
+      expect(rows).toHaveLength(1);
+      expect(rows[0].actual).toBe(0);
+      expect(rows[0].skipReason).toBe('floor');
+      expect(rows[0].note).toBe('너무 피곤');
+    });
+
+    it('turns a skip row back into an activity row, dropping the reason entirely', async () => {
+      const repository = await repositoryWith(
+        [habit()],
+        [seededRow({ actual: 0, skipReason: 'cue', note: '깜빡' })],
+      );
+      const { result } = quickLog(repository);
+
+      await edit(result, seededRow({ actual: 3 }));
+
+      const rows = await rowsIn(repository);
+      expect(rows).toHaveLength(1);
+      expect(rows[0].actual).toBe(3);
+      // Absent, not `''` and not a leftover key: §3.3's discriminator is the
+      // *presence* of a reason, so a lingering one would keep classifying the day skip.
+      expect('skipReason' in rows[0]).toBe(false);
+      expect('note' in rows[0]).toBe(false);
+    });
+
+    it('drops a note the user cleared rather than storing an empty string', async () => {
+      const repository = await repositoryWith([habit()], [seededRow({ note: '옛 메모' })]);
+      const { result } = quickLog(repository);
+
+      await edit(result, seededRow({ note: '   ' }));
+
+      expect('note' in (await rowsIn(repository))[0]).toBe(false);
+    });
+
+    it('refuses both shapes §3.3 forbids, leaving the row as it was', async () => {
+      const repository = await repositoryWith([habit()], [seededRow()]);
+      const { result } = quickLog(repository);
+
+      // A reason-less zero row — the same rejection `logActivity` makes.
+      await expect(result.current.editEntry(seededRow({ actual: 0 }))).rejects.toThrow(RangeError);
+      // A reason next to a positive amount: `classifyDay` would read this as `skip`
+      // and silently discard the 5.
+      await expect(
+        result.current.editEntry(seededRow({ actual: 5, skipReason: 'floor' })),
+      ).rejects.toThrow(RangeError);
+
+      const rows = await rowsIn(repository);
+      expect(rows).toHaveLength(1);
+      expect(rows[0].actual).toBe(2);
+      expect('skipReason' in rows[0]).toBe(false);
+    });
+
+    it('retires a live toast that names the row it just edited (D4)', async () => {
+      const repository = await repositoryWith();
+      const { result } = quickLog(repository);
+
+      await log(result, habit(), 5);
+      const appended = (await rowsIn(repository))[0];
+      expect(result.current.toast?.entryId).toBe(appended.id);
+
+      await edit(result, { ...appended, actual: 9 });
+
+      // Otherwise 실행취소 stays armed on the row the user has just corrected, and one
+      // press throws away both the correction and the original fact (§7.3).
+      expect(result.current.toast).toBeNull();
+      expect((await rowsIn(repository))[0].actual).toBe(9);
+    });
+
+    it('leaves a toast naming a different row armed when editing another one', async () => {
+      const repository = await repositoryWith([habit()], [seededRow()]);
+      const { result } = quickLog(repository);
+
+      await log(result, habit(), 5);
+      const appendedId = result.current.toast?.entryId;
+
+      await edit(result, seededRow({ actual: 4 }));
+
+      expect(result.current.toast?.entryId).toBe(appendedId);
+    });
+
+    it('deletes the named row and raises no toast (D5)', async () => {
+      const repository = await repositoryWith(
+        [habit()],
+        [seededRow(), seededRow({ id: 'other', timestamp: `${TODAY}T08:00:00.000Z` })],
+      );
+      const { result, reloads } = quickLog(repository);
+
+      await act(async () => {
+        await result.current.removeEntry('seeded');
+      });
+
+      expect((await rowsIn(repository)).map((row) => row.id)).toEqual(['other']);
+      // A toast presupposes 실행취소, and a delete has none to offer — the row is gone
+      // and re-appending it would mint a different id.
+      expect(result.current.toast).toBeNull();
+      expect(reloads()).toBe(1);
+    });
+
+    it('retires a live toast that names the row it just deleted (D4)', async () => {
+      const repository = await repositoryWith();
+      const { result } = quickLog(repository);
+
+      await log(result, habit(), 5);
+      const appendedId = result.current.toast?.entryId as string;
+
+      await act(async () => {
+        await result.current.removeEntry(appendedId);
+      });
+
+      // Otherwise 실행취소 would try to delete a row that is already gone.
+      expect(result.current.toast).toBeNull();
+      expect(await rowsIn(repository)).toEqual([]);
+    });
+  });
+
   describe('logAffordances.skipReasonToday (D3 — the shared derivation)', () => {
     function dayOf(entries: HabitEntry[], target = habit()) {
       return dayStates(target, entries, TODAY, TODAY, TODAY)[0];

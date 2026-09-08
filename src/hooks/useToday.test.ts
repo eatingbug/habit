@@ -5,7 +5,7 @@ import { TUNING } from '@/config/tuning';
 import { RepositoryProvider } from '@/context/RepositoryContext';
 import { LocalRepository, MemoryKV, type HabitRepository, type KVStore } from '@/data';
 import { addDays } from '@/domain/dates';
-import type { Habit, SkipReason } from '@/models';
+import type { Habit, HabitEntry, SkipReason } from '@/models';
 
 import { useToday, type TodayHabitRow, type TodayView } from './useToday';
 
@@ -630,6 +630,181 @@ describe('useToday', () => {
       expect(result.current.questsDone).toBe(1);
       // Both rows are facts and both stay (§3.3, append-only).
       expect(result.current.logCount).toBe(2);
+    });
+  });
+
+  describe('row edit and delete (#13)', () => {
+    async function seedRow(
+      repository: HabitRepository,
+      over: Partial<HabitEntry> = {},
+    ): Promise<HabitEntry> {
+      const row: HabitEntry = {
+        id: 'r1',
+        habitId: 'h1',
+        date: TODAY,
+        timestamp: `${TODAY}T07:00:00.000Z`,
+        actual: 2,
+        ...over,
+      };
+      await repository.upsertEntry(row);
+      return row;
+    }
+
+    it('edits the tapped row in place and reclassifies the day (AC 1)', async () => {
+      const repository = new LocalRepository(await seed([habit()]));
+      const row = await seedRow(repository);
+      const result = await todayScreen(repository);
+
+      expect(dayOf(result.current, 'h1')?.state).toBe('partial');
+
+      await act(async () => {
+        await result.current.editEntry({ ...row, actual: 5 });
+      });
+
+      // One row still, and the day recomputed from it — nothing stored a state.
+      expect(result.current.feed).toHaveLength(1);
+      expect(result.current.logCount).toBe(1);
+      expect(dayOf(result.current, 'h1')?.state).toBe('done');
+      expect(result.current.xpToday).toBe(TUNING.xpPerFloorCompletion);
+    });
+
+    it('turns that row into a skip and back, on the same row (AC 2)', async () => {
+      const repository = new LocalRepository(await seed([habit()]));
+      const row = await seedRow(repository);
+      const result = await todayScreen(repository);
+
+      await act(async () => {
+        await result.current.editEntry({ ...row, actual: 0, skipReason: 'cue', note: '깜빡' });
+      });
+
+      expect(result.current.feed).toHaveLength(1);
+      expect(dayOf(result.current, 'h1')?.state).toBe('skip');
+      expect(rowOf(result.current, 'h1').skipReasonToday).toBe('cue');
+      expect(result.current.feed[0].entry.note).toBe('깜빡');
+
+      await act(async () => {
+        await result.current.editEntry({ ...row, actual: 3 });
+      });
+
+      expect(result.current.feed).toHaveLength(1);
+      expect(dayOf(result.current, 'h1')?.state).toBe('partial');
+      expect(result.current.feed[0].entry.skipReason).toBeUndefined();
+    });
+
+    it('deletes a row and reverts the day, with no undo toast (AC 4, D5)', async () => {
+      const repository = new LocalRepository(await seed([habit()]));
+      const row = await seedRow(repository);
+      const result = await todayScreen(repository);
+
+      await act(async () => {
+        await result.current.removeEntry(row.id);
+      });
+
+      expect(result.current.feed).toEqual([]);
+      expect(dayOf(result.current, 'h1')?.state).toBe('pending');
+      expect(result.current.toast).toBeNull();
+    });
+
+    describe('deletePreview — when the delete needs a confirm (D2)', () => {
+      it('is null while another row of that habit\u2019s day survives (AC 4)', async () => {
+        const repository = new LocalRepository(await seed([habit()]));
+        await seedRow(repository);
+        await seedRow(repository, { id: 'r2', timestamp: `${TODAY}T08:00:00.000Z` });
+        const result = await todayScreen(repository);
+
+        expect(result.current.deletePreview('r1')).toBeNull();
+        expect(result.current.deletePreview('r2')).toBeNull();
+      });
+
+      it('is null for an id the feed does not hold', async () => {
+        const result = await todayScreen(new LocalRepository(await seed([habit()])));
+
+        expect(result.current.deletePreview('nobody')).toBeNull();
+      });
+
+      it('warns on the day\u2019s last row, and says today falls back to pending (AC 5)', async () => {
+        const repository = new LocalRepository(await seed([habit()]));
+        await seedRow(repository);
+        const result = await todayScreen(repository);
+
+        const effect = result.current.deletePreview('r1');
+        expect(effect?.emptiesDay).toBe(true);
+        expect(effect?.carriesMiss).toBe(false);
+        expect(effect?.habit.id).toBe('h1');
+        // Not `missed`, and no broken streak: today is still open (ADR-0001). The
+        // `missed` reversal belongs to a screen holding past-dated rows (#15).
+        expect(effect?.stateAfter).toBe('pending');
+      });
+
+      it('counts rows per habit, so another habit\u2019s row is no company (AC 5)', async () => {
+        const repository = new LocalRepository(await seed([habit(), binary()]));
+        await seedRow(repository);
+        await seedRow(repository, { id: 'r2', habitId: 'b1', actual: 1 });
+        const result = await todayScreen(repository);
+
+        // Two rows in the feed, but each is the last row of *its* habit's day.
+        expect(result.current.feed).toHaveLength(2);
+        expect(result.current.deletePreview('r1')?.emptiesDay).toBe(true);
+        expect(result.current.deletePreview('r2')?.emptiesDay).toBe(true);
+        expect(result.current.deletePreview('r2')?.habit.id).toBe('b1');
+      });
+
+      it('warns that a miss-carrying skip is being erased (AC 6)', async () => {
+        const repository = new LocalRepository(await seed([habit()]));
+        await seedRow(repository, { actual: 0, skipReason: 'cue' });
+        // A second skip row, so the warning is not only the emptiesDay one.
+        await seedRow(repository, {
+          id: 'r2',
+          actual: 0,
+          skipReason: 'floor',
+          timestamp: `${TODAY}T08:00:00.000Z`,
+        });
+        const result = await todayScreen(repository);
+
+        const effect = result.current.deletePreview('r1');
+        expect(effect?.emptiesDay).toBe(false);
+        expect(effect?.carriesMiss).toBe(true);
+        expect(effect?.stateAfter).toBe('skip');
+      });
+
+      it('does not warn for an exception skip, which is no miss at all (ADR-0001)', async () => {
+        const repository = new LocalRepository(await seed([habit()]));
+        await seedRow(repository, { actual: 0, skipReason: 'exception' });
+        await seedRow(repository, {
+          id: 'r2',
+          actual: 0,
+          skipReason: 'exception',
+          timestamp: `${TODAY}T08:00:00.000Z`,
+        });
+        const result = await todayScreen(repository);
+
+        // `isMissDay` owns that rule; re-testing the reason here is what would lose it.
+        expect(result.current.deletePreview('r1')).toBeNull();
+      });
+
+      it('still warns on the last row of an exception-skip day, on emptiesDay alone', async () => {
+        const repository = new LocalRepository(await seed([habit()]));
+        await seedRow(repository, { actual: 0, skipReason: 'exception' });
+        const result = await todayScreen(repository);
+
+        const effect = result.current.deletePreview('r1');
+        expect(effect?.emptiesDay).toBe(true);
+        expect(effect?.carriesMiss).toBe(false);
+      });
+
+      it('leaves stateAfter undefined when the emptied day is paused (ADR-0003)', async () => {
+        const repository = new LocalRepository(
+          await seed([habit({ id: 'h1', lifecycle: 'paused', pauses: [{ from: TODAY }] })]),
+        );
+        await seedRow(repository);
+        const result = await todayScreen(repository);
+
+        const effect = result.current.deletePreview('r1');
+        expect(effect?.emptiesDay).toBe(true);
+        // The engine has no opinion about an empty paused day, so the screen must not
+        // claim one either.
+        expect(effect?.stateAfter).toBeUndefined();
+      });
     });
   });
 });
