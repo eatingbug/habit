@@ -11,14 +11,17 @@ import {
   Hint,
   NumberField,
   SegmentedControl,
+  SkipReasonChips,
+  TextField,
   TOAST_OVERLAY_CLEARANCE,
   ToastOverlay,
 } from '@/components';
+import { SKIP_REASON_LABELS } from '@/config/copy';
 import { isFloorMet } from '@/domain/classify';
 import { weekdayOf } from '@/domain/dates';
 import { useToday, type TodayFeedItem, type TodayHabitRow } from '@/hooks/useToday';
 import { timestampAtLocalTime } from '@/lib/device';
-import type { DayState } from '@/models';
+import type { DayState, SkipReason } from '@/models';
 import { useTheme } from '@/theme/ThemeProvider';
 import { FONT_FAMILY, FONT_SIZE, SPACE } from '@/theme/tokens';
 
@@ -26,11 +29,10 @@ import { FONT_FAMILY, FONT_SIZE, SPACE } from '@/theme/tokens';
  * Today — SPEC §6.2; layout from `design/parts/Today.body.html`, copy from the
  * design canvas.
  *
- * The artboard is the finished design, so it shows more than this screen renders. The
- * skip chips (#12), tap-to-edit (#13), the 어제 stepper (#14), free logs (#16), the
- * reward toast (#17) and the at-risk save banner (#18) each belong to a later ticket
- * and are left out rather than stubbed — a hardcoded number would read as data the
- * user does not have.
+ * The artboard is the finished design, so it shows more than this screen renders.
+ * Tap-to-edit (#13), the 어제 stepper (#14), free logs (#16), the reward toast (#17)
+ * and the at-risk save banner (#18) each belong to a later ticket and are left out
+ * rather than stubbed — a hardcoded number would read as data the user does not have.
  *
  * What ships here is the low-friction path: pick a habit, press one control (or a
  * quick chip), and see the row appear in the feed with the day's state recomputed.
@@ -80,18 +82,42 @@ function stateLabel(state: DayState): string {
 
 function FeedRow({ item }: { item: TodayFeedItem }) {
   const { colors } = useTheme();
+  /**
+   * §3.3's row discriminator — the *presence of a reason*, never `actual === 0`. A
+   * skip row must be tested first, above the binary/count split: on a binary habit
+   * the amount column would otherwise read `✓ 완료`, claiming success on a day the
+   * user just said they did not do.
+   *
+   * The canvas fixes this case (`design/parts/Today.logic.js:97–100`): the amount
+   * column reads `건너뜀` unemphasised (`amt plain`) with the reason on a second line.
+   * The hue is `muted`, not `done` — a recorded skip is a fact, not an achievement.
+   */
+  const reason = item.entry.skipReason;
   const amount =
-    item.habit.kind === 'binary' ? '✓ 완료' : `${item.entry.actual}${item.habit.floorUnit}`;
+    reason != null
+      ? '건너뜀'
+      : item.habit.kind === 'binary'
+        ? '✓ 완료'
+        : `${item.entry.actual}${item.habit.floorUnit}`;
 
   return (
-    <View style={[styles.feedRow, { borderColor: colors.border }]}>
-      <Text style={[styles.feedTime, { color: colors.faint }]}>
-        {clockOf(item.entry.timestamp)}
-      </Text>
-      <Text style={[styles.feedName, { color: colors.text }]} numberOfLines={1}>
-        {item.habit.name}
-      </Text>
-      <Text style={[styles.feedAmount, { color: colors.done }]}>{amount}</Text>
+    <View style={[styles.feedItem, { borderColor: colors.border }]}>
+      <View style={styles.feedRow}>
+        <Text style={[styles.feedTime, { color: colors.faint }]}>
+          {clockOf(item.entry.timestamp)}
+        </Text>
+        <Text style={[styles.feedName, { color: colors.text }]} numberOfLines={1}>
+          {item.habit.name}
+        </Text>
+        <Text style={[styles.feedAmount, { color: reason != null ? colors.muted : colors.done }]}>
+          {amount}
+        </Text>
+      </View>
+      {reason != null && (
+        <Text style={[styles.feedNote, { color: colors.faint }]}>
+          {SKIP_REASON_LABELS[reason]}
+        </Text>
+      )}
     </View>
   );
 }
@@ -112,11 +138,13 @@ function Composer({
   date,
   previewOf,
   onLog,
+  onSkip,
 }: {
   row: TodayHabitRow;
   date: string;
   previewOf: (staged: number) => { sum: number; state: DayState } | null;
   onLog: (actual: number, opts?: { timestamp?: string }) => Promise<void>;
+  onSkip: (reason: SkipReason, opts?: { note?: string }) => Promise<void>;
 }) {
   const { colors } = useTheme();
   /**
@@ -131,6 +159,8 @@ function Composer({
   const [minute, setMinute] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  /** The optional note a skip carries — filled in *before* a chip is tapped (B5). */
+  const [note, setNote] = useState('');
 
   const isCount = row.habit.kind === 'count';
   const unit = row.habit.floorUnit;
@@ -183,6 +213,29 @@ function Composer({
       // Only the amount resets. An open time reveal is an explicit override the user
       // chose, and a second log of the same session belongs at the same time.
       setStaged(null);
+    } catch {
+      setError('기록하지 못했어요. 잠시 뒤 다시 눌러 주세요.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  /**
+   * A chip tap is the whole gesture — no confirm step, so this commits directly.
+   * `Keyboard.dismiss()` for the same reason `submit` does it: the note field raises
+   * the soft keyboard, and on iOS the window does not resize for it, so the
+   * bottom-pinned 실행취소 toast would sit behind the keyboard for its whole window.
+   */
+  async function submitSkip(reason: SkipReason) {
+    if (saving) return;
+
+    Keyboard.dismiss();
+    setSaving(true);
+    setError(null);
+    try {
+      await onSkip(reason, { note });
+      // The next skip must not inherit this one's note.
+      setNote('');
     } catch {
       setError('기록하지 못했어요. 잠시 뒤 다시 눌러 주세요.');
     } finally {
@@ -327,6 +380,54 @@ function Composer({
         />
       )}
 
+      {/* B5 — the skip affordance, as **one bounded group**: the note box and the
+          chips inside a single hairline-topped block, note first because it is filled
+          in before a chip is tapped (AC — 총 두 탭).
+
+          The note belongs to the skip path, so it lives inside the skip group: within
+          this block, this habit's skip is the only thing it can be a note *for*, and
+          one left staged here and picked up by a later chip tap is what the user
+          wrote it for. (`note` is deliberately **not** wired into `logActivity`:
+          SPEC §6.2 does put an optional note on the activity path, but that is #13's
+          edit surface, not this ticket's.)
+
+          The guarantee is scoped to the habit and to the skip path — `Composer` is
+          keyed on the habit, so switching habits remounts and cannot carry a note
+          across. It is *not* scoped by date: this screen records only today, and #14
+          owns the 어제 stepper (§6.2 B4) and the note's behaviour across it.
+
+          Two deviations from the canvas, both deliberate:
+          - **Copy.** `메모 (선택)` is the front half of
+            `design/parts/Today.body.html:56`. Its trailing
+            `— 오늘 무슨 일이 있었나요` is shed: that question belongs to the free-log
+            (일기) field, which asks what happened today, whereas this box answers
+            why not. The front half asserts nothing about the occasion, so it is true
+            in either field.
+          - **Arrangement.** `:63–68` puts the chips on the 🕑 row. That layout has no
+            note field to place — the canvas never planned one on the habit path — so
+            it offers no arrangement for this element, and the misreading above is the
+            cost of following it anyway.
+
+          Withheld whole on a day activity covers (`row.skippable`, §4.1): chips,
+          note and all. */}
+      {row.skippable && (
+        <View style={[styles.skipGroup, { borderColor: colors.border }]}>
+          <TextField
+            accessibilityLabel="못 한 이유 메모"
+            value={note}
+            onChangeText={setNote}
+            placeholder="메모 (선택)"
+          />
+          <SkipReasonChips
+            label="건너뛰기"
+            habitName={row.habit.name}
+            selected={row.skipReasonToday}
+            disabled={saving}
+            onPick={(reason) => void submitSkip(reason)}
+          />
+        </View>
+      )}
+
       {row.day?.state === 'partial' && <Footnote>최소엔 못 미침, 실패 아님</Footnote>}
       {error != null && <Banner>{error}</Banner>}
     </Card>
@@ -344,6 +445,7 @@ export default function Today() {
     xpToday,
     loading,
     logActivity,
+    logSkip,
     previewOf,
     toast,
     undoLast,
@@ -398,6 +500,7 @@ export default function Today() {
               date={date}
               previewOf={(stagedAmount) => previewOf(selected.habit.id, stagedAmount)}
               onLog={(actual, opts) => logActivity(selected.habit.id, actual, opts)}
+              onSkip={(reason, opts) => logSkip(selected.habit, reason, opts)}
             />
           </>
         )}
@@ -447,23 +550,32 @@ const styles = StyleSheet.create({
     fontFamily: FONT_FAMILY.mono,
     fontVariant: ['tabular-nums'],
   },
+  // The note and the chips as one bounded block, so the note cannot be read as
+  // belonging to the log control above it. No canvas selector is cited: this
+  // arrangement is the documented deviation above, and `.skiprow` is the chip row's
+  // own class (see `SkipReasonChips`).
+  skipGroup: { borderTopWidth: 1, paddingTop: SPACE.md, gap: SPACE.md - 2 },
   time: { alignSelf: 'flex-start' },
   unit: { fontSize: FONT_SIZE.sm },
   grow: { flex: 1 },
   feed: { gap: SPACE.sm },
-  feedRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACE.md,
-    borderBottomWidth: 1,
-    paddingVertical: SPACE.md,
-  },
+  // The hairline and vertical rhythm move to the item, so a skip row's reason line
+  // sits inside the same separated block as the amount it explains.
+  feedItem: { borderBottomWidth: 1, paddingVertical: SPACE.md, gap: SPACE.xs },
+  feedRow: { flexDirection: 'row', alignItems: 'center', gap: SPACE.md },
   feedTime: {
     fontSize: FONT_SIZE.sm,
     fontFamily: FONT_FAMILY.mono,
     fontVariant: ['tabular-nums'],
   },
   feedName: { fontSize: FONT_SIZE.base, flexShrink: 1 },
+  // `.backnote` (`design/_tokens.css:234`) — the second line under a skip row, saying
+  // which reason was recorded. `--faint` is taken as given; the rule's
+  // `font-family: var(--mono)` is deliberately **not**: `.backnote` carries figures
+  // elsewhere in the canvas, where tabular numerals are the point, whereas this line
+  // is a Korean word that a mono stack has no glyphs for and would render through a
+  // fallback. Font size is tokenized to the nearest step (no 10.5 token exists).
+  feedNote: { fontSize: FONT_SIZE.sm },
   feedAmount: {
     marginLeft: 'auto',
     fontSize: FONT_SIZE.base,

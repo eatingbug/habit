@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 
+import { SKIP_REASON_LABELS } from '@/config/copy';
 import { TUNING } from '@/config/tuning';
 import { useRepository } from '@/context/RepositoryContext';
 import { type ClassifiedDay, isFloorMet } from '@/domain/classify';
 import { newId } from '@/lib/device';
-import type { Habit } from '@/models';
+import type { Habit, SkipReason } from '@/models';
 
 /**
  * The one-tap logging primitive — SPEC §6.1 / §6.2 (B1) and its undo toast (B6).
@@ -59,6 +60,23 @@ export interface QuickLog {
    */
   logActivity(habit: Habit, actual: number, opts?: { timestamp?: string }): Promise<void>;
   /**
+   * Append one **skip** row for today: `actual: 0` plus a reason (§3.3's row
+   * discriminator, §6.2 B5). One chip tap is the whole gesture, so this takes the
+   * reason directly — there is no confirm step and no second prompt.
+   *
+   * Deliberately **not** routed through `logActivity`: that function's `actual > 0`
+   * guard is a §3.3 invariant, and loosening it so this could reuse it would let
+   * `logActivity(habit, 0)` write a **reason-less zero row** — a row the domain says
+   * cannot exist. The two functions share only the "mint the id, write, toast,
+   * onChange" shape, which is four lines each and not worth an extraction (CLAUDE.md
+   * §2).
+   *
+   * `opts.note` is the optional free-text note the user fills in *before* tapping a
+   * chip, so the gesture stays two taps. It takes no `date`: this hook records today,
+   * and reason-tagging a past day is backfill's job (#14).
+   */
+  logSkip(habit: Habit, reason: SkipReason, opts?: { note?: string }): Promise<void>;
+  /**
    * Delete the row the toast names, by id. A no-op with no toast — including after
    * the toast's window elapsed, which is the whole point of the window.
    */
@@ -104,6 +122,32 @@ export interface LogAffordances {
    * second tap is "+1 더", not a second whole minimum. Binary is always 1.
    */
   oneTapAmount: number;
+  /**
+   * The reason representing today when today is a **skip-only** day — what the chip
+   * row shows as selected.
+   *
+   * Read straight off `day.skipReason`, which needs no extra condition: `dayStates`
+   * populates it only when the day's state is `skip` (`classify.ts`), and §4.1's
+   * precedence means a day holding any activity row is never in that state. So a day
+   * an activity row covers already arrives here with no reason — the skip it holds
+   * has no bearing on classification, misses or diagnosis, and must not be shown as
+   * the day's answer.
+   *
+   * Derived here rather than in each screen for the same reason the two fields above
+   * are: `TodayHabitRow` and `DashboardRow` both extend `LogAffordances`, so neither
+   * screen reads `day.skipReason` itself and the two cannot drift.
+   */
+  skipReasonToday?: SkipReason;
+  /**
+   * May this day be reason-tagged as a skip at all? False once the day holds an
+   * activity row.
+   *
+   * §4.1's precedence is the reason: activity overrides skip, so a skip row written
+   * on such a day changes no state, no miss and no diagnosis. An affordance that
+   * writes a row the domain will ignore tells the user something untrue, so both
+   * surfaces withhold their skip affordance entirely.
+   */
+  skippable: boolean;
 }
 
 /**
@@ -124,6 +168,8 @@ export function logAffordances(habit: Habit, day: ClassifiedDay | undefined): Lo
     hasActivityToday,
     // Binary has no amount: its floor is 1 and a row is always `actual: 1` (§3.3).
     oneTapAmount: habit.kind === 'count' && !hasActivityToday ? habit.floor : 1,
+    skipReasonToday: day?.skipReason,
+    skippable: !hasActivityToday,
   };
 }
 
@@ -179,6 +225,35 @@ export function useQuickLog({
     onChange();
   }
 
+  async function logSkip(
+    habit: Habit,
+    reason: SkipReason,
+    opts: { note?: string } = {},
+  ): Promise<void> {
+    // Same shape as `logActivity`: minted before the write, so the toast names the
+    // row undo will delete and can never resolve to a different one.
+    const entryId = newId();
+    const note = opts.note?.trim();
+
+    await repository.upsertEntry({
+      id: entryId,
+      habitId: habit.id,
+      date: today,
+      timestamp: now().toISOString(),
+      actual: 0,
+      skipReason: reason,
+      // Absent, not empty: a stored '' would be indistinguishable from a real note.
+      note: note != null && note.length > 0 ? note : undefined,
+    });
+
+    // Canvas copy — `design/parts/Today.logic.js:105` (`toastMain`). The narrow-row
+    // short form in `design/parts/RowSkip.body.html:40` (`못 한 날로 기록 · 깜빡함`)
+    // is the same sentence abbreviated; one wording serves both screens, as the
+    // activity toast's single `기록됨` already does.
+    setToast({ entryId, message: '못 한 날로 기록했어요', detail: SKIP_REASON_LABELS[reason] });
+    onChange();
+  }
+
   async function undoLast(): Promise<void> {
     if (toast == null) return;
 
@@ -191,6 +266,7 @@ export function useQuickLog({
   return {
     toast,
     logActivity,
+    logSkip,
     undoLast,
     dismissToast,
   };

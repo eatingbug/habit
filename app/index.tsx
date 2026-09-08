@@ -1,5 +1,13 @@
 import { useRouter } from 'expo-router';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useState } from 'react';
+import {
+  AccessibilityInfo,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 
 import {
   Button,
@@ -8,10 +16,12 @@ import {
   Eyebrow,
   Footnote,
   Heatmap,
+  SkipReasonChips,
   TOAST_OVERLAY_CLEARANCE,
   ToastOverlay,
 } from '@/components';
 import { useDashboard, type DashboardRow } from '@/hooks/useDashboard';
+import type { SkipReason } from '@/models';
 import { useTheme } from '@/theme/ThemeProvider';
 import { FONT_SIZE, RADIUS, SPACE } from '@/theme/tokens';
 
@@ -19,11 +29,11 @@ import { FONT_SIZE, RADIUS, SPACE } from '@/theme/tokens';
  * Dashboard — SPEC §6.1; layout from `design/parts/Dashboard.body.html`.
  *
  * The artboard is the finished design, so it shows more than this screen renders. The
- * stat cards / XP bars (#17), the status lights and the "손볼 습관 N개" aggregate (#20),
- * long-press skip chips (#12) and the streak count (#14) each belong to a later ticket
- * and are left out rather than stubbed: a hardcoded number would read as data the user
- * does not have. What ships here is the row itself — name, stat tag, the
- * `TUNING.heatmapDays` heatmap, and the one-tap log with its 실행취소 toast (#11).
+ * stat cards / XP bars (#17), the status lights and the "손볼 습관 N개" aggregate (#20)
+ * and the streak count (#14) each belong to a later ticket and are left out rather
+ * than stubbed: a hardcoded number would read as data the user does not have. What
+ * ships here is the row itself — name, stat tag, the `TUNING.heatmapDays` heatmap, the
+ * one-tap log with its 실행취소 toast (#11), and the long-press skip chips (#12).
  */
 
 /**
@@ -44,19 +54,47 @@ function oneTapLabel(row: DashboardRow): string {
   return row.hasActivityToday ? '+1 더' : '+최소';
 }
 
+/**
+ * The screen-reader equivalent of the long press.
+ *
+ * A custom action name is used, rather than RN's standard `longpress`, so that the
+ * `label` below travels with it — that label is the only text saying what this action
+ * does. How the platform presents it is unverified on device: on web both the action
+ * and the announcement are no-ops, so this is a manual verification item.
+ */
+const PICK_SKIP_REASON = 'pickSkipReason';
+
 function HabitRow({
   row,
   onPress,
   onLog,
+  onSkip,
 }: {
   row: DashboardRow;
   onPress: () => void;
   onLog: () => void;
+  onSkip: (reason: SkipReason) => void;
 }) {
   const { colors } = useTheme();
   // Binary's floor is 1, so one row is the whole day: the control has nothing left to
   // append and reads as completed instead (AC — 완료 후 비활성).
   const done = row.habit.kind === 'binary' && row.hasActivityToday;
+  /**
+   * B5's disclosure. Collapsed by default and re-collapsed once a reason is recorded,
+   * so the row returns to its resting shape. Local, not hoisted to the hook: it is
+   * "is this row's disclosure open", which no other surface and no test asserts.
+   */
+  const [skipOpen, setSkipOpen] = useState(false);
+  /**
+   * Opening the chips is announced, because activating an accessibility action and
+   * perceiving nothing is the same "this feature does not exist for me" failure the
+   * action was added to prevent — the disclosure is the only feedback either path
+   * gets, and a screen reader does not narrate a layout change.
+   */
+  function openSkip() {
+    setSkipOpen(true);
+    AccessibilityInfo.announceForAccessibility('못 한 날 사유를 고르세요');
+  }
 
   return (
     <Card>
@@ -89,10 +127,28 @@ function HabitRow({
         </View>
       </Pressable>
       <View style={styles.qbottom}>
+        {/* B5's gesture is on the **ribbon**, not on today's individual cell. Two
+            reasons: one cell is a `TUNING.heatmapDays`-th of the strip (~15px), far
+            under §6.0's 44px tap target; and `Heatmap` is deliberately hidden from
+            assistive tech (a ribbon is a summary of days, not 20 controls), so a
+            `Pressable` inside it would be unreachable there. The ribbon is a
+            superset of "long-press today's cell" — easier to hit, and outside the
+            hidden subtree, so this Pressable keeps its own accessible name.
+
+            `accessibilityActions` is the screen-reader equivalent: a long press is a
+            gesture assistive tech does not surface, so without it the feature would
+            not exist for those users. */}
         <Pressable
           onPress={onPress}
+          onLongPress={row.skippable ? openSkip : undefined}
           accessibilityRole="button"
           accessibilityLabel={`${row.habit.name} 기록 보기`}
+          accessibilityActions={
+            row.skippable ? [{ name: PICK_SKIP_REASON, label: '못 한 날 사유 고르기' }] : undefined
+          }
+          onAccessibilityAction={(event) => {
+            if (event.nativeEvent.actionName === PICK_SKIP_REASON) openSkip();
+          }}
           style={styles.strip}
         >
           <Heatmap cells={row.cells} />
@@ -108,6 +164,26 @@ function HabitRow({
           style={styles.onetap}
         />
       </View>
+      {/* `.skiprow` (`design/parts/RowSkip.body.html:20–25`) — inside the card, on
+          its own hairline-topped row. Recording a reason collapses it again: the
+          answer is on the ribbon now, so the question has been asked and answered.
+
+          No note field here: AC 8's optional note is satisfied by Today's composer,
+          and the ticket asks for none on this path — the two-tap fast route from a
+          row, which has no text-entry context. */}
+      {row.skippable && skipOpen && (
+        <View style={[styles.skiprow, { borderColor: colors.border }]}>
+          <SkipReasonChips
+            label="오늘 못 했어요 · 왜?"
+            habitName={row.habit.name}
+            selected={row.skipReasonToday}
+            onPick={(reason) => {
+              onSkip(reason);
+              setSkipOpen(false);
+            }}
+          />
+        </View>
+      )}
     </Card>
   );
 }
@@ -115,7 +191,7 @@ function HabitRow({
 export default function Dashboard() {
   const { colors, preference, toggle } = useTheme();
   const router = useRouter();
-  const { rows, loading, logActivity, toast, undoLast } = useDashboard();
+  const { rows, loading, logActivity, logSkip, toast, undoLast } = useDashboard();
 
   return (
     <View style={[styles.fill, { backgroundColor: colors.surface }]}>
@@ -146,6 +222,7 @@ export default function Dashboard() {
                 row={row}
                 onPress={() => router.push(`/habit/${row.habit.id}`)}
                 onLog={() => void logActivity(row.habit, row.oneTapAmount)}
+                onSkip={(reason) => void logSkip(row.habit, reason)}
               />
             ))}
           </View>
@@ -200,4 +277,5 @@ const styles = StyleSheet.create({
   // `.ribbon` already claims the slack with `flex: 1`; the control must not be
   // squeezed below §6.0's 44px tap target on a narrow row.
   onetap: { flexShrink: 0 },
+  skiprow: { borderTopWidth: 1, paddingTop: SPACE.sm, marginTop: SPACE.xs },
 });

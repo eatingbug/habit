@@ -6,7 +6,7 @@ import { dayStates } from '@/domain/classify';
 import { windowEndingAt } from '@/domain/dates';
 import { heatCells, type HeatCell } from '@/domain/heatLevel';
 import { localToday } from '@/lib/device';
-import type { Habit, Stat } from '@/models';
+import type { Habit, SkipReason, Stat } from '@/models';
 
 import {
   logAffordances,
@@ -46,6 +46,11 @@ export interface DashboardView {
    * there is nothing to look up and no "habit not found" branch to write.
    */
   logActivity(habit: Habit, actual: number, opts?: { timestamp?: string }): Promise<void>;
+  /**
+   * Reason-tag today as a skip (§6.1 B5) — what the long-press chips call. The same
+   * primitive Today's chip row uses, so there is one skip-write implementation.
+   */
+  logSkip(habit: Habit, reason: SkipReason, opts?: { note?: string }): Promise<void>;
   toast: QuickLogToast | null;
   undoLast(): Promise<void>;
 }
@@ -117,6 +122,7 @@ export function useDashboard({ today = localToday() }: { today?: string } = {}):
     rows,
     loading,
     logActivity: quick.logActivity,
+    logSkip: quick.logSkip,
     toast: quick.toast,
     undoLast: quick.undoLast,
   };
