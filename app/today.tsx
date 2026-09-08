@@ -16,7 +16,7 @@ import {
   TOAST_OVERLAY_CLEARANCE,
   ToastOverlay,
 } from '@/components';
-import { SKIP_REASON_LABELS } from '@/config/copy';
+import { deleteConfirmLines, SKIP_REASON_LABELS } from '@/config/copy';
 import { isFloorMet } from '@/domain/classify';
 import { weekdayOf } from '@/domain/dates';
 import {
@@ -25,7 +25,7 @@ import {
   type TodayFeedItem,
   type TodayHabitRow,
 } from '@/hooks/useToday';
-import { timestampAtLocalTime } from '@/lib/device';
+import { restampedAtLocalTime, timestampAtLocalTime } from '@/lib/device';
 import type { DayState, HabitEntry, SkipReason } from '@/models';
 import { useTheme } from '@/theme/ThemeProvider';
 import { FONT_FAMILY, FONT_SIZE, SPACE, TAP_TARGET } from '@/theme/tokens';
@@ -39,10 +39,11 @@ import { FONT_FAMILY, FONT_SIZE, SPACE, TAP_TARGET } from '@/theme/tokens';
  * banner (#18) each belong to a later ticket and are left out rather than stubbed — a
  * hardcoded number would read as data the user does not have.
  *
- * #13 added the correction path: a feed line is a **control**, and tapping it swaps the
- * composer for `EntryEditor` on that one row. Every judgment behind the delete confirm
- * is `useToday.deletePreview`'s, not this file's — there are no component render tests
- * (jest.config.js), so a condition written here would be a condition nothing asserts.
+ * A feed line is also a **control** (#13): tapping it swaps the composer for
+ * `EntryEditor` on that one row. Every judgment behind the delete confirm is
+ * `useToday.deletePreview`'s and its copy is `config/copy.ts`'s, not this file's —
+ * there are no component render tests (jest.config.js), and `testMatch` covers `src/**`
+ * only, so anything decided in this file is decided where no test can reach it.
  *
  * What ships here is the low-friction path: pick a habit, press one control (or a
  * quick chip), and see the row appear in the feed with the day's state recomputed.
@@ -91,8 +92,8 @@ function stateLabel(state: DayState): string {
 }
 
 /**
- * One feed line. Since #13 it is a **control**: pressing it opens `EntryEditor` on that
- * row, so it carries §6.0's 44px minimum and a button role.
+ * One feed line, and a **control** (#13): pressing it opens `EntryEditor` on that row,
+ * so it carries §6.0's 44px minimum and a button role.
  *
  * `accessibilityLabel` is assembled rather than left to the three child `Text`s: a
  * screen reader would otherwise announce "07:10 독서 +3쪽" with no hint that the line
@@ -117,8 +118,6 @@ function FeedRow({ item, onPress }: { item: TodayFeedItem; onPress: () => void }
       : item.habit.kind === 'binary'
         ? '✓ 완료'
         : `${item.entry.actual}${item.habit.floorUnit}`;
-
-  const note = item.entry.note;
 
   return (
     <Pressable
@@ -152,8 +151,8 @@ function FeedRow({ item, onPress }: { item: TodayFeedItem; onPress: () => void }
           the canvas ever displays one, on the same `.backnote` second line this row
           already uses for the reason. Shown for an activity row too: `note` is a field
           of the row (§3.3), not of the skip path. */}
-      {note != null && (
-        <Text style={[styles.feedNote, { color: colors.faint }]}>메모: {note}</Text>
+      {item.entry.note != null && (
+        <Text style={[styles.feedNote, { color: colors.faint }]}>메모: {item.entry.note}</Text>
       )}
     </Pressable>
   );
@@ -471,39 +470,6 @@ function Composer({
   );
 }
 
-/**
- * The delete confirm's body (#13 AC 5/6). Assembled from `DeleteEffect`, so every
- * clause is something the hook derived and a test asserts — the screen adds no
- * judgment of its own.
- *
- * **Copy: 캔버스 출처 없음 — 신규 문구.** `design/parts/` holds no delete confirm at
- * all. 근거: `design/parts/Backfill.body.html:67` is the canvas's one consequence
- * notice, and it names **what changes** before anything else ("원래 있던 기록을
- * 지우지 않고 옆에 더해집니다. 실패로 잡혀 있던 날이면 성공으로 바뀌고 …"). These
- * lines follow that register, in the same order: the loss first, then the day's new
- * reading through `stateLabel`, which is the map the rest of this screen already uses.
- *
- * Two things are deliberately **absent**, per the ticket's own analysis:
- * - no `missed` and no streak count. Today is still open, so an emptied today falls
- *   back to `pending` (ADR-0001) — nothing breaks, and there is no figure to quote.
- *   That warning belongs to a past-dated screen (#15).
- * - nothing about the day's state when `stateAfter` is `undefined` (a paused date,
- *   ADR-0003): the engine has no opinion, so neither does the sentence.
- */
-function deleteConfirmLines(effect: DeleteEffect): string[] {
-  const lines: string[] = [];
-  if (effect.emptiesDay) {
-    lines.push(`이 기록을 지우면 오늘 ${effect.habit.name}에 남는 기록이 없어요.`);
-  }
-  if (effect.carriesMiss) {
-    lines.push("실패로 세고 있던 '못 함' 기록이 사라져요.");
-  }
-  if (effect.stateAfter != null) {
-    lines.push(`지운 뒤 오늘: ${stateLabel(effect.stateAfter)}`);
-  }
-  return lines;
-}
-
 /** Which shape the edited row is being given — §3.3's two row kinds, as a choice. */
 type RowKind = 'activity' | 'skip';
 
@@ -518,8 +484,14 @@ type RowKind = 'activity' | 'skip';
  *
  * The whole row is passed to `onSave`, because the write **replaces** the stored
  * element — an omitted `timestamp` would silently reorder the feed (§3.3). So the time
- * reveal is prefilled from *this row's* stamp, not from now, and an untouched reveal
- * passes the original string through verbatim.
+ * reveal is prefilled from *this row's* stamp, not from now, and the stamp is rewritten
+ * only when the fields read a clock the original does not (`restampedAtLocalTime`);
+ * otherwise the original string is stored back verbatim, seconds and all.
+ *
+ * The reveal has no `지금으로` reset, unlike the composer's: with the original passed
+ * through verbatim there is nothing to reset *to* but the time already in the fields.
+ * Lifting a shared `TimeReveal` out of `Composer` waits for #15's journal, the second
+ * caller — this ticket has no reason to touch `Composer` (CLAUDE.md §3).
  */
 function EntryEditor({
   item,
@@ -559,7 +531,15 @@ function EntryEditor({
   // rather than the write rejected: a skip row is nothing without its reason.
   const canSave = kind === 'skip' ? reason != null : amountUsable;
 
-  const timestamp = timeOpen ? timestampAtLocalTime(entry.date, hour, minute) : entry.timestamp;
+  /**
+   * The stamp to store: the original unless the fields read a different wall clock
+   * (`restampedAtLocalTime`, tested in `src/lib/device.test.ts`). Opening the reveal is
+   * not an edit — the decision lives in `src/lib` because it is a decision about a
+   * stored fact, and no test can reach a judgment left in this file.
+   */
+  const timestamp = timeOpen
+    ? restampedAtLocalTime(entry.timestamp, entry.date, hour, minute)
+    : entry.timestamp;
   const timeUsable = timestamp != null;
 
   async function save() {
@@ -663,7 +643,7 @@ function EntryEditor({
             onPick={setReason}
           />}
 
-      {/* AC 3 — the note, editable at last. Placeholder reused from the composer's
+      {/* AC 3 — the note, editable here. Placeholder reused from the composer's
           skip note (`design/parts/Today.body.html:56`, front half), which is where the
           only note field the canvas draws lives. Shown for both row kinds: SPEC §6.2
           puts an optional note on the activity path too, and the composer's own comment
@@ -675,8 +655,10 @@ function EntryEditor({
         placeholder="메모 (선택)"
       />
 
-      {/* B3's reveal, prefilled from *this row's* stamp — reopening it and pressing
-          저장 must not restamp the row to now and reorder the feed (§3.3). */}
+      {/* B3's reveal, prefilled from *this row's* stamp. Reopening it and pressing
+          저장 changes nothing: `restampedAtLocalTime` returns the original verbatim
+          while the fields read its own clock, so the row keeps the sub-minute position
+          §7.3's total order gives it. */}
       {timeOpen ? (
         <View style={styles.amountRow}>
           <NumberField
@@ -724,7 +706,17 @@ function EntryEditor({
           {/* `Banner` (caution tint) is this screen's existing device for a line the
               user has to read before acting; it wraps its children in one `Text`, so
               the clauses join into one paragraph in the order the hook derived. */}
-          <Banner>{deleteConfirmLines(confirming).join(' ')}</Banner>
+          <Banner>
+            {deleteConfirmLines({
+              habitName: confirming.habit.name,
+              emptiesDay: confirming.emptiesDay,
+              carriesMiss: confirming.carriesMiss,
+              // The state → copy map is this screen's, so the label is resolved here
+              // and `copy.ts` never learns what a `DayState` is.
+              stateAfterLabel:
+                confirming.stateAfter == null ? undefined : stateLabel(confirming.stateAfter),
+            }).join(' ')}
+          </Banner>
           {/* 캔버스 출처 없음 — 신규 문구. 근거: a plain `삭제`/`취소` pair here would
               repeat the labels of the row above it and read as the same two buttons, so
               the confirm answers in the first person, as the canvas's own reassurance
@@ -914,7 +906,7 @@ const styles = StyleSheet.create({
   feed: { gap: SPACE.sm },
   // The hairline and vertical rhythm move to the item, so a skip row's reason line
   // sits inside the same separated block as the amount it explains.
-  // §6.0's 44px minimum: since #13 the row is the control that opens the editor.
+  // §6.0's 44px minimum — the row is the control that opens the editor (#13).
   feedItem: {
     borderBottomWidth: 1,
     paddingVertical: SPACE.md,

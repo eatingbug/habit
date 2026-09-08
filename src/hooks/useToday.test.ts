@@ -749,10 +749,40 @@ describe('useToday', () => {
         expect(result.current.deletePreview('r2')?.habit.id).toBe('b1');
       });
 
-      it('warns that a miss-carrying skip is being erased (AC 6)', async () => {
+      it('warns when the delete erases the day\u2019s recorded miss (AC 6)', async () => {
         const repository = new LocalRepository(await seed([habit()]));
         await seedRow(repository, { actual: 0, skipReason: 'cue' });
-        // A second skip row, so the warning is not only the emptiesDay one.
+        const result = await todayScreen(repository);
+
+        const effect = result.current.deletePreview('r1');
+        expect(effect?.carriesMiss).toBe(true);
+        expect(effect?.stateAfter).toBe('pending');
+      });
+
+      it('warns on a miss-carrying skip even when another row survives (AC 6)', async () => {
+        const repository = new LocalRepository(await seed([habit()]));
+        // Latest intent wins (§4.1), so the day reads `cue` — a miss. Deleting that row
+        // leaves the `exception` skip, which is no miss: the miss really is erased, and
+        // this is AC 6 firing with `emptiesDay` false.
+        await seedRow(repository, { actual: 0, skipReason: 'exception' });
+        await seedRow(repository, {
+          id: 'r2',
+          actual: 0,
+          skipReason: 'cue',
+          timestamp: `${TODAY}T08:00:00.000Z`,
+        });
+        const result = await todayScreen(repository);
+
+        expect(dayOf(result.current, 'h1')?.isMiss).toBe(true);
+        const effect = result.current.deletePreview('r2');
+        expect(effect?.emptiesDay).toBe(false);
+        expect(effect?.carriesMiss).toBe(true);
+        expect(effect?.stateAfter).toBe('skip');
+      });
+
+      it('stays silent when the surviving skip keeps the day a miss', async () => {
+        const repository = new LocalRepository(await seed([habit()]));
+        await seedRow(repository, { actual: 0, skipReason: 'cue' });
         await seedRow(repository, {
           id: 'r2',
           actual: 0,
@@ -761,10 +791,12 @@ describe('useToday', () => {
         });
         const result = await todayScreen(repository);
 
-        const effect = result.current.deletePreview('r1');
-        expect(effect?.emptiesDay).toBe(false);
-        expect(effect?.carriesMiss).toBe(true);
-        expect(effect?.stateAfter).toBe('skip');
+        // The question is whether the delete *erases* the miss, not whether the day is
+        // one. Warning here would claim a loss the very next line ("지운 뒤 오늘: 못 함")
+        // contradicts.
+        expect(dayOf(result.current, 'h1')?.isMiss).toBe(true);
+        expect(result.current.deletePreview('r1')).toBeNull();
+        expect(result.current.deletePreview('r2')).toBeNull();
       });
 
       it('does not warn for an exception skip, which is no miss at all (ADR-0001)', async () => {

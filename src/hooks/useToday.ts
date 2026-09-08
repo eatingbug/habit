@@ -102,9 +102,10 @@ export interface DeleteEffect {
    */
   emptiesDay: boolean;
   /**
-   * The row being deleted is a **skip that carries a miss** (AC 6) — deleting it erases
-   * a recorded miss. `isMissDay` decides it, so `exception` (a skip that is *not* a
-   * miss, ADR-0001) correctly raises no warning.
+   * This delete **erases a recorded miss** (AC 6): the day counts as a miss now and
+   * does not once the row is gone. `isMissDay` decides both halves, so `exception` — a
+   * skip that is no miss at all (ADR-0001) — raises no warning, and neither does
+   * deleting one of two skip rows, which leaves the day a miss regardless.
    */
   carriesMiss: boolean;
   /**
@@ -384,24 +385,40 @@ export function useToday({
     const remaining = rowsOnDate.filter((entry) => entry.id !== entryId);
 
     const emptiesDay = remaining.length === 0;
-    // `state === 'skip'` already implies the day holds no activity row (§4.1), so
-    // every row on it is a skip and this *is* the "deleting a miss-carrying skip"
-    // question. Calling `isMissDay` rather than re-testing the reason is what keeps
-    // `exception` out of the warning (ADR-0001).
-    const carriesMiss = row?.day != null && isMissDay(row.day.state, rowsOnDate);
+
+    // The shared walk, not `classifyDay` plus a scope test of our own: it returns no
+    // day at all for a paused date left empty, which is precisely `undefined` here
+    // (ADR-0003, and `classify.ts`'s own instruction to use `dayStates`).
+    const stateAfter = dayStates(
+      item.habit,
+      remaining,
+      item.entry.date,
+      item.entry.date,
+      today,
+    )[0]?.state;
+
+    /**
+     * "Does this delete **erase** the recorded miss?" — not "is the day a miss?". Both
+     * halves are needed: a date can hold two skip rows (`skippable` only withholds a
+     * skip once an *activity* row exists), and deleting one of them leaves the day a
+     * miss all the same. Warning there would contradict `stateAfter` inside the same
+     * paragraph of confirm copy.
+     *
+     * An unclassified day carries no miss, so `stateAfter === undefined` (a paused
+     * date left empty, ADR-0003) is the not-a-miss side of the second half.
+     *
+     * No test that the deleted row is itself a skip: a day carrying a miss through
+     * `skip` holds no activity row (§4.1), and `missed` means it holds nothing at all —
+     * so any row that can be deleted off a miss-carrying day *is* a skip. `isMissDay`
+     * is what keeps `exception` out of the warning (ADR-0001).
+     */
+    const missBefore = row?.day != null && isMissDay(row.day.state, rowsOnDate);
+    const missAfter = stateAfter != null && isMissDay(stateAfter, remaining);
+    const carriesMiss = missBefore && !missAfter;
 
     if (!emptiesDay && !carriesMiss) return null;
 
-    return {
-      habit: item.habit,
-      emptiesDay,
-      carriesMiss,
-      // The shared walk, not `classifyDay` plus a scope test of our own: it returns no
-      // day at all for a paused date left empty, which is precisely `undefined` here
-      // (ADR-0003, and `classify.ts`'s own instruction to use `dayStates`).
-      stateAfter: dayStates(item.habit, remaining, item.entry.date, item.entry.date, today)[0]
-        ?.state,
-    };
+    return { habit: item.habit, emptiesDay, carriesMiss, stateAfter };
   }
 
   return {

@@ -10,15 +10,13 @@ import type { Habit, HabitEntry, SkipReason } from '@/models';
 /**
  * The entry-write primitive — SPEC §6.1 / §6.2 (B1, B5, B6) and #13's row edit/delete.
  *
- * **Scope, deliberately widened in #13.** This file used to declare itself "the
- * one-tap logging primitive" and to own "the whole of 한 탭이 기록한다". It now owns
- * every write to a `HabitEntry`: the appends (`logActivity`, `logSkip`), the undo
- * (`undoLast`), and the corrections (`editEntry`, `removeEntry`). The reason is not
- * convenience — it is that `repository.upsertEntry`/`deleteEntry` have exactly one
- * caller in the app, and the toast invariant below is a *cross-cutting* rule between
- * appends and corrections (see `retireToastFor`): a second module writing rows could
- * not honour it. #15's journal needs the same two corrections, and a second
- * implementation of them is what would diverge.
+ * **Scope: every write to a `HabitEntry`** — the appends (`logActivity`, `logSkip`),
+ * the undo (`undoLast`) and the corrections (`editEntry`, `removeEntry`). Wider than
+ * one-tap logging alone, and deliberately so: `repository.upsertEntry`/`deleteEntry`
+ * have exactly one caller in the app, and the toast invariant below is a
+ * *cross-cutting* rule between appends and corrections (see `retireToastFor`) that a
+ * second module writing rows could not honour. #15's journal needs the same two
+ * corrections, and a second implementation of them is what would diverge.
  *
  * It also owns the **reading that shapes the control** (`logAffordances`). Splitting
  * that off was the mistake the first cut made: the amount a tap appends was then
