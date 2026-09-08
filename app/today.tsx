@@ -497,13 +497,13 @@ function EntryEditor({
   item,
   onSave,
   onDelete,
-  previewDelete,
+  deletePreview,
   onClose,
 }: {
   item: TodayFeedItem;
   onSave: (entry: HabitEntry) => Promise<void>;
   onDelete: (entryId: string) => Promise<void>;
-  previewDelete: (entryId: string) => DeleteEffect | null;
+  deletePreview: (entryId: string) => DeleteEffect | null;
   onClose: () => void;
 }) {
   const { colors } = useTheme();
@@ -568,7 +568,7 @@ function EntryEditor({
 
   /** AC 4 — with no `DeleteEffect` there is nothing to warn about, so it just goes. */
   function requestDelete() {
-    const effect = previewDelete(entry.id);
+    const effect = deletePreview(entry.id);
     if (effect == null) void remove();
     else setConfirming(effect);
   }
@@ -828,7 +828,7 @@ export default function Today() {
                 item={editing}
                 onSave={editEntry}
                 onDelete={removeEntry}
-                previewDelete={deletePreview}
+                deletePreview={deletePreview}
                 onClose={() => setEditingId(null)}
               />
             ) : (

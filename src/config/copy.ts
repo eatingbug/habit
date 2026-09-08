@@ -3,12 +3,10 @@ import type { SkipReason } from '@/models';
 /**
  * User-facing strings that no single layer can own.
  *
- * Two kinds live here now. The skip reason labels are needed by a hook *and* by a
- * component (below). `deleteConfirmLines` has the mirror-image problem: it is copy a
- * **component** renders, assembled from conditions a **hook** derives
- * (`useToday.deletePreview`) — and a pure function in `app/` is unreachable by any
- * test, since `jest.config.js` matches `src/**` only. Neither layer can own it, so it
- * sits here, where the three conditionals that *are* the judgment can be asserted.
+ * `deleteConfirmLines` is copy a **component** renders, assembled from conditions a
+ * **hook** derives (`useToday.deletePreview`) — and a pure function in `app/` is
+ * unreachable by any test, since `jest.config.js` matches `src/**` only. So it sits
+ * here, where the three conditionals that *are* the judgment can be asserted.
  *
  * The skip reason labels are needed by a **hook** (`useQuickLog` puts one on the undo
  * toast's detail line) and by a **component** (`SkipReasonChips` renders all four).
@@ -69,6 +67,15 @@ export interface DeleteConfirmFacts {
  * 옆에 더해집니다. 실패로 잡혀 있던 날이면 성공으로 바뀌고 …"). These lines follow
  * that register, in the same order: what is lost first, then the day's new reading.
  *
+ * The miss clause deliberately carries **no day-state label**. `stateLabel('skip')`
+ * reads `못 함`, and the two clauses can appear together (a miss-carrying skip with
+ * another row surviving): "…'못 함' 기록이 사라져요. 지운 뒤 오늘: 못 함" would use
+ * one term for the 미스 being erased and for the day's surviving state, one sentence
+ * apart, which is the mixing `CONTEXT.md`'s glossary forbids. It would also give the
+ * label a second source, three lines below a docblock promising the map stays the
+ * screen's. So the clause names what the row was **counted as** (실패) and what stops
+ * — never how the day now reads.
+ *
  * Two things are deliberately **absent**, per the ticket's analysis of ADR-0001:
  * - no `missed` and no streak figure. Today is still open, so emptying today leaves it
  *   `pending` — nothing breaks, and there is no number to quote. That warning belongs
@@ -82,7 +89,7 @@ export function deleteConfirmLines(facts: DeleteConfirmFacts): string[] {
     lines.push(`이 기록을 지우면 오늘 ${facts.habitName}에 남는 기록이 없어요.`);
   }
   if (facts.carriesMiss) {
-    lines.push("실패로 세고 있던 '못 함' 기록이 사라져요.");
+    lines.push('실패로 세던 기록이 바로 이 줄이라, 지우면 그 실패는 더 세지 않아요.');
   }
   if (facts.stateAfterLabel != null) {
     lines.push(`지운 뒤 오늘: ${facts.stateAfterLabel}`);
