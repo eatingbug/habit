@@ -55,10 +55,14 @@ function oneTapLabel(row: DashboardRow): string {
 }
 
 /**
- * The screen-reader equivalent of the long press. Deliberately a **custom** action
- * name rather than RN's standard `longpress`: a standard name lets the platform
- * substitute its own generic wording, which would discard the label below — and that
- * label is the only thing saying what the action does.
+ * The screen-reader equivalent of the long press.
+ *
+ * A custom action name is chosen over RN's standard `longpress` so that the `label`
+ * below — the only text saying what this action does — is what the name carries,
+ * rather than relying on how a platform presents a standard action. That is a choice
+ * made for the label's sake, not a claim about VoiceOver's or TalkBack's behaviour:
+ * neither gate can exercise it (on web both the action and the announcement are
+ * no-ops), so how it actually presents is an on-device verification item.
  */
 const PICK_SKIP_REASON = 'pickSkipReason';
 
@@ -166,10 +170,9 @@ function HabitRow({
           its own hairline-topped row. Recording a reason collapses it again: the
           answer is on the ribbon now, so the question has been asked and answered.
 
-          No note field here, and the reason is this path's purpose rather than the
-          canvas: the long-press exists to tag a reason without leaving the
-          Dashboard, so adding a text field would spend the very taps it saves. A
-          note belongs on Today's composer, where the user is already typing. */}
+          No note field here: AC 8's optional note is satisfied by Today's composer,
+          and the ticket asks for none on this path — the two-tap fast route from a
+          row, which has no text-entry context. */}
       {row.skippable && skipOpen && (
         <View style={[styles.skiprow, { borderColor: colors.border }]}>
           <SkipReasonChips

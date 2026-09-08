@@ -386,17 +386,29 @@ function Composer({
           Grouping is what makes the note honest. Loose above the primary log control
           it read as "a note for the log I am about to press", and a note typed there
           and then abandoned by logging an activity would sit in state and attach
-          itself to a later skip — misattributed input. Inside the group there is only
-          one thing it can be a note *for*, so a note left staged here and picked up
-          by a later chip tap is exactly what the user wrote it for. (`note` is
+          itself to a later skip — misattributed input. Inside the group, this habit's
+          skip is the only thing the note can be *for*, so one left staged here and
+          picked up by a later chip tap is what the user wrote it for. (`note` is
           deliberately **not** wired into `logActivity`: SPEC §6.2 does put an
           optional note on the activity path, but that is #13's edit surface, not this
           ticket's.)
 
-          This deviates from `design/parts/Today.body.html:63–68`, which puts the
-          chips on the 🕑 row. That layout has no note field to place — the canvas
-          never planned one on the habit path — so it offers no arrangement for this
-          element, and the misreading above is the cost of following it anyway.
+          The guarantee is scoped to the habit and to the skip path — `Composer` is
+          keyed on the habit, so switching habits remounts and cannot carry a note
+          across. It is *not* scoped by date: this screen records only today, and #14
+          owns the 어제 stepper (§6.2 B4) and the note's behaviour across it.
+
+          Two deviations from the canvas, both deliberate:
+          - **Copy.** `메모 (선택)` is the front half of
+            `design/parts/Today.body.html:56`. Its trailing
+            `— 오늘 무슨 일이 있었나요` is shed: that question belongs to the free-log
+            (일기) field, which asks what happened today, whereas this box answers
+            why not. The front half asserts nothing about the occasion, so it is true
+            in either field.
+          - **Arrangement.** `:63–68` puts the chips on the 🕑 row. That layout has no
+            note field to place — the canvas never planned one on the habit path — so
+            it offers no arrangement for this element, and the misreading above is the
+            cost of following it anyway.
 
           Withheld whole on a day activity covers (`row.skippable`, §4.1): chips,
           note and all. */}
@@ -540,8 +552,10 @@ const styles = StyleSheet.create({
     fontFamily: FONT_FAMILY.mono,
     fontVariant: ['tabular-nums'],
   },
-  // `.skiprow` — the note and the chips as one bounded block, so the note cannot be
-  // read as belonging to the log control above it.
+  // The note and the chips as one bounded block, so the note cannot be read as
+  // belonging to the log control above it. No canvas selector is cited: this
+  // arrangement is the documented deviation above, and `.skiprow` is the chip row's
+  // own class (see `SkipReasonChips`).
   skipGroup: { borderTopWidth: 1, paddingTop: SPACE.md, gap: SPACE.md - 2 },
   time: { alignSelf: 'flex-start' },
   unit: { fontSize: FONT_SIZE.sm },

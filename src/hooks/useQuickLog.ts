@@ -145,12 +145,7 @@ export interface LogAffordances {
    * §4.1's precedence is the reason: activity overrides skip, so a skip row written
    * on such a day changes no state, no miss and no diagnosis. An affordance that
    * writes a row the domain will ignore tells the user something untrue, so both
-   * surfaces withhold the whole skip affordance — chips, note field, long-press and
-   * its screen-reader action alike.
-   *
-   * Derived here rather than as `!hasActivityToday` in each screen: the negation is
-   * trivial, but the *reason* it is the right gate is not, and stating it twice is
-   * how the two screens eventually stop agreeing about it.
+   * surfaces withhold their skip affordance entirely.
    */
   skippable: boolean;
 }

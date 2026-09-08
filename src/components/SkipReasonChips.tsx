@@ -1,4 +1,4 @@
-import { StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 
 import { SKIP_REASON_LABELS } from '@/config/copy';
 import type { SkipReason } from '@/models';
@@ -16,7 +16,6 @@ export interface SkipReasonChipsProps {
   onPick: (reason: SkipReason) => void;
   /** Disambiguates each chip's accessible name across rows — see below. */
   habitName: string;
-  style?: StyleProp<ViewStyle>;
 }
 
 /**
@@ -46,12 +45,11 @@ export function SkipReasonChips({
   disabled,
   onPick,
   habitName,
-  style,
 }: SkipReasonChipsProps) {
   const { colors } = useTheme();
 
   return (
-    <View style={[styles.row, style]}>
+    <View style={styles.row}>
       <Text style={[styles.lbl, { color: colors.faint }]}>{label}</Text>
       {(Object.keys(SKIP_REASON_LABELS) as SkipReason[]).map((reason) => {
         const chipLabel = SKIP_REASON_LABELS[reason];
