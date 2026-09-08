@@ -160,14 +160,6 @@ function Composer({
   const [saving, setSaving] = useState(false);
   /** The optional note a skip carries — filled in *before* a chip is tapped (B5). */
   const [note, setNote] = useState('');
-  /**
-   * D7 — the whole skip affordance, note field included, is withheld on a day an
-   * activity row already covers. Activity overrides skip (§4.1), so a skip recorded
-   * then changes no state, no miss and no diagnosis, and a control whose record the
-   * domain will ignore tells the user something untrue. One already-shared reading,
-   * so no new derivation.
-   */
-  const skippable = !row.hasActivityToday;
 
   const isCount = row.habit.kind === 'count';
   const unit = row.habit.floorUnit;
@@ -343,88 +335,88 @@ function Composer({
         </>
       )}
 
-      {/* B5 — the skip note. Placed **above** the chips because it is filled in
-          before one is tapped: a prompt appearing *after* the chip would make the
-          gesture three taps and break "총 두 탭".
-
-          `메모 (선택)` is the front half of `design/parts/Today.body.html:56`. Its
-          trailing `— 오늘 무슨 일이 있었나요` is dropped: that line belongs to the
-          free-log (일기) field, whose question is "what happened today", whereas this
-          box answers "why not". The front half asserts nothing about the occasion, so
-          it is true in either field.
-
-          Withheld with the chips themselves on a day activity covers (`skippable`). */}
-      {skippable && (
-        <TextField
-          accessibilityLabel="못 한 이유 메모"
-          value={note}
-          onChangeText={setNote}
-          placeholder="메모 (선택)"
+      {/* B3 — the time picker is collapsed behind "🕑 지금 HH:MM" and revealed only to
+          override. `timestamp` is ordering and tiebreak only (§3.3), so this is rare. */}
+      {timeOpen ? (
+        <View style={styles.amountRow}>
+          <NumberField
+            accessibilityLabel="시"
+            value={hour}
+            onChangeText={setHour}
+            placeholder="시"
+          />
+          <Text style={[styles.unit, { color: colors.muted }]}>:</Text>
+          <NumberField
+            accessibilityLabel="분"
+            value={minute}
+            onChangeText={setMinute}
+            placeholder="분"
+          />
+          <Button
+            label="지금으로"
+            variant="ghost"
+            onPress={() => {
+              setTimeOpen(false);
+              setHour('');
+              setMinute('');
+            }}
+            style={styles.grow}
+          />
+        </View>
+      ) : (
+        <Button
+          label={`🕑 지금 ${clockOf(new Date().toISOString())}`}
+          variant="ghost"
+          onPress={() => {
+            // Prefilled from now, so the revealed fields show what the collapsed
+            // label promised — and an empty field can never stamp local midnight.
+            const at = new Date();
+            setHour(`${at.getHours()}`.padStart(2, '0'));
+            setMinute(`${at.getMinutes()}`.padStart(2, '0'));
+            setTimeOpen(true);
+          }}
+          style={styles.time}
         />
       )}
 
-      {/* B3 — the time picker is collapsed behind "🕑 지금 HH:MM" and revealed only to
-          override. `timestamp` is ordering and tiebreak only (§3.3), so this is rare. */}
-      {/* `.ctrls` (`design/parts/Today.body.html:63–68`) — the time control and the
-          skip chips share one row, the chips pushed to the trailing edge. The row
-          wraps, and the revealed time fields claim a full line of their own, so
-          neither control is ever squeezed on a narrow screen. */}
-      <View style={styles.ctrls}>
-        {timeOpen ? (
-          <View style={[styles.amountRow, styles.ctrlsFill]}>
-            <NumberField
-              accessibilityLabel="시"
-              value={hour}
-              onChangeText={setHour}
-              placeholder="시"
-            />
-            <Text style={[styles.unit, { color: colors.muted }]}>:</Text>
-            <NumberField
-              accessibilityLabel="분"
-              value={minute}
-              onChangeText={setMinute}
-              placeholder="분"
-            />
-            <Button
-              label="지금으로"
-              variant="ghost"
-              onPress={() => {
-                setTimeOpen(false);
-                setHour('');
-                setMinute('');
-              }}
-              style={styles.grow}
-            />
-          </View>
-        ) : (
-          <Button
-            label={`🕑 지금 ${clockOf(new Date().toISOString())}`}
-            variant="ghost"
-            onPress={() => {
-              // Prefilled from now, so the revealed fields show what the collapsed
-              // label promised — and an empty field can never stamp local midnight.
-              const at = new Date();
-              setHour(`${at.getHours()}`.padStart(2, '0'));
-              setMinute(`${at.getMinutes()}`.padStart(2, '0'));
-              setTimeOpen(true);
-            }}
-            style={styles.time}
-          />
-        )}
+      {/* B5 — the skip affordance, as **one bounded group**: the note box and the
+          chips inside a single hairline-topped block, note first because it is filled
+          in before a chip is tapped (AC — 총 두 탭).
 
-        {/* B5 — the reason chips: one tap records the skip, so the note above plus a
-            chip is the whole two-tap gesture. */}
-        {skippable && (
+          Grouping is what makes the note honest. Loose above the primary log control
+          it read as "a note for the log I am about to press", and a note typed there
+          and then abandoned by logging an activity would sit in state and attach
+          itself to a later skip — misattributed input. Inside the group there is only
+          one thing it can be a note *for*, so a note left staged here and picked up
+          by a later chip tap is exactly what the user wrote it for. (`note` is
+          deliberately **not** wired into `logActivity`: SPEC §6.2 does put an
+          optional note on the activity path, but that is #13's edit surface, not this
+          ticket's.)
+
+          This deviates from `design/parts/Today.body.html:63–68`, which puts the
+          chips on the 🕑 row. That layout has no note field to place — the canvas
+          never planned one on the habit path — so it offers no arrangement for this
+          element, and the misreading above is the cost of following it anyway.
+
+          Withheld whole on a day activity covers (`row.skippable`, §4.1): chips,
+          note and all. */}
+      {row.skippable && (
+        <View style={[styles.skipGroup, { borderColor: colors.border }]}>
+          <TextField
+            accessibilityLabel="못 한 이유 메모"
+            value={note}
+            onChangeText={setNote}
+            placeholder="메모 (선택)"
+          />
           <SkipReasonChips
             label="건너뛰기"
             habitName={row.habit.name}
             selected={row.skipReasonToday}
             disabled={saving}
             onPick={(reason) => void submitSkip(reason)}
-            style={styles.skiprow}
           />
-        )}
-      </View>
+        </View>
+      )}
 
       {row.day?.state === 'partial' && <Footnote>최소엔 못 미침, 실패 아님</Footnote>}
       {error != null && <Banner>{error}</Banner>}
@@ -548,12 +540,9 @@ const styles = StyleSheet.create({
     fontFamily: FONT_FAMILY.mono,
     fontVariant: ['tabular-nums'],
   },
-  ctrls: { flexDirection: 'row', alignItems: 'center', gap: SPACE.md - 2, flexWrap: 'wrap' },
-  // A revealed time picker takes a whole line, keeping its pre-existing full-width
-  // layout inside the wrapping `.ctrls` row.
-  ctrlsFill: { flexGrow: 1, flexBasis: '100%' },
-  // `margin-left:auto` — the chips sit at the row's trailing edge (canvas).
-  skiprow: { marginLeft: 'auto' },
+  // `.skiprow` — the note and the chips as one bounded block, so the note cannot be
+  // read as belonging to the log control above it.
+  skipGroup: { borderTopWidth: 1, paddingTop: SPACE.md, gap: SPACE.md - 2 },
   time: { alignSelf: 'flex-start' },
   unit: { fontSize: FONT_SIZE.sm },
   grow: { flex: 1 },

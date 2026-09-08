@@ -1,6 +1,13 @@
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  AccessibilityInfo,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 
 import {
   Button,
@@ -47,6 +54,14 @@ function oneTapLabel(row: DashboardRow): string {
   return row.hasActivityToday ? '+1 더' : '+최소';
 }
 
+/**
+ * The screen-reader equivalent of the long press. Deliberately a **custom** action
+ * name rather than RN's standard `longpress`: a standard name lets the platform
+ * substitute its own generic wording, which would discard the label below — and that
+ * label is the only thing saying what the action does.
+ */
+const PICK_SKIP_REASON = 'pickSkipReason';
+
 function HabitRow({
   row,
   onPress,
@@ -69,13 +84,15 @@ function HabitRow({
    */
   const [skipOpen, setSkipOpen] = useState(false);
   /**
-   * D7 — no skip affordance at all on a day activity already covers: activity
-   * overrides skip (§4.1), so such a skip changes no state, no miss and no diagnosis.
-   * The gate covers the long-press, the screen-reader action *and* the chip row
-   * together — leaving the a11y action armed while the gesture does nothing would
-   * announce a control that is not there.
+   * Opening the chips is announced, because activating an accessibility action and
+   * perceiving nothing is the same "this feature does not exist for me" failure the
+   * action was added to prevent — the disclosure is the only feedback either path
+   * gets, and a screen reader does not narrate a layout change.
    */
-  const skippable = !row.hasActivityToday;
+  function openSkip() {
+    setSkipOpen(true);
+    AccessibilityInfo.announceForAccessibility('못 한 날 사유를 고르세요');
+  }
 
   return (
     <Card>
@@ -121,14 +138,14 @@ function HabitRow({
             not exist for those users. */}
         <Pressable
           onPress={onPress}
-          onLongPress={skippable ? () => setSkipOpen(true) : undefined}
+          onLongPress={row.skippable ? openSkip : undefined}
           accessibilityRole="button"
           accessibilityLabel={`${row.habit.name} 기록 보기`}
           accessibilityActions={
-            skippable ? [{ name: 'longpress', label: '못 한 날 사유 고르기' }] : undefined
+            row.skippable ? [{ name: PICK_SKIP_REASON, label: '못 한 날 사유 고르기' }] : undefined
           }
           onAccessibilityAction={(event) => {
-            if (event.nativeEvent.actionName === 'longpress') setSkipOpen(true);
+            if (event.nativeEvent.actionName === PICK_SKIP_REASON) openSkip();
           }}
           style={styles.strip}
         >
@@ -149,9 +166,11 @@ function HabitRow({
           its own hairline-topped row. Recording a reason collapses it again: the
           answer is on the ribbon now, so the question has been asked and answered.
 
-          No note field here, unlike Today's composer: the long-press is the fast
-          path, and the canvas's `RowSkip` has no note box. */}
-      {skippable && skipOpen && (
+          No note field here, and the reason is this path's purpose rather than the
+          canvas: the long-press exists to tag a reason without leaving the
+          Dashboard, so adding a text field would spend the very taps it saves. A
+          note belongs on Today's composer, where the user is already typing. */}
+      {row.skippable && skipOpen && (
         <View style={[styles.skiprow, { borderColor: colors.border }]}>
           <SkipReasonChips
             label="오늘 못 했어요 · 왜?"

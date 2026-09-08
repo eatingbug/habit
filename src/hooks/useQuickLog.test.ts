@@ -404,6 +404,19 @@ describe('useQuickLog', () => {
       expect(logAffordances(habit(), day).skipReasonToday).toBeUndefined();
     });
 
+    it('withholds the skip affordance once activity covers the day, and not before', () => {
+      // The shared gate behind both screens' chips, note field and long-press (D7).
+      expect(logAffordances(habit(), undefined).skippable).toBe(true);
+      expect(logAffordances(habit(), dayOf([])).skippable).toBe(true);
+      // A skip-only day is still skippable — it is still on its first record.
+      expect(
+        logAffordances(habit(), dayOf([seededRow({ actual: 0, skipReason: 'cue' })])).skippable,
+      ).toBe(true);
+      // A sub-floor `partial` day already holds activity, so it is not.
+      expect(logAffordances(habit(), dayOf([seededRow({ actual: 2 })])).skippable).toBe(false);
+      expect(logAffordances(habit(), dayOf([seededRow({ actual: 5 })])).skippable).toBe(false);
+    });
+
     it('is undefined on a day with no rows at all', () => {
       expect(logAffordances(habit(), dayOf([])).skipReasonToday).toBeUndefined();
       expect(logAffordances(habit(), undefined).skipReasonToday).toBeUndefined();

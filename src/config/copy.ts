@@ -20,6 +20,12 @@ import type { SkipReason } from '@/models';
  * all four. `design/parts/Today.logic.js:150–153` holds just three (안 내킴 is
  * missing) and its long forms (`깜빡함 — 할 시간이 안 정해짐`) therefore do not exist
  * for every reason, so the short labels are what both surfaces use.
+ *
+ * Declaration order **is** the on-screen order (the canvas's chip order, unchanged),
+ * and consumers iterate these keys rather than a separate order array: such an array
+ * could silently omit a reason — the `Record` would still type-check while the chip
+ * vanished from the row. Every key is non-numeric, so JS guarantees `Object.keys`
+ * returns them in this order.
  */
 export const SKIP_REASON_LABELS: Record<SkipReason, string> = {
   cue: '깜빡함',
@@ -27,6 +33,3 @@ export const SKIP_REASON_LABELS: Record<SkipReason, string> = {
   exception: '예외',
   identity: '안 내킴',
 };
-
-/** The order they appear on screen — the canvas's chip order, unchanged. */
-export const SKIP_REASON_ORDER: readonly SkipReason[] = ['cue', 'floor', 'exception', 'identity'];

@@ -138,6 +138,21 @@ export interface LogAffordances {
    * screen reads `day.skipReason` itself and the two cannot drift.
    */
   skipReasonToday?: SkipReason;
+  /**
+   * May this day be reason-tagged as a skip at all? False once the day holds an
+   * activity row.
+   *
+   * §4.1's precedence is the reason: activity overrides skip, so a skip row written
+   * on such a day changes no state, no miss and no diagnosis. An affordance that
+   * writes a row the domain will ignore tells the user something untrue, so both
+   * surfaces withhold the whole skip affordance — chips, note field, long-press and
+   * its screen-reader action alike.
+   *
+   * Derived here rather than as `!hasActivityToday` in each screen: the negation is
+   * trivial, but the *reason* it is the right gate is not, and stating it twice is
+   * how the two screens eventually stop agreeing about it.
+   */
+  skippable: boolean;
 }
 
 /**
@@ -159,6 +174,7 @@ export function logAffordances(habit: Habit, day: ClassifiedDay | undefined): Lo
     // Binary has no amount: its floor is 1 and a row is always `actual: 1` (§3.3).
     oneTapAmount: habit.kind === 'count' && !hasActivityToday ? habit.floor : 1,
     skipReasonToday: day?.skipReason,
+    skippable: !hasActivityToday,
   };
 }
 
@@ -235,6 +251,10 @@ export function useQuickLog({
       note: note != null && note.length > 0 ? note : undefined,
     });
 
+    // Canvas copy — `design/parts/Today.logic.js:105` (`toastMain`). The narrow-row
+    // short form in `design/parts/RowSkip.body.html:40` (`못 한 날로 기록 · 깜빡함`)
+    // is the same sentence abbreviated; one wording serves both screens, as the
+    // activity toast's single `기록됨` already does.
     setToast({ entryId, message: '못 한 날로 기록했어요', detail: SKIP_REASON_LABELS[reason] });
     onChange();
   }

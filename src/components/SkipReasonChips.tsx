@@ -1,6 +1,6 @@
 import { StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 
-import { SKIP_REASON_LABELS, SKIP_REASON_ORDER } from '@/config/copy';
+import { SKIP_REASON_LABELS } from '@/config/copy';
 import type { SkipReason } from '@/models';
 import { useTheme } from '@/theme/ThemeProvider';
 import { FONT_SIZE, SPACE } from '@/theme/tokens';
@@ -26,6 +26,9 @@ export interface SkipReasonChipsProps {
  * long-press both render this same row, so it lives here rather than being copied
  * into two screens — the same reason `ToastOverlay` is shared.
  *
+ * The chips come from `SKIP_REASON_LABELS`' own key order, so a reason can never be
+ * declared and then quietly left off the row.
+ *
  * The chips are `Button variant="ghost"` (the canvas's `btn ghost` in
  * `design/parts/RowSkip.body.html:21–24`), flipping to `"sel"` for the reason already
  * recorded. `Chip` is deliberately not used: it is a non-pressable `View`, and these
@@ -50,7 +53,7 @@ export function SkipReasonChips({
   return (
     <View style={[styles.row, style]}>
       <Text style={[styles.lbl, { color: colors.faint }]}>{label}</Text>
-      {SKIP_REASON_ORDER.map((reason) => {
+      {(Object.keys(SKIP_REASON_LABELS) as SkipReason[]).map((reason) => {
         const chipLabel = SKIP_REASON_LABELS[reason];
         return (
           <Button
