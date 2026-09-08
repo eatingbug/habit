@@ -92,6 +92,16 @@ async function log(
   });
 }
 
+async function logSkip(
+  result: { current: DashboardView },
+  target: Habit,
+  reason: SkipReason,
+): Promise<void> {
+  await act(async () => {
+    await result.current.logSkip(target, reason);
+  });
+}
+
 function stateOn(cells: { date: string; state?: string }[], date: string): string | undefined {
   return cells.find((cell) => cell.date === date)?.state;
 }
@@ -304,6 +314,56 @@ describe('useDashboard', () => {
 
       expect(stateOn(result.current.rows[0].cells, TODAY)).toBe('pending');
       expect(result.current.rows[0].hasActivityToday).toBe(false);
+      expect(result.current.toast).toBeNull();
+    });
+  });
+  describe('the long-press skip path (§6.1 B5)', () => {
+    it('turns today into a skip day, fills the cell and reports the reason', async () => {
+      const result = await dashboard(new LocalRepository(await seed([habit()])));
+      expect(stateOn(result.current.rows[0].cells, TODAY)).toBe('pending');
+
+      await logSkip(result, result.current.rows[0].habit, 'cue');
+
+      expect(stateOn(result.current.rows[0].cells, TODAY)).toBe('skip');
+      // The miss hue **filled** — "I said I wouldn't", as against `missed`'s outline.
+      expect(tupleOn(result.current.rows[0].cells, TODAY)).toBe('miss:filled');
+      expect(result.current.rows[0].skipReasonToday).toBe('cue');
+      expect(result.current.toast?.detail).toBe('깜빡함');
+    });
+
+    it('does not count an exception skip as a miss', async () => {
+      const result = await dashboard(new LocalRepository(await seed([habit()])));
+
+      await logSkip(result, result.current.rows[0].habit, 'exception');
+
+      // The domain owns that rule; this asserts it survives the trip to the screen.
+      expect(stateOn(result.current.rows[0].cells, TODAY)).toBe('skip');
+      expect(result.current.rows[0].skipReasonToday).toBe('exception');
+    });
+
+    it('lets an activity log override the skip it recorded first (§4.1)', async () => {
+      const result = await dashboard(new LocalRepository(await seed([habit()])));
+
+      await logSkip(result, result.current.rows[0].habit, 'floor');
+      await log(result, result.current.rows[0].habit, 5);
+
+      expect(stateOn(result.current.rows[0].cells, TODAY)).toBe('done');
+      // The chip row is withdrawn once activity covers the day (D7), so no reason
+      // is offered up as the day's answer either.
+      expect(result.current.rows[0].skipReasonToday).toBeUndefined();
+      expect(result.current.rows[0].hasActivityToday).toBe(true);
+    });
+
+    it('undoes the skip it just recorded and puts the day back to pending', async () => {
+      const result = await dashboard(new LocalRepository(await seed([habit()])));
+
+      await logSkip(result, result.current.rows[0].habit, 'identity');
+      await act(async () => {
+        await result.current.undoLast();
+      });
+
+      expect(stateOn(result.current.rows[0].cells, TODAY)).toBe('pending');
+      expect(result.current.rows[0].skipReasonToday).toBeUndefined();
       expect(result.current.toast).toBeNull();
     });
   });

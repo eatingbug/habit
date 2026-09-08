@@ -11,7 +11,7 @@ import {
 import { compareDates, dateOf } from '@/domain/dates';
 import { computeXP } from '@/domain/score';
 import { localToday } from '@/lib/device';
-import type { DayState, Habit, HabitEntry } from '@/models';
+import type { DayState, Habit, HabitEntry, SkipReason } from '@/models';
 
 import {
   logAffordances,
@@ -105,6 +105,16 @@ export interface TodayView {
    * ordering only — `date` is still today (§3.3).
    */
   logActivity(habitId: string, actual: number, opts?: { timestamp?: string }): Promise<void>;
+  /**
+   * Append one skip row for today — a reason chip's whole action (§6.2 B5), with the
+   * note the user may have typed above the chips.
+   *
+   * Takes the **habit**, not a `habitId`, unlike `logActivity` above. That asymmetry
+   * is deliberate: `logActivity(habitId, …)` is #10's published signature and is kept
+   * as-is, whereas this is a new API, and the screen's chip row already holds the row
+   * it is rendering — so there is no lookup and no "unknown habitId" branch to write.
+   */
+  logSkip(habit: Habit, reason: SkipReason, opts?: { note?: string }): Promise<void>;
   /**
    * What the day would become if `staged` were appended now (C7a) — the composer's
    * "→ 5/5 성공" preview. `null` only when `habitId` names no visible habit.
@@ -310,6 +320,7 @@ export function useToday({
     logCount: loaded.feed.length,
     xpToday: loaded.xpToday,
     logActivity,
+    logSkip: quick.logSkip,
     previewOf,
     toast: quick.toast,
     undoLast: quick.undoLast,

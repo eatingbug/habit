@@ -15,6 +15,7 @@ export {
   type SegmentedControlProps,
   type SegmentedOption,
 } from './SegmentedControl';
+export { SkipReasonChips, type SkipReasonChipsProps } from './SkipReasonChips';
 export { StatusDot, type StatusDotProps, type StatusLevel } from './StatusDot';
 export {
   NumberField,

@@ -5,7 +5,7 @@ import { TUNING } from '@/config/tuning';
 import { RepositoryProvider } from '@/context/RepositoryContext';
 import { LocalRepository, MemoryKV, type HabitRepository, type KVStore } from '@/data';
 import { addDays } from '@/domain/dates';
-import type { Habit } from '@/models';
+import type { Habit, SkipReason } from '@/models';
 
 import { useToday, type TodayHabitRow, type TodayView } from './useToday';
 
@@ -95,6 +95,17 @@ async function log(
 ): Promise<void> {
   await act(async () => {
     await result.current.logActivity(habitId, actual, opts);
+  });
+}
+
+async function logSkip(
+  result: { current: TodayView },
+  target: Habit,
+  reason: SkipReason,
+  opts?: { note?: string },
+): Promise<void> {
+  await act(async () => {
+    await result.current.logSkip(target, reason, opts);
   });
 }
 
@@ -553,5 +564,72 @@ describe('useToday', () => {
     const result = await todayScreen(new LocalRepository(await seed([habit()])));
 
     await expect(result.current.logActivity('nobody', 5)).rejects.toThrow(/nobody/);
+  });
+  describe('the skip path (§6.2 B5)', () => {
+    it('makes the day a skip, carries the reason and shows the row in the feed', async () => {
+      const result = await todayScreen(new LocalRepository(await seed([habit()])));
+
+      await logSkip(result, rowOf(result.current, 'h1').habit, 'cue');
+
+      expect(dayOf(result.current, 'h1')?.state).toBe('skip');
+      expect(rowOf(result.current, 'h1').skipReasonToday).toBe('cue');
+      // A skip is a record, so it belongs in the day's log — but it completed nothing.
+      expect(result.current.logCount).toBe(1);
+      expect(result.current.feed[0].entry.skipReason).toBe('cue');
+      expect(result.current.questsDone).toBe(0);
+    });
+
+    it('does not count an exception skip as a miss', async () => {
+      const result = await todayScreen(new LocalRepository(await seed([habit()])));
+
+      await logSkip(result, rowOf(result.current, 'h1').habit, 'exception');
+
+      // The domain owns that rule; this asserts it survives the trip to the screen.
+      expect(dayOf(result.current, 'h1')?.isMiss).toBe(false);
+    });
+
+    it('does count a cue skip as a miss', async () => {
+      const result = await todayScreen(new LocalRepository(await seed([habit()])));
+
+      await logSkip(result, rowOf(result.current, 'h1').habit, 'cue');
+
+      expect(dayOf(result.current, 'h1')?.isMiss).toBe(true);
+    });
+
+    it('carries an optional note without changing the day', async () => {
+      const result = await todayScreen(new LocalRepository(await seed([habit()])));
+
+      await logSkip(result, rowOf(result.current, 'h1').habit, 'floor', { note: '너무 피곤했어요' });
+
+      expect(result.current.feed[0].entry.note).toBe('너무 피곤했어요');
+      expect(dayOf(result.current, 'h1')?.state).toBe('skip');
+    });
+
+    it('leaves the composer offering the whole minimum, since a skip is not activity', async () => {
+      const result = await todayScreen(new LocalRepository(await seed([habit()])));
+
+      await logSkip(result, rowOf(result.current, 'h1').habit, 'identity');
+
+      const row = rowOf(result.current, 'h1');
+      expect(row.hasActivityToday).toBe(false);
+      expect(row.oneTapAmount).toBe(5);
+      // `actual: 0` is not a legal staged amount and must never become a default.
+      expect(row.defaultAmount).toBe(5);
+      expect(row.quickChips).toEqual([1, 5]);
+      expect(row.progress.sum).toBe(0);
+    });
+
+    it('lets an activity log override a skip already recorded today (§4.1)', async () => {
+      const result = await todayScreen(new LocalRepository(await seed([habit()])));
+
+      await logSkip(result, rowOf(result.current, 'h1').habit, 'floor');
+      await log(result, 'h1', 5);
+
+      expect(dayOf(result.current, 'h1')?.state).toBe('done');
+      expect(rowOf(result.current, 'h1').skipReasonToday).toBeUndefined();
+      expect(result.current.questsDone).toBe(1);
+      // Both rows are facts and both stay (§3.3, append-only).
+      expect(result.current.logCount).toBe(2);
+    });
   });
 });

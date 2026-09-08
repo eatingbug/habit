@@ -4,10 +4,12 @@ import { createElement, type ReactNode } from 'react';
 import { TUNING } from '@/config/tuning';
 import { RepositoryProvider } from '@/context/RepositoryContext';
 import { LocalRepository, MemoryKV, type HabitRepository } from '@/data';
+import { SKIP_REASON_LABELS } from '@/config/copy';
+import { dayStates } from '@/domain/classify';
 import { addDays } from '@/domain/dates';
-import type { Habit, HabitEntry } from '@/models';
+import type { Habit, HabitEntry, SkipReason } from '@/models';
 
-import { useQuickLog, type QuickLog } from './useQuickLog';
+import { logAffordances, useQuickLog, type QuickLog } from './useQuickLog';
 
 /**
  * The hook seam (jest.config.js): a real `LocalRepository` over `MemoryKV`, so the
@@ -87,6 +89,17 @@ async function log(
 ): Promise<void> {
   await act(async () => {
     await result.current.logActivity(target, actual, opts);
+  });
+}
+
+async function skip(
+  result: { current: QuickLog },
+  target: Habit,
+  reason: SkipReason,
+  opts?: { note?: string },
+): Promise<void> {
+  await act(async () => {
+    await result.current.logSkip(target, reason, opts);
   });
 }
 
@@ -294,6 +307,117 @@ describe('useQuickLog', () => {
 
       // The row the user long forgot recording must not vanish under a stale press.
       expect((await rowsIn(repository)).map((row) => row.id)).toEqual([written]);
+    });
+  });
+  describe('logSkip — the reason-tagged skip row (§6.2 B5)', () => {
+    it('writes one zero-amount row carrying the reason', async () => {
+      const repository = await repositoryWith();
+      const { result, reloads } = quickLog(repository);
+
+      await skip(result, habit(), 'cue');
+
+      const rows = await rowsIn(repository);
+      expect(rows).toHaveLength(1);
+      expect(rows[0].actual).toBe(0);
+      expect(rows[0].skipReason).toBe('cue');
+      expect(rows[0].date).toBe(TODAY);
+      expect(reloads()).toBe(1);
+    });
+
+    it('carries an optional note', async () => {
+      const repository = await repositoryWith();
+      const { result } = quickLog(repository);
+
+      await skip(result, habit(), 'floor', { note: '허리가 아팠어요' });
+
+      expect((await rowsIn(repository))[0].note).toBe('허리가 아팠어요');
+    });
+
+    it('omits the note field entirely for an empty or blank one', async () => {
+      const repository = await repositoryWith();
+      const { result } = quickLog(repository);
+
+      await skip(result, habit(), 'exception', { note: '' });
+      await skip(result, habit(), 'identity', { note: '   ' });
+      await skip(result, habit(), 'cue');
+
+      // A stored empty string would make "has a note" indistinguishable from "has none".
+      for (const row of await rowsIn(repository)) {
+        expect('note' in row).toBe(false);
+      }
+    });
+
+    it('names the skip on the undo toast, and undoLast deletes that row', async () => {
+      const repository = await repositoryWith([habit()], [seededRow()]);
+      const { result } = quickLog(repository);
+
+      await skip(result, habit(), 'floor');
+
+      const appended = result.current.toast?.entryId;
+      expect(appended).not.toBe('seeded');
+      expect(result.current.toast?.message).toBe('못 한 날로 기록했어요');
+      expect(result.current.toast?.detail).toBe(SKIP_REASON_LABELS.floor);
+
+      await act(async () => {
+        await result.current.undoLast();
+      });
+
+      // One undo path for both row kinds — it deletes by id, so it needs no discriminator.
+      expect((await rowsIn(repository)).map((row) => row.id)).toEqual(['seeded']);
+      expect(result.current.toast).toBeNull();
+    });
+
+    it('appends rather than overwriting an earlier skip of the same day (§3.3)', async () => {
+      const repository = await repositoryWith();
+      const { result } = quickLog(repository);
+
+      await skip(result, habit(), 'cue');
+      await skip(result, habit(), 'identity');
+
+      const rows = await rowsIn(repository);
+      expect(rows).toHaveLength(2);
+      expect(new Set(rows.map((row) => row.id)).size).toBe(2);
+    });
+  });
+
+  describe('logAffordances.skipReasonToday (D3 — the shared derivation)', () => {
+    function dayOf(entries: HabitEntry[], target = habit()) {
+      return dayStates(target, entries, TODAY, TODAY, TODAY)[0];
+    }
+
+    it('is the reason on a day holding only a skip', () => {
+      const day = dayOf([seededRow({ actual: 0, skipReason: 'floor' })]);
+
+      expect(day.state).toBe('skip');
+      expect(logAffordances(habit(), day).skipReasonToday).toBe('floor');
+    });
+
+    it('is undefined on a day an activity row covers', () => {
+      // §4.1 — activity overrides skip, so the day is no longer a skip day at all and
+      // `dayStates` stops carrying a reason. The affordance follows the day's state.
+      const day = dayOf([
+        seededRow({ id: 's', actual: 0, skipReason: 'floor' }),
+        seededRow({ id: 'a', actual: 5, timestamp: `${TODAY}T08:00:00.000Z` }),
+      ]);
+
+      expect(day.state).toBe('done');
+      expect(logAffordances(habit(), day).skipReasonToday).toBeUndefined();
+    });
+
+    it('is undefined on a day with no rows at all', () => {
+      expect(logAffordances(habit(), dayOf([])).skipReasonToday).toBeUndefined();
+      expect(logAffordances(habit(), undefined).skipReasonToday).toBeUndefined();
+    });
+
+    it('is the last reason of the domain total order when the day holds several', () => {
+      const rows = [
+        seededRow({ id: 'b', actual: 0, skipReason: 'identity', timestamp: `${TODAY}T09:00:00.000Z` }),
+        seededRow({ id: 'a', actual: 0, skipReason: 'cue', timestamp: `${TODAY}T07:00:00.000Z` }),
+      ];
+
+      expect(logAffordances(habit(), dayOf(rows)).skipReasonToday).toBe('identity');
+      // Permutation-invariant, as §7.3's total order requires.
+      expect(logAffordances(habit(), dayOf([...rows].reverse())).skipReasonToday).toBe('identity');
     });
   });
 });
