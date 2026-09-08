@@ -6,11 +6,11 @@ import { SKIP_REASON_LABELS } from './copy';
  * `SKIP_REASON_LABELS` is a pure module value, so it is assertable in the same seam
  * as the domain's pure functions — no render and no repository.
  *
- * These assertions exist because the chip row iterates the record's **key order**
- * rather than a separate order array. That removed a way for a reason to be declared
- * and then silently left off the row, but it made the on-screen order an implicit
- * property of a literal: alphabetising or regrouping `copy.ts` would reorder the
- * chips with no type error anywhere. This test is what makes that order explicit.
+ * The chip row iterates this record's **key order**, so the order of the keys is
+ * load-bearing: it is the order the four chips appear on screen. Nothing else pins
+ * it — a `Record` type checks that every reason has a label, never the sequence — so
+ * reordering the literal would move the chips with no type error anywhere. These
+ * assertions are what hold the order to the canvas.
  */
 
 /** The canvas's chip order — `design/parts/RowSkip.body.html:21–24`. */

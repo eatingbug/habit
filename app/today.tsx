@@ -92,12 +92,13 @@ function FeedRow({ item }: { item: TodayFeedItem }) {
    * column reads `건너뜀` unemphasised (`amt plain`) with the reason on a second line.
    * The hue is `muted`, not `done` — a recorded skip is a fact, not an achievement.
    */
-  const skipped = item.entry.skipReason != null;
-  const amount = skipped
-    ? '건너뜀'
-    : item.habit.kind === 'binary'
-      ? '✓ 완료'
-      : `${item.entry.actual}${item.habit.floorUnit}`;
+  const reason = item.entry.skipReason;
+  const amount =
+    reason != null
+      ? '건너뜀'
+      : item.habit.kind === 'binary'
+        ? '✓ 완료'
+        : `${item.entry.actual}${item.habit.floorUnit}`;
 
   return (
     <View style={[styles.feedItem, { borderColor: colors.border }]}>
@@ -108,13 +109,13 @@ function FeedRow({ item }: { item: TodayFeedItem }) {
         <Text style={[styles.feedName, { color: colors.text }]} numberOfLines={1}>
           {item.habit.name}
         </Text>
-        <Text style={[styles.feedAmount, { color: skipped ? colors.muted : colors.done }]}>
+        <Text style={[styles.feedAmount, { color: reason != null ? colors.muted : colors.done }]}>
           {amount}
         </Text>
       </View>
-      {item.entry.skipReason != null && (
-        <Text style={[styles.feedNote, { color: colors.muted }]}>
-          {SKIP_REASON_LABELS[item.entry.skipReason]}
+      {reason != null && (
+        <Text style={[styles.feedNote, { color: colors.faint }]}>
+          {SKIP_REASON_LABELS[reason]}
         </Text>
       )}
     </View>
@@ -383,15 +384,12 @@ function Composer({
           chips inside a single hairline-topped block, note first because it is filled
           in before a chip is tapped (AC — 총 두 탭).
 
-          Grouping is what makes the note honest. Loose above the primary log control
-          it read as "a note for the log I am about to press", and a note typed there
-          and then abandoned by logging an activity would sit in state and attach
-          itself to a later skip — misattributed input. Inside the group, this habit's
-          skip is the only thing the note can be *for*, so one left staged here and
-          picked up by a later chip tap is what the user wrote it for. (`note` is
-          deliberately **not** wired into `logActivity`: SPEC §6.2 does put an
-          optional note on the activity path, but that is #13's edit surface, not this
-          ticket's.)
+          The note belongs to the skip path, so it lives inside the skip group: within
+          this block, this habit's skip is the only thing it can be a note *for*, and
+          one left staged here and picked up by a later chip tap is what the user
+          wrote it for. (`note` is deliberately **not** wired into `logActivity`:
+          SPEC §6.2 does put an optional note on the activity path, but that is #13's
+          edit surface, not this ticket's.)
 
           The guarantee is scoped to the habit and to the skip path — `Composer` is
           keyed on the habit, so switching habits remounts and cannot carry a note
@@ -571,7 +569,12 @@ const styles = StyleSheet.create({
     fontVariant: ['tabular-nums'],
   },
   feedName: { fontSize: FONT_SIZE.base, flexShrink: 1 },
-  // `.backnote` — the second line under a skip row, saying which reason was recorded.
+  // `.backnote` (`design/_tokens.css:234`) — the second line under a skip row, saying
+  // which reason was recorded. `--faint` is taken as given; the rule's
+  // `font-family: var(--mono)` is deliberately **not**: `.backnote` carries figures
+  // elsewhere in the canvas, where tabular numerals are the point, whereas this line
+  // is a Korean word that a mono stack has no glyphs for and would render through a
+  // fallback. Font size is tokenized to the nearest step (no 10.5 token exists).
   feedNote: { fontSize: FONT_SIZE.sm },
   feedAmount: {
     marginLeft: 'auto',

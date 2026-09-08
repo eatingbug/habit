@@ -12,6 +12,12 @@ export interface SkipReasonChipsProps {
   label: string;
   /** The reason already representing today, if any — `row.skipReasonToday`. */
   selected?: SkipReason;
+  /**
+   * Blocks the chips while a write is in flight. Today's composer passes its
+   * `saving` flag because the row stays on screen across the write; the Dashboard
+   * passes nothing because picking a reason collapses its disclosure in the same
+   * commit, so the chips are gone before a second tap could land.
+   */
   disabled?: boolean;
   onPick: (reason: SkipReason) => void;
   /** Disambiguates each chip's accessible name across rows — see below. */
@@ -59,6 +65,10 @@ export function SkipReasonChips({
             label={chipLabel}
             accessibilityLabel={`${habitName} 못 함 · ${chipLabel}`}
             variant={selected === reason ? 'sel' : 'ghost'}
+            // §6.0's 44px minimum. These chips take `tap` where B2's quick-add chips
+            // deliberately do not: those only *stage* an amount, so a mis-tap costs
+            // nothing, whereas one tap here **writes** a skip row.
+            tap
             disabled={disabled}
             onPress={() => onPick(reason)}
           />
