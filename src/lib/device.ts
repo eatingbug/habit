@@ -49,6 +49,45 @@ export function timestampAtLocalTime(
 }
 
 /**
+ * Re-stamping an **existing** row from a reopened time reveal (#13): the row's original
+ * `timestamp`, plus the `date` and the hour/minute now in the fields → the stamp to
+ * store.
+ *
+ * The original is returned **verbatim** whenever the fields still read the same wall
+ * clock it does. That is not a micro-optimisation. `timestampAtLocalTime` builds
+ * `new Date(y, m, d, h, min)`, which zeroes seconds and milliseconds, while the fields
+ * are seeded from the original at minute precision — so restamping on `timeOpen` alone
+ * would silently rewrite a row the user never edited and destroy its sub-minute
+ * position against same-minute siblings, under the `(timestamp ASC, id ASC)` total
+ * order §7.3 names for exactly that case.
+ *
+ * `undefined` for a time that is not a real time of day, exactly as
+ * `timestampAtLocalTime` does — the caller refuses to save rather than substituting
+ * a stamp the user did not type.
+ *
+ * Lives here, beside `timestampAtLocalTime`, rather than in the screen: it is a
+ * decision about a stored fact, and `jest.config.js`'s seams do not reach `app/`.
+ */
+export function restampedAtLocalTime(
+  original: string,
+  date: string,
+  hour: string,
+  minute: string,
+): string | undefined {
+  const next = timestampAtLocalTime(date, hour, minute);
+  if (next == null) return undefined;
+
+  // The original truncated to its own minute. Seconds and milliseconds are offset-
+  // independent, so this is the same instant the fields could at best describe.
+  const at = new Date(original);
+  const truncated = new Date(
+    at.getTime() - at.getSeconds() * 1000 - at.getMilliseconds(),
+  ).toISOString();
+
+  return truncated === next ? original : next;
+}
+
+/**
  * `crypto.randomUUID` exists on web and on modern Hermes builds but not everywhere, so
  * the fallback is a real path, not a theoretical one.
  */

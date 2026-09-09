@@ -6,6 +6,7 @@ import {
   classifyDay,
   dayStates,
   isFloorMet,
+  isMissDay,
   sortDayRows,
 } from '@/domain/classify';
 import { compareDates, dateOf } from '@/domain/dates';
@@ -76,6 +77,45 @@ export interface TodayFeedItem {
   entry: HabitEntry;
 }
 
+/**
+ * Why deleting one row deserves a confirm — the whole basis of the warning, derived so
+ * that nothing is left for the JSX to judge (#13 D2). This repo has no component render
+ * tests (jest.config.js), so a condition written in a screen is a condition nothing
+ * asserts.
+ *
+ * Deliberately **not** a per-feed-item field: it is computed when the delete control is
+ * pressed, because there is no reason to run the classifier once per visible row
+ * (CLAUDE.md §2).
+ */
+export interface DeleteEffect {
+  habit: Habit;
+  /**
+   * This delete leaves **no row at all** for that `(habit, date)` (AC 5). Per habit,
+   * not per date across habits: the day's state — the thing the user loses — only
+   * exists per habit (§4.1).
+   *
+   * Note what this does *not* claim. On **today** the emptied day falls back to
+   * `pending`, not `missed`: ADR-0001 makes an empty *past* day a miss, and today is
+   * still open (`streak.test.ts` — "keeps a pending today transparent"). So no streak
+   * breaks and no miss appears. The `missed` reversal and the broken streak belong to a
+   * screen that holds past-dated rows (#15).
+   */
+  emptiesDay: boolean;
+  /**
+   * This delete **erases a recorded miss** (AC 6): the day counts as a miss now and
+   * does not once the row is gone. `isMissDay` decides both halves, so `exception` — a
+   * skip that is no miss at all (ADR-0001) — raises no warning, and neither does
+   * deleting one of two skip rows, which leaves the day a miss regardless.
+   */
+  carriesMiss: boolean;
+  /**
+   * What that `(habit, date)` becomes once the row is gone. `undefined` when the date
+   * is paused and would be left empty — the engine has no opinion about such a day at
+   * all (ADR-0003), so the screen must say nothing about its state.
+   */
+  stateAfter: DayState | undefined;
+}
+
 export interface TodayView {
   /** The day being recorded — 'YYYY-MM-DD'. */
   date: string;
@@ -124,6 +164,33 @@ export interface TodayView {
    * how `over` and the defensive `target <= floor` read eventually drift apart (§4.1).
    */
   previewOf(habitId: string, staged: number): { sum: number; state: DayState } | null;
+  /**
+   * Rewrite one existing row of the feed (#13, AC 1–3). Keyed on `entry.id`, so the
+   * row count never grows; the caller passes the **whole** row, because the write
+   * replaces the stored element — an omitted `timestamp` would silently reorder the
+   * feed (§3.3).
+   *
+   * Rejects a row that breaks §3.3's discriminator, which is what makes the
+   * activity ↔ skip transition safe. See `useQuickLog.editEntry`.
+   */
+  editEntry(entry: HabitEntry): Promise<void>;
+  /**
+   * Delete one row of the feed by id (#13, AC 4–6). Immediate and untoasted; whether
+   * the screen should confirm first is `deletePreview`'s answer, not this function's —
+   * so a caller that skips the check still deletes, exactly as AC 4 requires of the
+   * ordinary case.
+   */
+  removeEntry(entryId: string): Promise<void>;
+  /**
+   * Does deleting this row need a result-aware confirm, and on what basis? `null`
+   * means **no** — delete it immediately (AC 4), which is also the answer for an id
+   * the feed does not hold.
+   *
+   * Computed the same way `previewOf` is: the remaining row set is run back through the
+   * domain (`dayStates`, the shared walk that owns ADR-0003's scope rule) rather than
+   * compared against a local rule of our own.
+   */
+  deletePreview(entryId: string): DeleteEffect | null;
   /** The live 실행취소 toast for a one-tap/quick-chip append (B6). */
   toast: QuickLogToast | null;
   undoLast(): Promise<void>;
@@ -309,6 +376,51 @@ export function useToday({
     };
   }
 
+  function deletePreview(entryId: string): DeleteEffect | null {
+    const item = loaded.feed.find((entry) => entry.entry.id === entryId);
+    if (item == null) return null;
+
+    const row = rowFor(item.habit.id);
+    const rowsOnDate = row?.day?.entries ?? [];
+    const remaining = rowsOnDate.filter((entry) => entry.id !== entryId);
+
+    const emptiesDay = remaining.length === 0;
+
+    // The shared walk, not `classifyDay` plus a scope test of our own: it returns no
+    // day at all for a paused date left empty, which is precisely `undefined` here
+    // (ADR-0003, and `classify.ts`'s own instruction to use `dayStates`).
+    const stateAfter = dayStates(
+      item.habit,
+      remaining,
+      item.entry.date,
+      item.entry.date,
+      today,
+    )[0]?.state;
+
+    /**
+     * "Does this delete **erase** the recorded miss?" — not "is the day a miss?". Both
+     * halves are needed: a date can hold two skip rows (`skippable` only withholds a
+     * skip once an *activity* row exists), and deleting one of them leaves the day a
+     * miss all the same. Warning there would contradict `stateAfter` inside the same
+     * paragraph of confirm copy.
+     *
+     * An unclassified day carries no miss, so `stateAfter === undefined` (a paused
+     * date left empty, ADR-0003) is the not-a-miss side of the second half.
+     *
+     * No test that the deleted row is itself a skip: a day carrying a miss through
+     * `skip` holds no activity row (§4.1), and `missed` means it holds nothing at all —
+     * so any row that can be deleted off a miss-carrying day *is* a skip. `isMissDay`
+     * is what keeps `exception` out of the warning (ADR-0001).
+     */
+    const missBefore = row?.day != null && isMissDay(row.day.state, rowsOnDate);
+    const missAfter = stateAfter != null && isMissDay(stateAfter, remaining);
+    const carriesMiss = missBefore && !missAfter;
+
+    if (!emptiesDay && !carriesMiss) return null;
+
+    return { habit: item.habit, emptiesDay, carriesMiss, stateAfter };
+  }
+
   return {
     date: today,
     loading,
@@ -321,7 +433,10 @@ export function useToday({
     xpToday: loaded.xpToday,
     logActivity,
     logSkip: quick.logSkip,
+    editEntry: quick.editEntry,
+    removeEntry: quick.removeEntry,
     previewOf,
+    deletePreview,
     toast: quick.toast,
     undoLast: quick.undoLast,
   };

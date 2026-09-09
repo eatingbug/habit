@@ -1,4 +1,9 @@
-import { localToday, newId, timestampAtLocalTime } from './device';
+import {
+  localToday,
+  newId,
+  restampedAtLocalTime,
+  timestampAtLocalTime,
+} from './device';
 
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
@@ -129,5 +134,54 @@ describe('timestampAtLocalTime', () => {
     expect(timestampAtLocalTime(DATE, '23', '59')).toBe(
       new Date(2026, 2, 1, 23, 59).toISOString(),
     );
+  });
+});
+
+describe('restampedAtLocalTime (#13 — re-stamping an existing row)', () => {
+  const DATE = '2026-03-01';
+  /** A stamp carrying seconds and milliseconds the fields cannot express. */
+  const original = new Date(2026, 2, 1, 7, 10, 42, 500).toISOString();
+
+  it('returns the original verbatim when the fields still read its own clock', () => {
+    // The row the user opened the reveal on and did not touch. Restamping it would
+    // zero 42.5s and move it against a same-minute sibling (§7.3's total order).
+    expect(restampedAtLocalTime(original, DATE, '07', '10')).toBe(original);
+    // Unpadded input is the same clock, so it is the same no-op.
+    expect(restampedAtLocalTime(original, DATE, '7', '10')).toBe(original);
+  });
+
+  it('restamps when the minute the user typed differs', () => {
+    const next = restampedAtLocalTime(original, DATE, '07', '11');
+
+    expect(next).not.toBe(original);
+    expect(next).toBe(new Date(2026, 2, 1, 7, 11).toISOString());
+  });
+
+  it('restamps when the hour differs, keeping the row on its own date', () => {
+    const next = restampedAtLocalTime(original, DATE, '18', '10') as string;
+
+    expect(new Date(next).getHours()).toBe(18);
+    expect(new Date(next).getMinutes()).toBe(10);
+  });
+
+  it('refuses a time that is not a time of day, as timestampAtLocalTime does', () => {
+    for (const [hour, minute] of [
+      ['', '10'],
+      ['07', ''],
+      ['24', '00'],
+      ['07', '60'],
+      ['-1', '10'],
+      ['7.5', '10'],
+    ]) {
+      expect(restampedAtLocalTime(original, DATE, hour, minute)).toBeUndefined();
+    }
+  });
+
+  it('restamps onto the given date when the original sits on another day', () => {
+    // `date` is authoritative for the day (§3.3); the original's own day never wins.
+    const yesterday = new Date(2026, 1, 28, 7, 10).toISOString();
+    const next = restampedAtLocalTime(yesterday, DATE, '07', '10') as string;
+
+    expect(next).toBe(new Date(2026, 2, 1, 7, 10).toISOString());
   });
 });

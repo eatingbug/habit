@@ -5,16 +5,23 @@ import { TUNING } from '@/config/tuning';
 import { useRepository } from '@/context/RepositoryContext';
 import { type ClassifiedDay, isFloorMet } from '@/domain/classify';
 import { newId } from '@/lib/device';
-import type { Habit, SkipReason } from '@/models';
+import type { Habit, HabitEntry, SkipReason } from '@/models';
 
 /**
- * The one-tap logging primitive — SPEC §6.1 / §6.2 (B1) and its undo toast (B6).
+ * The entry-write primitive — SPEC §6.1 / §6.2 (B1, B5, B6) and #13's row edit/delete.
  *
- * This module owns the whole of "one tap logs" — both the **write** (`useQuickLog`)
- * and the **reading that shapes the control** (`logAffordances`). Splitting those was
- * the mistake the first cut made: the amount a tap appends was then computed
- * identically in two hooks, and "does today already hold activity?" ended up with two
- * different implementations whose equivalence nothing named.
+ * **Scope: every write to a `HabitEntry`** — the appends (`logActivity`, `logSkip`),
+ * the undo (`undoLast`) and the corrections (`editEntry`, `removeEntry`). Wider than
+ * one-tap logging alone, and deliberately so: `repository.upsertEntry`/`deleteEntry`
+ * have exactly one caller in the app, and the toast invariant below is a
+ * *cross-cutting* rule between appends and corrections (see `retireToastFor`) that a
+ * second module writing rows could not honour. #15's journal needs the same two
+ * corrections, and a second implementation of them is what would diverge.
+ *
+ * It also owns the **reading that shapes the control** (`logAffordances`). Splitting
+ * that off was the mistake the first cut made: the amount a tap appends was then
+ * computed identically in two hooks, and "does today already hold activity?" ended up
+ * with two different implementations whose equivalence nothing named.
  *
  * Both logging surfaces go through this hook: Today's composer and the Dashboard row.
  * There is deliberately **one** append/undo implementation, because the undo rule is
@@ -76,6 +83,25 @@ export interface QuickLog {
    * and reason-tagging a past day is backfill's job (#14).
    */
   logSkip(habit: Habit, reason: SkipReason, opts?: { note?: string }): Promise<void>;
+  /**
+   * Rewrite one **existing** row, keyed on `entry.id` (#13). The repository upserts by
+   * id, so this can never produce a duplicate row — and it *replaces* the stored
+   * element, so every field the caller wants kept (`date`, `timestamp`) must be on the
+   * object it passes.
+   *
+   * Enforces §3.3's row discriminator on both sides, which is what makes the
+   * activity ↔ skip transition safe: an activity row is `actual > 0` with **no**
+   * reason, a skip row is `actual: 0` **with** one. Either illegal shape is a
+   * `RangeError` rather than a stored row the domain would misread — a
+   * `skipReason` next to `actual: 5` classifies as `skip` and silently discards the 5.
+   */
+  editEntry(entry: HabitEntry): Promise<void>;
+  /**
+   * Delete one row by id (#13). No toast: see `retireToastFor`. The *consequence*
+   * warning this deserves is derived on the screen's hook (`useToday.deletePreview`),
+   * because only that hook holds the day's other rows.
+   */
+  removeEntry(entryId: string): Promise<void>;
   /**
    * Delete the row the toast names, by id. A no-op with no toast — including after
    * the toast's window elapsed, which is the whole point of the window.
@@ -254,6 +280,53 @@ export function useQuickLog({
     onChange();
   }
 
+  /**
+   * The cross-cutting toast rule (#13 D4): a correction to the row a live toast names
+   * **retires that toast at once**.
+   *
+   * Both directions are a stored fact lost (§7.3) otherwise. After a delete, 실행취소
+   * would try to delete a row that is already gone. After an edit, 실행취소 would
+   * delete the row the user has just corrected — throwing away the correction *and*
+   * the original fact in one press, on a control still labelled as undoing an append.
+   */
+  function retireToastFor(entryId: string) {
+    if (toast?.entryId === entryId) dismissToast();
+  }
+
+  async function editEntry(entry: HabitEntry): Promise<void> {
+    // §3.3's row discriminator, as one expression: the reason decides which shape the
+    // row must have. `logActivity`'s own `actual > 0` guard is left exactly as it is —
+    // it is the only thing stopping a reason-less zero row on the append path.
+    const isSkipRow = entry.skipReason != null;
+    if (isSkipRow ? entry.actual !== 0 : !(entry.actual > 0)) {
+      throw new RangeError(
+        '활동 기록은 0보다 큰 양이어야 하고, 건너뛰기는 양 0과 사유를 함께 가져야 합니다 (§3.3).',
+      );
+    }
+
+    const note = entry.note?.trim();
+
+    await repository.upsertEntry({
+      ...entry,
+      // Absent, not empty — same rule as `logSkip`: a stored '' would be
+      // indistinguishable from a real note, so clearing the field must remove it.
+      note: note != null && note.length > 0 ? note : undefined,
+    });
+
+    retireToastFor(entry.id);
+    onChange();
+  }
+
+  async function removeEntry(entryId: string): Promise<void> {
+    await repository.deleteEntry(entryId);
+    retireToastFor(entryId);
+    // Deliberately no new toast (#13 D5). `QuickLogToast` presupposes 실행취소, and
+    // there is no undo of a delete to offer — the row is gone from the repository, and
+    // re-appending it would mint a different id. The feed losing the line is the
+    // confirmation; an edit's confirmation is the line changing.
+    onChange();
+  }
+
   async function undoLast(): Promise<void> {
     if (toast == null) return;
 
@@ -267,6 +340,8 @@ export function useQuickLog({
     toast,
     logActivity,
     logSkip,
+    editEntry,
+    removeEntry,
     undoLast,
     dismissToast,
   };
