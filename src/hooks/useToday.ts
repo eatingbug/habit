@@ -12,7 +12,7 @@ import {
 } from '@/domain/classify';
 import { addDays, compareDates, dateOf } from '@/domain/dates';
 import { computeXP } from '@/domain/score';
-import { localToday } from '@/lib/device';
+import { localNoonOn, localToday } from '@/lib/device';
 import type { DayState, Habit, HabitEntry, SkipReason } from '@/models';
 
 import {
@@ -31,11 +31,11 @@ import {
  * - the repository arrives through `RepositoryProvider`, never constructed here;
  * - `today` is a parameter. Day-state depends on it (`pending` vs `missed`,
  *   ADR-0001), so a test must be able to pin it;
- * - `date` — the day being *looked at* — is a second parameter (#14 D1). The two used
- *   to be one, and the date control (§6.2 B4) splits them: `date` says which rows to
- *   read and write, `today` stays the basis for `pending` vs `missed` and the
- *   §6.3 upper bound. Substituting `date` there would make every past day `pending`
- *   and quietly repeal ADR-0001;
+ * - `date` — the day being looked at — is a second parameter, and a distinct one from
+ *   `today` (#14 D1). `date` says which rows to read and which day to write to; `today`
+ *   is the basis for `pending` vs `missed` and the §6.3 upper bound. The date control
+ *   (§6.2 B4) moves the first and never the second: substituting `date` for `today` in
+ *   the classifier would make every past day `pending` and quietly repeal ADR-0001;
  * - `now` is a parameter too. It stamps the row's `timestamp`, which is the domain's
  *   ordering key (§3.3), so pinning it is what makes the feed's order assertable.
  *
@@ -140,9 +140,13 @@ export interface DateControl {
    * `어제 · …`, or the date alone. The *judgment* is here; the wording is the screen's.
    */
   kind: 'today' | 'yesterday' | 'other';
-  /** `date === today`. The `›` control is dead here (canvas `:18`). */
-  atToday: boolean;
-  /** A non-today date — writes go through the §6.3 backfill rules (canvas `:65`). */
+  /**
+   * A non-today date — writes go through the §6.3 backfill rules (canvas `:65`), and
+   * the `›` control is dead when it is false (canvas `:18`, i.e. `nextDate == null`).
+   * One boolean, not three: `atToday` would be a second name for `!isBackfill` and a
+   * third for `nextDate === null`, and three encodings of one fact are three chances
+   * for a screen to read the stale one.
+   */
   isBackfill: boolean;
   /**
    * Where `‹` and `›` move to, or `null` when the control is dead. `prevDate` stops at
@@ -449,8 +453,10 @@ export function useToday({
       habitId,
       date,
       // A preview is never stored, so the exact stamp only has to fall on the day —
-      // the real one comes from `nextBackfillTimestamp` at write time (§6.3).
-      timestamp: date === today ? now().toISOString() : `${date}T12:00:00.000Z`,
+      // the real one comes from `nextBackfillTimestamp` at write time (§6.3). Local
+      // noon, not `${date}T12:00Z`: a UTC stamp lands on the neighbouring day for
+      // anyone far enough east or west, and the preview would classify the wrong one.
+      timestamp: date === today ? now().toISOString() : localNoonOn(date),
       actual: staged,
     };
 
@@ -518,7 +524,6 @@ export function useToday({
     date,
     today,
     kind: date === today ? 'today' : date === yesterday ? 'yesterday' : 'other',
-    atToday: date === today,
     isBackfill: date !== today,
     prevDate: compareDates(back, earliest) >= 0 ? back : null,
     nextDate: compareDates(date, today) < 0 ? addDays(date, 1) : null,

@@ -49,6 +49,20 @@ export function timestampAtLocalTime(
 }
 
 /**
+ * The device's **local** noon on `date` — the §6.3 backfill pin.
+ *
+ * A backfilled row is stamped at noon of the day it belongs to, and "noon" is a wall
+ * clock, so it is a reading of the device: `src/domain` may not make it (SPEC §2.2 —
+ * the timezone is ambient environment), which is why the domain's builders take the
+ * stamp as an argument and this edge produces it. `12`/`00` are a real time of day by
+ * construction, so `timestampAtLocalTime`'s `undefined` arm is unreachable here; the
+ * wrapper exists so its callers need no cast of their own.
+ */
+export function localNoonOn(date: string): string {
+  return timestampAtLocalTime(date, '12', '00') as string;
+}
+
+/**
  * Re-stamping an **existing** row from a reopened time reveal (#13): the row's original
  * `timestamp`, plus the `date` and the hour/minute now in the fields → the stamp to
  * store.

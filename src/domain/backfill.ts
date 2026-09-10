@@ -30,32 +30,39 @@ export function isBackfillableDate(habit: Habit, date: string, today: string): b
   );
 }
 
-const NOON = 'T12:00:00.000Z';
-const AFTER_NOON_MINUTE = 'T12:01:00.000Z';
+/** How long the offsets run before the noon minute is used up. */
+const NOON_MINUTE_MS = 60_000;
 
 /**
- * The `timestamp` the next backfilled row on `date` must carry (§6.3).
+ * The `timestamp` the next backfilled row on a date must carry (§6.3).
  *
- * Noon-pinned — the target date at `T12:00`, not the moment of entry — so the row
+ * Noon-pinned — the target day's **local** noon, not the moment of entry — so the row
  * groups onto the right day and orders sanely between a morning and an evening log.
- * Repeated same-day backfills get strictly increasing sub-noon offsets
- * (`T12:00:00`, `T12:00:01`, …) so the domain total order `(timestamp ASC, id ASC)`
- * (§7.3) is well defined and `effectiveSkipReason` is deterministic — plain
- * "creation sequence" is unimplementable because UUIDs are not monotonic.
+ * Repeated backfills of one date get strictly increasing sub-noon offsets (noon,
+ * noon + 1s, …) so the domain total order `(timestamp ASC, id ASC)` (§7.3) is well
+ * defined and `effectiveSkipReason` is deterministic — plain "creation sequence" is
+ * unimplementable because UUIDs are not monotonic.
  *
- * Only the noon *minute* is scanned, so an ordinary same-day log (09:00, 21:00)
- * cannot drag the pin off noon. `rowsOnDate` may be passed in any order. Past the
- * 60th backfill of one date the minute overflows and the sequence restarts at noon —
- * harmless, because the `id` tiebreak keeps the §7.3 total order well-defined.
+ * `localNoon` is passed in rather than built here: noon is a wall clock, the timezone
+ * is ambient environment, and SPEC §2.2 keeps this layer free of it. `src/lib/device`
+ * `localNoonOn` is the one place that reading is made. Building `${date}T12:00:00Z`
+ * here instead would pin every row to UTC noon, which the user's feed reads back as
+ * whatever their offset makes of it — 21:00 in Seoul, under a banner promising 낮 12시.
+ *
+ * Comparison is on instants, not on strings: two stamps for the same moment can be
+ * written differently, and only the noon *minute* is scanned, so an ordinary log at
+ * 09:00 or 21:00 local cannot drag the pin off noon. `rowsOnDate` may be passed in any
+ * order. Past the 60th backfill of one date the minute is used up and the sequence
+ * restarts at noon — harmless, because the `id` tiebreak keeps the §7.3 total order
+ * well-defined.
  */
-export function nextBackfillTimestamp(date: string, rowsOnDate: HabitEntry[]): string {
-  const noon = `${date}${NOON}`;
+export function nextBackfillTimestamp(localNoon: string, rowsOnDate: HabitEntry[]): string {
+  const noon = Date.parse(localNoon);
   const band = rowsOnDate
-    .filter((row) => row.timestamp >= noon && row.timestamp < `${date}${AFTER_NOON_MINUTE}`)
-    .map((row) => row.timestamp);
+    .map((row) => Date.parse(row.timestamp))
+    .filter((at) => at >= noon && at < noon + NOON_MINUTE_MS);
 
-  if (band.length === 0) return noon;
-  return new Date(Date.parse(band.reduce((a, b) => (a >= b ? a : b))) + 1_000).toISOString();
+  return new Date(band.length === 0 ? noon : Math.max(...band) + 1_000).toISOString();
 }
 
 /**
@@ -64,11 +71,18 @@ export function nextBackfillTimestamp(date: string, rowsOnDate: HabitEntry[]): s
  * (ADR-0001). Binary habits have `floor === 1`, which is exactly "mark done", so
  * there is no branch.
  *
- * Appends; never overwrites (§6.3). `rowsOnDate` is read only to place the timestamp.
+ * Appends; never overwrites (§6.3). `rowsOnDate` is read only to place the timestamp,
+ * and `localNoon` is the day's local-noon stamp (see `nextBackfillTimestamp`).
+ *
+ * `actual` is the floor because that is what the one-tap fill writes. A caller with a
+ * staged amount — the composer, on any amount the user typed — overrides it on the
+ * returned row; what the builder contributes in that case is the noon pin and the §6.3
+ * range assertion, which is why it is called either way.
  */
 export function buildBackfillActivity(
   habit: Habit,
   date: string,
+  localNoon: string,
   rowsOnDate: HabitEntry[],
   id: string,
   today: string,
@@ -78,7 +92,7 @@ export function buildBackfillActivity(
     id,
     habitId: habit.id,
     date,
-    timestamp: nextBackfillTimestamp(date, rowsOnDate),
+    timestamp: nextBackfillTimestamp(localNoon, rowsOnDate),
     actual: habit.floor,
   };
 }
@@ -91,6 +105,7 @@ export function buildBackfillActivity(
 export function buildBackfillSkip(
   habit: Habit,
   date: string,
+  localNoon: string,
   rowsOnDate: HabitEntry[],
   id: string,
   skipReason: SkipReason,
@@ -101,7 +116,7 @@ export function buildBackfillSkip(
     id,
     habitId: habit.id,
     date,
-    timestamp: nextBackfillTimestamp(date, rowsOnDate),
+    timestamp: nextBackfillTimestamp(localNoon, rowsOnDate),
     actual: 0,
     skipReason,
   };

@@ -864,6 +864,16 @@ describe('useToday', () => {
       return repository.getEntries('h1', date, date);
     }
 
+    /**
+     * A **local** wall-clock stamp on `date`. The backfill pin is local noon, so an
+     * assertion written as a `Z` literal would hold only where the offset is zero.
+     */
+    function atLocal(date: string, hour: number, minute = 0): string {
+      const [year, month, day] = date.split('-').map(Number);
+      return new Date(year, month - 1, day, hour, minute).toISOString();
+    }
+    const noonOn = (date: string) => atLocal(date, 12);
+
     it('reads the chosen date while today still decides pending vs missed (D1, ADR-0001)', async () => {
       const repository = new LocalRepository(await seed([habit()]));
 
@@ -881,7 +891,6 @@ describe('useToday', () => {
       expect(result.current.date).toBe(TODAY);
       expect(control).toMatchObject({
         kind: 'today',
-        atToday: true,
         isBackfill: false,
         // §6.3 — the future is blocked, so there is nowhere forward to go.
         nextDate: null,
@@ -897,7 +906,6 @@ describe('useToday', () => {
       const onYesterday = (await screenOn(repository, YESTERDAY)).current.dateControl;
       expect(onYesterday).toMatchObject({
         kind: 'yesterday',
-        atToday: false,
         isBackfill: true,
         prevDate: addDays(TODAY, -2),
         nextDate: TODAY,
@@ -971,7 +979,7 @@ describe('useToday', () => {
         id: 'old',
         habitId: 'h1',
         date: YESTERDAY,
-        timestamp: `${YESTERDAY}T09:00:00.000Z`,
+        timestamp: atLocal(YESTERDAY, 9),
         actual: 2,
       };
       await repository.upsertEntry(existing);
@@ -985,9 +993,11 @@ describe('useToday', () => {
       expect(stored.find((row) => row.id === 'old')).toEqual(existing);
       const added = stored.find((row) => row.id !== 'old');
       expect(added?.date).toBe(YESTERDAY);
-      // Noon, not the clock the user is sitting at: the 09:00 row above must not be
-      // outranked by the hour of the backfill (§7.3's total order).
-      expect(added?.timestamp).toBe(`${YESTERDAY}T12:00:00.000Z`);
+      // Local noon, not the clock the user is sitting at: the 09:00 row above must not
+      // be outranked by the hour of the backfill (§7.3's total order), and the feed
+      // reads the stamp back with `getHours()`.
+      expect(added?.timestamp).toBe(noonOn(YESTERDAY));
+      expect(new Date(added!.timestamp).getHours()).toBe(12);
       expect(added?.actual).toBe(5);
     });
 
@@ -999,20 +1009,21 @@ describe('useToday', () => {
       await log(result, 'h1', 1);
 
       const stamps = (await rowsFor(repository, YESTERDAY)).map((row) => row.timestamp).sort();
-      expect(stamps).toEqual([`${YESTERDAY}T12:00:00.000Z`, `${YESTERDAY}T12:00:01.000Z`]);
+      expect(stamps).toEqual([
+        noonOn(YESTERDAY),
+        new Date(Date.parse(noonOn(YESTERDAY)) + 1_000).toISOString(),
+      ]);
     });
 
     it('ignores the B3 time override on a backfill and keeps using the clock on today (D4)', async () => {
       const repository = new LocalRepository(await seed([habit()]));
 
       const past = await screenOn(repository, YESTERDAY);
-      await log(past, 'h1', 5, { timestamp: `${YESTERDAY}T21:00:00.000Z` });
+      await log(past, 'h1', 5, { timestamp: atLocal(YESTERDAY, 21) });
       // The noon pin is the sole basis of the day's total order, so a wall clock cannot
       // override it — the canvas puts the same sentence on the control
       // (`design/parts/Backfill.logic.js:81`).
-      expect((await rowsFor(repository, YESTERDAY))[0].timestamp).toBe(
-        `${YESTERDAY}T12:00:00.000Z`,
-      );
+      expect((await rowsFor(repository, YESTERDAY))[0].timestamp).toBe(noonOn(YESTERDAY));
 
       const present = await screenOn(repository, TODAY, stepClock());
       await log(present, 'h1', 5);
@@ -1042,7 +1053,7 @@ describe('useToday', () => {
       const [row] = await rowsFor(repository, YESTERDAY);
       expect(row).toMatchObject({
         date: YESTERDAY,
-        timestamp: `${YESTERDAY}T12:00:00.000Z`,
+        timestamp: noonOn(YESTERDAY),
         actual: 0,
         skipReason: 'cue',
         note: '깜빡',
@@ -1062,7 +1073,7 @@ describe('useToday', () => {
         id: 's1',
         habitId: 'h1',
         date: YESTERDAY,
-        timestamp: `${YESTERDAY}T12:00:00.000Z`,
+        timestamp: noonOn(YESTERDAY),
         actual: 0,
         skipReason: 'cue',
       });

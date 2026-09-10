@@ -130,8 +130,10 @@ function HabitRow({
         {/* `.streak` (`design/parts/Dashboard.body.html:38`) — 연속 날수, ahead of the
             ribbon it summarises. The number is `useDashboard`'s `computeStreak`, never
             stored: filling a past day re-joins the run through it (ADR-0001, #14).
-            Hidden from assistive tech as a bare glyph+number would announce as "fire
-            twelve"; the row's own accessible name carries it in words instead. */}
+
+            The `accessibilityLabel` replaces what is announced, so a screen reader
+            reads "연속 12일" rather than the literal glyph and digit — the emoji is
+            decoration and would otherwise be spoken as its name. */}
         <Text
           style={[styles.streak, { color: colors.muted }]}
           accessibilityLabel={`연속 ${row.streak}일`}

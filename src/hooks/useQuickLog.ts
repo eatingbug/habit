@@ -5,7 +5,7 @@ import { TUNING } from '@/config/tuning';
 import { useRepository } from '@/context/RepositoryContext';
 import { buildBackfillActivity, buildBackfillSkip } from '@/domain/backfill';
 import { type ClassifiedDay, isFloorMet } from '@/domain/classify';
-import { newId } from '@/lib/device';
+import { localNoonOn, newId } from '@/lib/device';
 import type { Habit, HabitEntry, SkipReason } from '@/models';
 
 /**
@@ -229,7 +229,10 @@ export function useQuickLog({
    * only thing that makes `effectiveSkipReason` deterministic. A wall clock on a past
    * day would order the row against that day's real rows by the hour the user happens
    * to be sitting at — 21:00 today would place a backfill after a 09:00 row it knows
-   * nothing about. So `opts.timestamp`, B3's time reveal, is ignored on a backfill too;
+   * nothing about. The pin is the day's **local** noon, read at the edge by
+   * `localNoonOn` — the domain may not read a timezone (SPEC §2.2), and a UTC-noon
+   * stamp would come back out of the feed as 21:00 in Seoul. So `opts.timestamp`,
+   * B3's time reveal, is ignored on a backfill too;
    * the canvas says as much on the control itself (`Backfill.logic.js:81` —
    * `🕑 낮 12:00으로 기록`).
    */
@@ -283,7 +286,14 @@ export function useQuickLog({
             // fill writes. The composer may have staged another, and the amount is the
             // caller's; what the builder contributes is the noon pin and the §6.3
             // range assertion, which is why it is called either way.
-            ...buildBackfillActivity(habit, date, await rowsOnDate(habit.id), entryId, today),
+            ...buildBackfillActivity(
+              habit,
+              date,
+              localNoonOn(date),
+              await rowsOnDate(habit.id),
+              entryId,
+              today,
+            ),
             actual,
           }
         : {
@@ -312,7 +322,15 @@ export function useQuickLog({
 
     await repository.upsertEntry({
       ...(isBackfill
-        ? buildBackfillSkip(habit, date, await rowsOnDate(habit.id), entryId, reason, today)
+        ? buildBackfillSkip(
+            habit,
+            date,
+            localNoonOn(date),
+            await rowsOnDate(habit.id),
+            entryId,
+            reason,
+            today,
+          )
         : {
             id: entryId,
             habitId: habit.id,

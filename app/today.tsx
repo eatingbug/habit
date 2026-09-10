@@ -105,7 +105,16 @@ function stateLabel(state: DayState): string {
  * screen reader would otherwise announce "07:10 독서 +3쪽" with no hint that the line
  * does anything. An a11y label describes the affordance, so no canvas citation applies.
  */
-function FeedRow({ item, onPress }: { item: TodayFeedItem; onPress: () => void }) {
+function FeedRow({
+  item,
+  isBackfill,
+  onPress,
+}: {
+  item: TodayFeedItem;
+  /** Is the feed showing a past day? Then every line on it is a backfilled row. */
+  isBackfill: boolean;
+  onPress: () => void;
+}) {
   const { colors } = useTheme();
   /**
    * §3.3's row discriminator — the *presence of a reason*, never `actual === 0`. A
@@ -159,6 +168,12 @@ function FeedRow({ item, onPress }: { item: TodayFeedItem; onPress: () => void }
           of the row (§3.3), not of the skip path. */}
       {item.entry.note != null && (
         <Text style={[styles.feedNote, { color: colors.faint }]}>메모: {item.entry.note}</Text>
+      )}
+      {/* `Backfill.logic.js:52` — on a past day the time column reads noon for every
+          line, which is a fact about how the row was recorded rather than about when
+          the user did the thing. This says so, on the same `.backnote` second line. */}
+      {isBackfill && (
+        <Text style={[styles.feedNote, { color: colors.faint }]}>지난 날 기록 · 낮 12시로 남음</Text>
       )}
     </Pressable>
   );
@@ -978,17 +993,29 @@ export default function Today() {
 
         {/* `Backfill.logic.js:82` / `:58` — the feed and its empty line name the day
             they are about, so a past day's empty feed cannot be read as today's. */}
-        <Eyebrow>{dateControl.atToday ? '오늘 기록' : '이 날 기록'}</Eyebrow>
+        <Eyebrow>{dateControl.isBackfill ? '이 날 기록' : '오늘 기록'}</Eyebrow>
         {feed.length === 0 ? (
-          <Text style={[styles.notice, { color: colors.muted }]}>
-            {dateControl.atToday ? '오늘은 아직 기록이 없어요' : '이 날엔 기록이 없어요'}
-          </Text>
+          <View style={styles.emptyFeed}>
+            <Text style={[styles.notice, { color: colors.muted }]}>
+              {dateControl.isBackfill ? '이 날엔 기록이 없어요' : '오늘은 아직 기록이 없어요'}
+            </Text>
+            {/* `Backfill.logic.js:61` — the recovery half of the empty past day, which
+                is ADR-0001's whole promise: the day is repairable, not merely lost.
+
+                The canvas's `실패` badge beside it (`:59`) is **not** adopted. That
+                artboard shows one habit, so its amount column can call the day a
+                failure; this feed is across habits, and a habit paused on that date is
+                no failure at all (ADR-0003). The word belongs where it is true per
+                habit — the composer's own `missed` line above. */}
+            {dateControl.isBackfill && <Footnote>채워 넣으면 이 날이 성공으로 바뀝니다</Footnote>}
+          </View>
         ) : (
           <View style={styles.feed}>
             {feed.map((item) => (
               <FeedRow
                 key={item.entry.id}
                 item={item}
+                isBackfill={dateControl.isBackfill}
                 onPress={() => setEditingId(item.entry.id)}
               />
             ))}
@@ -1051,6 +1078,7 @@ const styles = StyleSheet.create({
   unit: { fontSize: FONT_SIZE.sm },
   grow: { flex: 1 },
   feed: { gap: SPACE.sm },
+  emptyFeed: { gap: SPACE.xs },
   // The hairline and vertical rhythm move to the item, so a skip row's reason line
   // sits inside the same separated block as the amount it explains.
   // §6.0's 44px minimum — the row is the control that opens the editor (#13).

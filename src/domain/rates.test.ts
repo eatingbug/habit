@@ -102,7 +102,15 @@ describe('successRate vs floorCompletionRate — deliberately different populati
    */
   it('backfilling a missed day to done raises the user-facing success rate (AC 8b)', () => {
     const filled = dates[5];
-    const row = buildBackfillActivity(habit, filled, [], 'backfilled', AS_OF);
+    const [y, mo, d] = filled.split('-').map(Number);
+    const row = buildBackfillActivity(
+      habit,
+      filled,
+      new Date(y, mo - 1, d, 12, 0).toISOString(),
+      [],
+      'backfilled',
+      AS_OF,
+    );
     const after = [...entries, row];
 
     expect(successRate(entries, habit, AS_OF, window)).toBeCloseTo(10 / 28);
