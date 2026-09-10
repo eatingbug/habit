@@ -906,16 +906,21 @@ export default function Today() {
 
         <DateControlBar control={dateControl} onPick={setSelectedDate} />
 
-        {/* `Backfill.body.html:67` / `:73` — what a write to this day will do. Both are
-            neutral: they state a mechanism, and neither is a warning. */}
-        {dateControl.isBackfill ? (
+        {/* `Backfill.body.html:67` — what a write to a past day does, said where the
+            user can act on it: the noon pin, the append, the recovery. Neutral, because
+            it states a mechanism rather than warning about one.
+
+            The artboard's companion banner on today (`:73`) is deliberately **not**
+            here. It is the only permanent copy this ticket would add to the default
+            Today view, which the date stepper does not otherwise change, and its own
+            sentence says the timestamp matters only for ordering and can be ignored — a
+            line that argues for its own absence from a screen every user opens every
+            day. Omitting a canvas element is not a deviation from its copy: the canvas
+            is the authority on what an element says once it ships. */}
+        {dateControl.isBackfill && (
           <Banner variant="neutral">
             지난 날 기록 — 시각은 그날 낮 12시로 남습니다. 원래 있던 기록을 지우지 않고 옆에
             더해집니다. 실패로 잡혀 있던 날이면 성공으로 바뀌고, 연속 날수가 다시 계산됩니다.
-          </Banner>
-        ) : (
-          <Banner variant="neutral">
-            오늘 기록은 지금 시각으로 남습니다. 순서를 매길 때만 쓰이니 신경 안 쓰셔도 돼요.
           </Banner>
         )}
 
