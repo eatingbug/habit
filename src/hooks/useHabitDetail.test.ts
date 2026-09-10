@@ -360,14 +360,47 @@ describe('useHabitDetail — the panel order (D6)', () => {
 });
 
 describe('useHabitDetail — backfill (D10, D14)', () => {
-  it('marks past heatmap cells tappable and refuses the ones outside the range', async () => {
+  it('ends the heatmap ribbon on today', async () => {
     const result = await detail(await seed(habit({ createdAt: `${TODAY}T00:00:00.000Z` })));
     const cells = result.current.heatmap;
 
-    expect(cells[cells.length - 1].cell.date).toBe(TODAY);
-    expect(cells[cells.length - 1].tappable).toBe(true);
-    // Everything before the habit existed is out of the §6.3 range.
-    expect(cells.filter((cell) => cell.tappable)).toHaveLength(1);
+    expect(cells).toHaveLength(TUNING.heatmapDays);
+    expect(cells[cells.length - 1].date).toBe(TODAY);
+  });
+
+  it('points 지난 날 기록 추가 at the most recent gap, and it is fillable', async () => {
+    // Two gaps: TODAY-6 and TODAY-2. Every other past day in the window is floor-met,
+    // so the button must name the newer of the two.
+    const filled = [1, 3, 4, 5, 7, 8].map((back) => activity(addDays(TODAY, -back), 6));
+    const born = habit({ createdAt: `${addDays(TODAY, -8)}T00:00:00.000Z` });
+    const result = await detail(await seed(born, filled));
+
+    expect(result.current.nextBackfillDate).toBe(addDays(TODAY, -2));
+    expect(dayOf(result.current, addDays(TODAY, -6)).state).toBe('missed');
+    expect(dayOf(result.current, addDays(TODAY, -2)).backfillable).toBe(true);
+  });
+
+  it('names no date when the window holds no gap at all', async () => {
+    // Born today: the only day in scope is today, which is `pending`, never `missed`.
+    const result = await detail(await seed(habit({ createdAt: `${TODAY}T00:00:00.000Z` })));
+
+    expect(result.current.journal.every((day) => day.state !== 'missed')).toBe(true);
+    expect(result.current.nextBackfillDate).toBeNull();
+  });
+
+  it('drops the button’s date once that gap is filled', async () => {
+    const gap = addDays(TODAY, -2);
+    const born = habit({ createdAt: `${gap}T00:00:00.000Z` });
+    const result = await detail(await seed(born, [activity(addDays(TODAY, -1), 6)]));
+
+    expect(result.current.nextBackfillDate).toBe(gap);
+
+    act(() => result.current.openBackfill(gap));
+    await act(async () => {
+      await result.current.fillDay();
+    });
+
+    expect(result.current.nextBackfillDate).toBeNull();
   });
 
   it('ignores a request to open a date the §6.3 range forbids', async () => {

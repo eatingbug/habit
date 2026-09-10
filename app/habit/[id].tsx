@@ -59,22 +59,20 @@ import { FONT_FAMILY, FONT_SIZE, RADIUS, SPACE, TAP_TARGET } from '@/theme/token
  * - the 빠짐없이 pill — #18 (engagement streak);
  * - the journal's free-log lines (메모 · 성취 · 기분 · 아이디어) — #16.
  *
- * Two canvas elements of **this** ticket are also absent, for reasons of this file:
- * - `HabitDetail.body.html:53`'s `+ 지난 날 기록 추가` names an action without a date,
- *   and picking one ("the most recent fillable day") is a rule no hook derives. The
- *   journal row is the same action carrying its own date.
- * - tapping a heatmap cell. `Heatmap` is one summary hidden from assistive tech, and
- *   its cells are ~15px wide — under §6.0's 44px minimum — which is why the Dashboard
- *   long-presses the whole ribbon instead of a cell. The journal row carries the same
- *   gate — `JournalDay.backfillable` and `DetailHeatCell.tappable` are the same
- *   `isBackfillableDate` call — over 12 weeks of days against the heatmap's
- *   `TUNING.heatmapDays`, so `DetailHeatCell.tappable` is unread here.
+ * One canvas gesture of **this** ticket is absent: tapping a heatmap cell. `Heatmap`
+ * is one summary hidden from assistive tech, and its cells are ~15px wide — under
+ * §6.0's 44px minimum — which is why the Dashboard long-presses the whole ribbon
+ * instead of a cell. The two controls that do open a composer carry the same §6.3
+ * gate over a longer reach: the journal's own line for a date (12 weeks of days
+ * against the ribbon's `TUNING.heatmapDays`), and `+ 지난 날 기록 추가`, which the hook
+ * points at the most recent `missed` day (`view.nextBackfillDate`).
  *
- *   One date the ribbon shows is then unreachable: an **empty day inside a pause**,
- *   which `dayStates` omits (ADR-0003's asymmetry) while `heatCells` still draws its
- *   slot, and which `isBackfillableDate` does allow a write to. Filling it needs the
- *   journal to hold a line for a date the classifier has no opinion about — a rule,
- *   and the hook's, not this file's.
+ * One date the ribbon shows is therefore unreachable: an **empty day inside a pause**,
+ * which `dayStates` omits (ADR-0003's asymmetry) while `heatCells` still draws its
+ * slot, and which `isBackfillableDate` does allow a write to. It is not `missed`
+ * either — it has no state at all — so the button never names it. Filling it needs the
+ * journal to hold a line for a date the classifier has no opinion about: a rule, and
+ * the hook's, not this file's.
  */
 
 /** The journal's date column — `7/8` (`HabitDetail.body.html:46`). */
@@ -108,6 +106,16 @@ function clockOf(timestamp: string): string {
  *
  * `pending` has no canvas chip: it can only be today, still open. 캔버스 출처 없음 —
  * 신규 문구 `아직 기록 없음`, which `app/today.tsx` already uses for exactly this state.
+ *
+ * The delete confirm's `지운 뒤 …:` line resolves its label through this map as well,
+ * and reaches only a subset of it. `done` and `over` never arrive there — the confirm
+ * fires on `emptiesDay || carriesMiss || showsStreak`, and a delete leaving the day
+ * floor-met passes none of the three: rows survive it (`emptiesDay` false); a
+ * miss-carrying day holds no activity row (§4.1), so no delete off one can leave a
+ * floor-met day (`carriesMiss` false); and a day that was floor-met before and stays
+ * floor-met counts identically in `computeStreak`'s walk (`showsStreak` false). So
+ * `over`'s `목표까지`, whose other half is the chip's `· 모두 12`, is never printed as a
+ * confirm line without it.
  */
 function stateWord(state: DayState, binary: boolean): string {
   switch (state) {
@@ -918,7 +926,7 @@ export default function HabitDetail() {
             <View style={styles.chHead}>
               <Eyebrow>최근 {view.heatmap.length}일</Eyebrow>
             </View>
-            <Heatmap cells={view.heatmap.map((cell) => cell.cell)} />
+            <Heatmap cells={view.heatmap} />
             {/* `YesNo.body.html:34` — what the two miss cells mean, and that a past day
                 is repairable. True of both habit kinds: the outline/fill split is the
                 heatmap's, not the kind's. */}
@@ -956,7 +964,11 @@ export default function HabitDetail() {
         return view.design == null ? null : (
           <DesignPanel key={name} design={view.design} onSave={view.saveDesign} />
         );
-      case 'journal':
+      case 'journal': {
+        // `HabitDetail.body.html:53`. The date is the hook's — the most recent gap in
+        // the window — and with no gap left there is nothing to add, so no button.
+        const gap = view.nextBackfillDate;
+
         return (
           <View key={name} style={styles.journalGroup}>
             <Eyebrow>저널</Eyebrow>
@@ -1002,8 +1014,22 @@ export default function HabitDetail() {
                 </View>
               ))}
             </View>
+            {gap != null && (
+              <Button
+                label="+ 지난 날 기록 추가"
+                block
+                tap
+                onPress={() => {
+                  // Same order as a journal line's own press: an open row editor is
+                  // dismissed first, so the two panels never stand open together.
+                  setEditingId(null);
+                  view.openBackfill(gap);
+                }}
+              />
+            )}
           </View>
         );
+      }
     }
   }
 

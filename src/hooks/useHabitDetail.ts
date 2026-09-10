@@ -107,12 +107,6 @@ export interface JournalDay {
   backfillable: boolean;
 }
 
-/** One heatmap cell plus whether tapping it opens the backfill composer (D14). */
-export interface DetailHeatCell {
-  cell: HeatCell;
-  tappable: boolean;
-}
-
 /** One bar of the growth chart. `height` is a percentage of the chart's scale. */
 export interface GrowthBar {
   /** The week's summed actual (§4.6 C4). */
@@ -240,8 +234,23 @@ export interface HabitDetailView {
   panelOrder: DetailPanel[];
   /** The last `TUNING.growthChartWeeks` weeks of days, **newest first** (§6.3). */
   journal: JournalDay[];
-  /** `TUNING.heatmapDays` cells ending today, ascending — the backfill entry point. */
-  heatmap: DetailHeatCell[];
+  /**
+   * The date the `+ 지난 날 기록 추가` button fills (canvas `HabitDetail.body.html:53`):
+   * the **most recent `missed` day** in the journal window, or `null` when the window
+   * holds none — and then the screen shows no button, because there is no gap to fill.
+   *
+   * The most recent gap, not yesterday and not a picker: Today's own 어제 fast-path
+   * (#14) already covers the newest day, so this button exists for what is left behind
+   * it. A `missed` day is by construction in scope and before today, so it is always
+   * inside the §6.3 backfill range.
+   */
+  nextBackfillDate: string | null;
+  /**
+   * `TUNING.heatmapDays` cells ending today, ascending — the ribbon the screen draws
+   * (D14). Read-only: the cells are ~15px wide, under §6.0's 44px, so the gesture that
+   * fills a past day is the journal's line for that date, not a cell.
+   */
+  heatmap: HeatCell[];
   /**
    * `null` for a binary habit: there is no quantity, so "how much per week" has no
    * meaning and the canvas `YesNo.body.html` draws no such chart (D5).
@@ -251,10 +260,10 @@ export interface HabitDetailView {
   forming: FormingExpectation | null;
   design: DesignBox | null;
   /**
-   * The date whose backfill composer is open, or `null`. Opening one is what the
-   * heatmap's past cells and the `+ 지난 날 기록 추가` button do; every write below
-   * goes to this date, under the §6.3 rules (noon pin, increasing offsets, blocked
-   * before birth and after today).
+   * The date whose backfill composer is open, or `null`. Opening one is what a
+   * journal day's line and the `+ 지난 날 기록 추가` button do; every write below goes
+   * to this date, under the §6.3 rules (noon pin, increasing offsets, blocked before
+   * birth and after today).
    */
   backfillDate: string | null;
   /** Ignores a date the §6.3 range forbids, so a stale cell cannot open a bad composer. */
@@ -455,6 +464,13 @@ export function useHabitDetail(
     onChange: reload,
   });
 
+  const journal =
+    habit == null
+      ? []
+      : dayStates(habit, entries, windowStart(today), today, today)
+          .map((day) => journalDay(habit, day, today))
+          // Newest first — the canvas reads downward from the most recent day.
+          .reverse();
   const chart = habit == null ? null : growthChart(habit, entries, today);
   const forming = habit == null ? null : formingExpectation(habit, entries, today);
   const heatWindow = windowEndingAt(today, TUNING.heatmapDays);
@@ -544,19 +560,14 @@ export function useHabitDetail(
         habit == null ? null : successRate(entries, habit, today, TUNING.windows.floorRate),
     },
     panelOrder: habit == null ? [] : panelsFor(habit, chart != null, forming != null),
-    journal:
-      habit == null
-        ? []
-        : dayStates(habit, entries, windowStart(today), today, today)
-            .map((day) => journalDay(habit, day, today))
-            // Newest first — the canvas reads downward from the most recent day.
-            .reverse(),
+    journal,
+    // The journal is already newest-first, so the first `missed` day in it is the most
+    // recent one.
+    nextBackfillDate: journal.find((day) => day.state === 'missed')?.date ?? null,
     heatmap:
       habit == null
         ? []
-        : heatCells(habit, entries, heatWindow[0], heatWindow[heatWindow.length - 1], today).map(
-            (cell) => ({ cell, tappable: isBackfillableDate(habit, cell.date, today) }),
-          ),
+        : heatCells(habit, entries, heatWindow[0], heatWindow[heatWindow.length - 1], today),
     chart,
     forming,
     design:
