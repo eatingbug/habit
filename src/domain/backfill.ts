@@ -79,9 +79,18 @@ export function nextBackfillTimestamp(localNoon: string, rowsOnDate: HabitEntry[
  * `localNoon` is the row's *own* date at local noon, passed in for the same reason
  * `nextBackfillTimestamp` takes it: the timezone is not this layer's to read (§2.2).
  *
- * Not a claim about intent. A row logged by hand at exactly 12:00 is indistinguishable
- * from a backfill and reads as one, which is why the caller must also know the row is
- * not on today — on today there is nothing to have backfilled.
+ * Not a claim about intent. A row logged by hand at exactly local noon is
+ * indistinguishable from a backfill and reads as one, which is why the caller must also
+ * know the row is not on today — on today there is nothing to have backfilled. The case
+ * is reachable: B3's time override zeroes seconds, so typing `12` `00` produces exactly
+ * local noon. Seen again on a later day, that row is labelled 「낮 12시로 남음」 in the
+ * feed and loses its time reveal in the editor, which gates on this same predicate.
+ *
+ * Separating the two would take a stored discriminator on `HabitEntry`, and this
+ * codebase computes a day's facts from its rows rather than storing them (ADR-0001) —
+ * one row's time reveal does not buy that change (CLAUDE.md §2). The row's amount and
+ * note stay editable either way, and #15's journal owns the question if it ever costs
+ * anyone anything.
  */
 export function isBackfilledRow(entry: HabitEntry, localNoon: string): boolean {
   const at = Date.parse(entry.timestamp);
