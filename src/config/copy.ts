@@ -48,8 +48,8 @@ export interface DeleteConfirmFacts {
   carriesMiss: boolean;
   /**
    * How the sentences name the day being changed. Defaults to `오늘`, which is the
-   * only day `app/today.tsx` can delete from; the journal (§6.3) holds past-dated
-   * rows and passes that row's own date, because `오늘` would be false there.
+   * only day `app/today.tsx` can delete from; the journal (§6.3) also holds past
+   * dates and passes such a row's own date, because `오늘` would be false there.
    */
   dayLabel?: string;
   /**

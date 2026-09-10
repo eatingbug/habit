@@ -108,12 +108,12 @@ export interface TodayFeedItem {
  * (#15), which asks the same question of past dates. This type only adds the habit the
  * confirm names.
  *
- * `app/today.tsx` renders **no** streak figure from `streakBefore`/`streakAfter`, and
- * that is not an omission: this feed only ever holds `date === today`, where an emptied
- * day falls back to `pending` rather than `missed` (ADR-0001, `streak.test.ts` — "keeps
- * a pending today transparent"). Nothing is broken, so the honest number to quote is
- * "one fewer day so far", which is not a warning. The `missed` reversal and the cut
- * streak belong to the screen that holds past-dated rows (#15).
+ * `app/today.tsx` renders **no** streak figure from `streakBefore`/`streakAfter`. This
+ * feed only ever holds `date === today`, where an emptied day falls back to `pending`
+ * rather than `missed` (ADR-0001, `streak.test.ts` — "keeps a pending today
+ * transparent"), so nothing is broken and the honest number to quote would be "one
+ * fewer day so far", which is not a warning. The `missed` reversal and the cut streak
+ * belong to the screen that holds past-dated rows (#15).
  */
 export interface DeleteEffect extends DeleteOutcome {
   habit: Habit;

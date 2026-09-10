@@ -3,8 +3,7 @@ import type { Habit, HabitEntry } from '@/models';
 import { weeklyActualTotals } from './weekly';
 
 /**
- * SPEC §4.6 C4 — the four assertions the parked `statusLight.test.ts` already made
- * about this function, moved with it.
+ * SPEC §4.6 C4 — `weeklyActualTotals`, the numbers the §6.3 growth chart draws.
  *
  * `TODAY` is a **Sunday**, so the ISO week containing it is complete. Mondays of the
  * trailing weeks: 03-23 (this week), 03-16, 03-09, 03-02.

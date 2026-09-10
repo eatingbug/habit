@@ -4,7 +4,7 @@ import { TUNING } from '@/config/tuning';
 import { useRepository } from '@/context/RepositoryContext';
 import { isBackfillableDate, isBackfilledRow } from '@/domain/backfill';
 import { dayStates, type ClassifiedDay } from '@/domain/classify';
-import { addDays, dateOf, daysBetween, mondayOf, windowEndingAt } from '@/domain/dates';
+import { dateOf, daysBetween, windowEndingAt } from '@/domain/dates';
 import { deleteOutcome, type DeleteOutcome } from '@/domain/deleteEffect';
 import { heatCells, type HeatCell } from '@/domain/heatLevel';
 import { successRate } from '@/domain/rates';
@@ -13,7 +13,7 @@ import { weeklyActualTotals } from '@/domain/weekly';
 import { localNoonOn, localToday } from '@/lib/device';
 import type { DayState, Habit, HabitEntry, SkipReason, Stat } from '@/models';
 
-import { useQuickLog, type QuickLogToast } from './useQuickLog';
+import { logAffordances, useQuickLog, type LogAffordances, type QuickLogToast } from './useQuickLog';
 
 /**
  * The habit detail screen's data path — SPEC §6.3.
@@ -36,7 +36,7 @@ import { useQuickLog, type QuickLogToast } from './useQuickLog';
  * past date repairs it for free and deleting its last row un-repairs it (ADR-0001).
  */
 
-/** The two stat pills the canvas keeps on this screen (`HabitDetail.body.html:10–13`). */
+/** The two stat pills the canvas keeps on this screen (`HabitDetail.body.html:10`/`:12`). */
 export interface DetailPills {
   /** Consecutive floor-met days ending today (§4.2). */
   streak: number;
@@ -83,6 +83,12 @@ export interface JournalRow {
  */
 export interface JournalDay {
   date: string;
+  /**
+   * Is this day `today`? The delete confirm names the day it changes, and calling
+   * today `3월 29일` is exactly what `copy.ts`'s `오늘` default exists to avoid. The
+   * condition is derived here; the screen picks the word.
+   */
+  isToday: boolean;
   /** The day's computed state — the chip's text key (§4.1, canvas `:46–50`). */
   state: DayState;
   /** The day's summed activity. */
@@ -141,6 +147,11 @@ export interface GrowthChart {
   weeklyTarget: number | null;
   /** The best week's total — the canvas's `최고 70`. 0 when nothing was ever recorded. */
   best: number;
+  /**
+   * The week `today` falls in — the last bucket, and the canvas's `이번 주 37`
+   * (`Established.body.html:17`). A running total: the week is not over.
+   */
+  thisWeek: number;
 }
 
 /**
@@ -166,7 +177,7 @@ export interface DesignBox {
   /**
    * Does the edit form show the 최소량/목표 inputs? False for a binary habit, whose
    * floor is always 1 and which may hold no target (§3.2) — its 최소량 row reads
-   * `없음 — 했다 / 안 했다` instead (AC 8, canvas `YesNo.body.html:47`).
+   * `없음 — 했다 / 안 했다` instead (AC 8, canvas `YesNo.body.html:46`).
    */
   editsAmounts: boolean;
 }
@@ -232,12 +243,19 @@ export interface HabitDetailView {
   pills: DetailPills;
   /** The panels to render, in order. A panel with nothing to say is simply absent. */
   panelOrder: DetailPanel[];
-  /** The last `TUNING.growthChartWeeks` weeks of days, **newest first** (§6.3). */
+  /**
+   * The habit's **whole life** — `createdAt` through today, one line per date, newest
+   * first (§6.3). Not the chart's twelve weeks: §6.3's backfill range is `createdAt`
+   * 부터 오늘까지 and a day's own journal line is the only gesture that reaches an
+   * **arbitrary** date — the heatmap's cells are under §6.0's 44px, and
+   * `nextBackfillDate` names one date, the most recent gap. So a shorter walk would
+   * leave an older gap unreachable. §7.3 makes the length a non-criterion.
+   */
   journal: JournalDay[];
   /**
    * The date the `+ 지난 날 기록 추가` button fills (canvas `HabitDetail.body.html:53`):
-   * the **most recent `missed` day** in the journal window, or `null` when the window
-   * holds none — and then the screen shows no button, because there is no gap to fill.
+   * the **most recent `missed` day** of the whole history, or `null` when there is
+   * none — and then the screen shows no button, because there is no gap to fill.
    *
    * The most recent gap, not yesterday and not a picker: Today's own 어제 fast-path
    * (#14) already covers the newest day, so this button exists for what is left behind
@@ -266,6 +284,16 @@ export interface HabitDetailView {
    * birth and after today).
    */
   backfillDate: string | null;
+  /**
+   * What the open composer's date affords, read the way both other logging surfaces
+   * read their day's — `null` when no composer is open. §4.1's precedence is the
+   * point (`skippable`, the field the composer gates on): a date already
+   * holding an activity row is not `skippable`, because a skip row written there
+   * changes no state, no miss and no diagnosis, so the composer must not offer the
+   * reason chips at all (`app/today.tsx`, `app/index.tsx` withhold theirs on the same
+   * field).
+   */
+  composerAffordances: LogAffordances | null;
   /** Ignores a date the §6.3 range forbids, so a stale cell cannot open a bad composer. */
   openBackfill(date: string): void;
   closeBackfill(): void;
@@ -283,8 +311,8 @@ export interface HabitDetailView {
   removeEntry(entryId: string): Promise<void>;
   /**
    * Does deleting this row need a result-aware confirm, and on what basis? `null`
-   * means no — delete it immediately (#13 AC 4), which is also the answer for an id
-   * the journal does not hold.
+   * means no — delete it immediately (#13 AC 4), and also the answer for an id no row
+   * of this habit's loaded history carries.
    */
   deletePreview(entryId: string): DetailDeleteEffect | null;
   /**
@@ -303,14 +331,10 @@ function effectiveTarget(habit: Habit): number | undefined {
   return habit.target;
 }
 
-/** The first date the journal and the chart share — `growthChartWeeks` Mondays back. */
-function windowStart(today: string): string {
-  return addDays(mondayOf(today), -7 * (TUNING.growthChartWeeks - 1));
-}
-
 function journalDay(habit: Habit, day: ClassifiedDay, today: string): JournalDay {
   return {
     date: day.date,
+    isToday: day.date === today,
     state: day.state,
     sum: day.sum,
     skipReason: day.skipReason,
@@ -356,6 +380,7 @@ function growthChart(habit: Habit, entries: HabitEntry[], today: string): Growth
     weeklyFloor,
     weeklyTarget,
     best,
+    thisWeek: totals[totals.length - 1],
   };
 }
 
@@ -467,7 +492,7 @@ export function useHabitDetail(
   const journal =
     habit == null
       ? []
-      : dayStates(habit, entries, windowStart(today), today, today)
+      : dayStates(habit, entries, dateOf(habit.createdAt), today, today)
           .map((day) => journalDay(habit, day, today))
           // Newest first — the canvas reads downward from the most recent day.
           .reverse();
@@ -561,8 +586,8 @@ export function useHabitDetail(
     },
     panelOrder: habit == null ? [] : panelsFor(habit, chart != null, forming != null),
     journal,
-    // The journal is already newest-first, so the first `missed` day in it is the most
-    // recent one.
+    // The journal is already newest-first and covers the whole history, so the first
+    // `missed` day in it is the most recent one.
     nextBackfillDate: journal.find((day) => day.state === 'missed')?.date ?? null,
     heatmap:
       habit == null
@@ -582,6 +607,10 @@ export function useHabitDetail(
             editsAmounts: habit.kind === 'count',
           },
     backfillDate,
+    composerAffordances:
+      habit == null || backfillDate == null
+        ? null
+        : logAffordances(habit, dayStates(habit, entries, backfillDate, backfillDate, today)[0]),
     openBackfill,
     closeBackfill: () => setBackfillDate(null),
     fillDay,

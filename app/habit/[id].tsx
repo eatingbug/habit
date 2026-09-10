@@ -25,6 +25,8 @@ import { deleteConfirmLines, SKIP_REASON_LABELS } from '@/config/copy';
 import {
   useHabitDetail,
   type DesignBox,
+  type DesignErrors,
+  type DesignPatch,
   type DetailDeleteEffect,
   type DetailPanel,
   type GrowthChart,
@@ -34,7 +36,7 @@ import {
 import { restampedAtLocalTime } from '@/lib/device';
 import type { DayState, Habit, HabitEntry, SkipReason } from '@/models';
 import { useTheme } from '@/theme/ThemeProvider';
-import { FONT_FAMILY, FONT_SIZE, RADIUS, SPACE, TAP_TARGET } from '@/theme/tokens';
+import { FONT_FAMILY, FONT_SIZE, RADIUS, SPACE, TAP_TARGET, type Palette } from '@/theme/tokens';
 
 /**
  * Habit detail — SPEC §6.3; layout and copy from `design/parts/HabitDetail.body.html`,
@@ -63,9 +65,9 @@ import { FONT_FAMILY, FONT_SIZE, RADIUS, SPACE, TAP_TARGET } from '@/theme/token
  * is one summary hidden from assistive tech, and its cells are ~15px wide — under
  * §6.0's 44px minimum — which is why the Dashboard long-presses the whole ribbon
  * instead of a cell. The two controls that do open a composer carry the same §6.3
- * gate over a longer reach: the journal's own line for a date (12 weeks of days
- * against the ribbon's `TUNING.heatmapDays`), and `+ 지난 날 기록 추가`, which the hook
- * points at the most recent `missed` day (`view.nextBackfillDate`).
+ * gate over a longer reach: the journal's own line for a date (every day of the
+ * habit's life against the ribbon's `TUNING.heatmapDays`), and `+ 지난 날 기록 추가`,
+ * which the hook points at the most recent `missed` day (`view.nextBackfillDate`).
  *
  * One date the ribbon shows is therefore unreachable: an **empty day inside a pause**,
  * which `dayStates` omits (ADR-0003's asymmetry) while `heatCells` still draws its
@@ -75,15 +77,21 @@ import { FONT_FAMILY, FONT_SIZE, RADIUS, SPACE, TAP_TARGET } from '@/theme/token
  * the hook's, not this file's.
  */
 
+/** 'YYYY-MM-DD' → its month and day as numbers, the one parse both spellings read. */
+function monthAndDay(date: string): [number, number] {
+  const [, month, day] = date.split('-').map(Number);
+  return [month, day];
+}
+
 /** The journal's date column — `7/8` (`HabitDetail.body.html:46`). */
 function shortDate(date: string): string {
-  const [, month, day] = date.split('-').map(Number);
+  const [month, day] = monthAndDay(date);
   return `${month}/${day}`;
 }
 
 /** The same date in prose, for a sentence that has to name the day it changes. */
 function monthDay(date: string): string {
-  const [, month, day] = date.split('-').map(Number);
+  const [month, day] = monthAndDay(date);
   return `${month}월 ${day}일`;
 }
 
@@ -94,8 +102,13 @@ function clockOf(timestamp: string): string {
 }
 
 /**
- * Day-state → this screen's chip word (`HabitDetail.body.html:46–50`,
+ * Day-state → this screen's chip word **and hue** (`HabitDetail.body.html:46–50`,
  * `YesNo.body.html:52`/`:55`).
+ *
+ * One map, because the word and the colour are two halves of the same chip: two
+ * separate switches over `DayState` in one file is how a state eventually gains a word
+ * in one and keeps the wrong hue in the other. `missed` is still spelt out at the chip
+ * itself — it is the one outlined, untinted state, which a hue key cannot carry.
  *
  * The words are the **detail canvas's**, and two of them differ from `app/today.tsx`'s:
  * `over` reads `목표까지` here and `성공 · 목표 초과` there, because each artboard names
@@ -117,21 +130,19 @@ function clockOf(timestamp: string): string {
  * `over`'s `목표까지`, whose other half is the chip's `· 모두 12`, is never printed as a
  * confirm line without it.
  */
+const DAY_STATE: Record<DayState, { word: string; binaryWord?: string; hue: keyof Palette }> = {
+  done: { word: '성공', binaryWord: '함', hue: 'done' },
+  over: { word: '목표까지', binaryWord: '함', hue: 'over' },
+  partial: { word: '조금 함', hue: 'partial' },
+  skip: { word: '못 함', binaryWord: '안 함', hue: 'skip' },
+  missed: { word: '기록 없음 · 실패', hue: 'skip' },
+  pending: { word: '아직 기록 없음', hue: 'faint' },
+};
+
+/** The chip's word — a binary habit says only whether it happened. */
 function stateWord(state: DayState, binary: boolean): string {
-  switch (state) {
-    case 'done':
-      return binary ? '함' : '성공';
-    case 'over':
-      return binary ? '함' : '목표까지';
-    case 'partial':
-      return '조금 함';
-    case 'skip':
-      return binary ? '안 함' : '못 함';
-    case 'missed':
-      return '기록 없음 · 실패';
-    case 'pending':
-      return '아직 기록 없음';
-  }
+  const { word, binaryWord } = DAY_STATE[state];
+  return binary ? (binaryWord ?? word) : word;
 }
 
 /**
@@ -153,16 +164,7 @@ function chipText(day: JournalDay, binary: boolean): string {
 /** `.statechip` — one hue per day-state, as a tint the way `Banner` makes its own. */
 function StateChip({ label, state }: { label: string; state: DayState }) {
   const { colors } = useTheme();
-  const hue =
-    state === 'done'
-      ? colors.done
-      : state === 'over'
-        ? colors.over
-        : state === 'partial'
-          ? colors.partial
-          : state === 'skip' || state === 'missed'
-            ? colors.skip
-            : colors.faint;
+  const hue = colors[DAY_STATE[state].hue];
 
   return (
     <View
@@ -187,6 +189,40 @@ function StateChip({ label, state }: { label: string; state: DayState }) {
 function amountText(entry: HabitEntry, habit: Habit): string {
   if (entry.skipReason != null) return '건너뜀';
   return habit.kind === 'binary' ? '✓' : `+${entry.actual}`;
+}
+
+/**
+ * The header's one-sentence sub line — `Established.body.html:8` and
+ * `YesNo.body.html:8`. Both are driven by stored fields (`kind`, `lifecycle`), so
+ * neither waits on the status light (#20).
+ *
+ * `kind` decides before `lifecycle`: Established's line promises the amount graph
+ * (`양이 늘고 있는지를 봅니다`), and a binary habit draws none — `view.chart` is `null`
+ * (D5) — so on a binary habit that sentence is false whatever its lifecycle, while
+ * YesNo's is true of every binary habit. `established` is the same gate the growth
+ * panel leads on, which is what makes the sentence's promise good.
+ *
+ * A forming count habit gets neither: `HabitDetail.body.html` carries no such line.
+ */
+function HeaderSub({ binary, established }: { binary: boolean; established: boolean }) {
+  const { colors } = useTheme();
+  const strong = { color: colors.text, fontWeight: '600' } as const;
+
+  if (binary) {
+    return (
+      <Text style={[styles.headerSub, { color: colors.muted }]}>
+        했다 / 안 했다만 있는 습관이에요. <Text style={strong}>며칠 이어 갔는지</Text>만 봅니다.
+      </Text>
+    );
+  }
+  if (!established) return null;
+
+  return (
+    <Text style={[styles.headerSub, { color: colors.muted }]}>
+      이제 안 빼먹는 건 거의 자동이에요. 그래서 응원 대신{' '}
+      <Text style={strong}>양이 늘고 있는지</Text>를 봅니다.
+    </Text>
+  );
 }
 
 /**
@@ -219,19 +255,24 @@ function StatPills({ streak, successRate }: { streak: number; successRate: numbe
  */
 function GrowthPanel({ chart, primary }: { chart: GrowthChart; primary: boolean }) {
   const { colors } = useTheme();
+  // `Established.body.html:17` puts this week's running total beside the best week;
+  // the `HabitDetail.body.html:23` head reads `최고 70` alone. So the second figure —
+  // and the hint below the chart (`:34`) — ship on the artboard that carries them,
+  // which is exactly where the panel leads the screen.
+  const head = primary ? `최고 ${chart.best} · 이번 주 ${chart.thisWeek}` : `최고 ${chart.best}`;
 
   return (
     <Card primary={primary}>
       <View style={styles.chHead}>
         <Eyebrow>주마다 한 양 (최근 {chart.bars.length}주)</Eyebrow>
-        <Text style={[styles.sub, { color: colors.muted }]}>최고 {chart.best}</Text>
+        <Text style={[styles.sub, { color: colors.muted }]}>{head}</Text>
       </View>
 
       <View
         style={styles.chart}
         // The bars are a shape, not 12 readouts; the two lines under them say the same
         // thing in words, so the chart is announced once as its own summary.
-        accessibilityLabel={`주마다 한 양, 최근 ${chart.bars.length}주. 최고 ${chart.best}`}
+        accessibilityLabel={`주마다 한 양, 최근 ${chart.bars.length}주. ${head}`}
       >
         {chart.targetLine != null && (
           <View style={[styles.refline, { bottom: `${chart.targetLine}%`, borderColor: colors.accent }]}>
@@ -262,6 +303,16 @@ function GrowthPanel({ chart, primary }: { chart: GrowthChart; primary: boolean 
           </View>
         ))}
       </View>
+
+      {primary && (
+        <Hint>
+          점수는 쌓이기만 하니 그것만 보면 잘하고 있는 것처럼 보여요. 그래서{' '}
+          <Text style={{ color: colors.text, fontWeight: '600' }}>
+            양이 늘고 있는지는 이 그래프로
+          </Text>{' '}
+          따로 봅니다.
+        </Hint>
+      )}
     </Card>
   );
 }
@@ -310,13 +361,7 @@ function DesignPanel({
   onSave,
 }: {
   design: DesignBox;
-  onSave: (patch: {
-    cue: string | null;
-    identity: string | null;
-    floor?: number;
-    floorUnit?: string;
-    target?: number | null;
-  }) => Promise<{ floor?: string; floorUnit?: string; target?: string } | null>;
+  onSave: (patch: DesignPatch) => Promise<DesignErrors | null>;
 }) {
   const { colors } = useTheme();
   const [editing, setEditing] = useState(false);
@@ -325,7 +370,7 @@ function DesignPanel({
   const [floor, setFloor] = useState(`${design.floor}`);
   const [floorUnit, setFloorUnit] = useState(design.floorUnit);
   const [target, setTarget] = useState(design.target == null ? '' : `${design.target}`);
-  const [errors, setErrors] = useState<{ floor?: string; floorUnit?: string; target?: string }>({});
+  const [errors, setErrors] = useState<DesignErrors>({});
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -492,12 +537,15 @@ function DesignRow({ label, value, empty }: { label: string; value?: string; emp
 function DayComposer({
   habit,
   date,
+  skippable,
   onFill,
   onSkip,
   onClose,
 }: {
   habit: Habit;
   date: string;
+  /** `composerAffordances.skippable` — §4.1's precedence, derived once in the hook. */
+  skippable: boolean;
   onFill: (actual?: number) => Promise<void>;
   onSkip: (reason: SkipReason, opts?: { note?: string }) => Promise<void>;
   onClose: () => void;
@@ -570,21 +618,28 @@ function DayComposer({
       )}
 
       {/* B5 — the note is filled in before a chip is tapped, so it comes first, inside
-          the same bounded block as the chips it belongs to. */}
-      <View style={[styles.skipGroup, { borderColor: colors.border }]}>
-        <TextField
-          accessibilityLabel="못 한 이유 메모"
-          value={note}
-          onChangeText={setNote}
-          placeholder="메모 (선택)"
-        />
-        <SkipReasonChips
-          label="못 했어요"
-          habitName={habit.name}
-          disabled={saving}
-          onPick={(reason) => void run(() => onSkip(reason, { note }))}
-        />
-      </View>
+          the same bounded block as the chips it belongs to.
+
+          The whole block is withheld once the date holds an activity row: §4.1's
+          precedence means a skip written there changes no state, no miss and no
+          diagnosis, so offering it would promise something untrue. The condition is
+          the hook's `skippable`, the same field Today and the Dashboard read. */}
+      {skippable && (
+        <View style={[styles.skipGroup, { borderColor: colors.border }]}>
+          <TextField
+            accessibilityLabel="못 한 이유 메모"
+            value={note}
+            onChangeText={setNote}
+            placeholder="메모 (선택)"
+          />
+          <SkipReasonChips
+            label="못 했어요"
+            habitName={habit.name}
+            disabled={saving}
+            onPick={(reason) => void run(() => onSkip(reason, { note }))}
+          />
+        </View>
+      )}
 
       {error != null && <Banner>{error}</Banner>}
     </Card>
@@ -913,6 +968,10 @@ export default function HabitDetail() {
   // Bound once, after the guard above: `panel` is a hoisted declaration, so the
   // narrowing of `view.habit` does not reach inside it.
   const shown: Habit = habit;
+  // The Established artboard's gate, named once: the growth panel leads the screen,
+  // takes the `.chartcard.primary` surface with its hint, and the header carries that
+  // artboard's sentence. `panelsFor` already decided it (established + a chart).
+  const leadsWithChart = view.panelOrder[0] === 'chart';
   const editingDay = view.journal.find((day) => day.rows.some((row) => row.entry.id === editingId));
   const editingRow = editingDay?.rows.find((row) => row.entry.id === editingId);
 
@@ -957,7 +1016,7 @@ export default function HabitDetail() {
             // `Established.body.html:16` gives the panel the `.chartcard.primary`
             // surface where it leads the screen — which is exactly where the hook put
             // it, so the order decides the emphasis and this file re-reads neither.
-            primary={view.panelOrder[0] === 'chart'}
+            primary={leadsWithChart}
           />
         );
       case 'design':
@@ -966,12 +1025,30 @@ export default function HabitDetail() {
         );
       case 'journal': {
         // `HabitDetail.body.html:53`. The date is the hook's — the most recent gap in
-        // the window — and with no gap left there is nothing to add, so no button.
+        // the history — and with no gap left there is nothing to add, so no button.
         const gap = view.nextBackfillDate;
 
         return (
           <View key={name} style={styles.journalGroup}>
-            <Eyebrow>저널</Eyebrow>
+            {/* The canvas foots a five-row journal with this button; ours runs to
+                every day of the habit's life. The composer opens inline under the day
+                it acts on and the list is newest-first, so from the foot the press
+                would open a panel far above it with no visible change at the thumb. */}
+            <View style={styles.rowline}>
+              <Eyebrow>저널</Eyebrow>
+              {gap != null && (
+                <Button
+                  label="+ 지난 날 기록 추가"
+                  tap
+                  onPress={() => {
+                    // Same order as a journal line's own press: an open row editor is
+                    // dismissed first, so the two panels never stand open together.
+                    setEditingId(null);
+                    view.openBackfill(gap);
+                  }}
+                />
+              )}
+            </View>
             <View>
               {view.journal.map((day) => (
                 <View key={day.date}>
@@ -988,12 +1065,13 @@ export default function HabitDetail() {
                     }}
                   />
                   {/* Both surfaces open **under the day they act on**: the journal is
-                      12 weeks long, and one pinned to the top of the screen would be
-                      off-screen for the day that opened it. */}
-                  {view.backfillDate === day.date && (
+                      as long as the habit's life, and one pinned to the top of the
+                      screen would be off-screen for the day that opened it. */}
+                  {view.backfillDate === day.date && view.composerAffordances != null && (
                     <DayComposer
                       habit={shown}
                       date={day.date}
+                      skippable={view.composerAffordances.skippable}
                       onFill={view.fillDay}
                       onSkip={view.skipDay}
                       onClose={view.closeBackfill}
@@ -1004,7 +1082,10 @@ export default function HabitDetail() {
                       key={editingRow.entry.id}
                       row={editingRow}
                       habit={shown}
-                      dayLabel={monthDay(day.date)}
+                      // `오늘` on today: the confirm's sentences name the day they
+                      // change, and `3월 29일` for today is what `copy.ts`'s default
+                      // exists to avoid. The condition is the hook's `isToday`.
+                      dayLabel={day.isToday ? '오늘' : monthDay(day.date)}
                       effectOf={view.deletePreview}
                       onSave={view.editEntry}
                       onDelete={view.removeEntry}
@@ -1014,19 +1095,6 @@ export default function HabitDetail() {
                 </View>
               ))}
             </View>
-            {gap != null && (
-              <Button
-                label="+ 지난 날 기록 추가"
-                block
-                tap
-                onPress={() => {
-                  // Same order as a journal line's own press: an open row editor is
-                  // dismissed first, so the two panels never stand open together.
-                  setEditingId(null);
-                  view.openBackfill(gap);
-                }}
-              />
-            )}
           </View>
         );
       }
@@ -1042,6 +1110,7 @@ export default function HabitDetail() {
           </Text>
           {view.stat != null && <Chip label={view.stat.name} variant="stat" />}
         </View>
+        <HeaderSub binary={habit.kind === 'binary'} established={leadsWithChart} />
 
         {view.panelOrder.map(panel)}
       </ScrollView>
@@ -1057,6 +1126,9 @@ const styles = StyleSheet.create({
   rowline: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: SPACE.md },
   title: { fontSize: FONT_SIZE.xl, fontWeight: '600', letterSpacing: -0.2, flexShrink: 1 },
   notice: { fontSize: FONT_SIZE.base },
+  // `.sub` under the title — prose, so it is **not** `styles.sub`, which is the mono
+  // tabular face the panel figures wear. The canvas pulls it up under the title.
+  headerSub: { fontSize: FONT_SIZE.sm, marginTop: -6, lineHeight: 19 },
   // `.pills` — the row wraps, and each pill grows to share the width.
   pills: { flexDirection: 'row', gap: SPACE.md - 1, flexWrap: 'wrap' },
   // `.ch-head` — the eyebrow and its figure on one baseline.

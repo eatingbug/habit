@@ -53,10 +53,10 @@ describe('SKIP_REASON_LABELS', () => {
  * `jest.config.js` cannot reach at all.
  *
  * The assertions name the *claims*, not the exact sentences: what must hold is that a
- * clause appears only when its condition does. Every call here is `app/today.tsx`'s —
- * no `dayLabel`, no streak figures — so what they pin is that call's shape: no
- * `missed`/실패 reversal of the day and no streak number reaches the screen where
- * today is still open and neither is true (ADR-0001).
+ * clause appears only when its condition does. Both callers are here: `app/today.tsx`,
+ * which passes no `dayLabel` and no streak figures, since today is still open and
+ * neither is true of it (ADR-0001); and the journal (§6.3), which passes a past date's
+ * own label and, when the run actually changes, both streak numbers.
  */
 describe('deleteConfirmLines', () => {
   const facts = { habitName: '팔굽혀펴기', emptiesDay: false, carriesMiss: false };
@@ -132,11 +132,42 @@ describe('deleteConfirmLines', () => {
     }).join(' ');
 
     // Today is still open: emptying it leaves it `pending`, so there is no reversal to
-    // `missed` and no figure to quote. The streak clause exists for the journal
-    // (§6.3), which passes `streakBefore`/`streakAfter`; this call passes neither, and
-    // that absence is what must keep the numbers off Today.
+    // `missed` and no figure to quote. The streak clause belongs to the journal
+    // (§6.3), which passes `streakBefore`/`streakAfter`; this call passes neither.
     expect(all).not.toMatch(/연속|스트릭|일 째|미스/);
     expect(all).not.toContain('실패로 바뀝니다');
     expect(all).not.toMatch(/\d/);
+  });
+
+  it('names the journal’s own day in both sentences that mention one (§6.3)', () => {
+    const lines = deleteConfirmLines({
+      ...facts,
+      emptiesDay: true,
+      dayLabel: '3월 27일',
+      stateAfterLabel: '기록 없음 · 실패',
+    });
+
+    // The default is `오늘`, which is false of every day but today — so a caller that
+    // passes a label must see it in *each* sentence that names the day, not the first.
+    expect(lines[0]).toContain('3월 27일');
+    expect(lines[1]).toBe('지운 뒤 3월 27일: 기록 없음 · 실패');
+    expect(lines.join(' ')).not.toContain('오늘');
+  });
+
+  it('quotes both streak figures, and a run cut to zero is still a figure (AC 9)', () => {
+    expect(deleteConfirmLines({ ...facts, streakBefore: 20, streakAfter: 4 })).toEqual([
+      '연속 날수가 다시 계산돼요 — 20일 → 4일.',
+    ]);
+    // `0` is the whole reason the guard is `!= null`: a broken run is the case the
+    // user most needs the number for.
+    expect(deleteConfirmLines({ ...facts, streakBefore: 3, streakAfter: 0 })).toEqual([
+      '연속 날수가 다시 계산돼요 — 3일 → 0일.',
+    ]);
+  });
+
+  it('says nothing about the streak unless the caller passes both figures', () => {
+    // Half a comparison is not one: `연속 20일 → ?` would be worse than silence.
+    expect(deleteConfirmLines({ ...facts, streakBefore: 20 })).toEqual([]);
+    expect(deleteConfirmLines({ ...facts, streakAfter: 4 })).toEqual([]);
   });
 });

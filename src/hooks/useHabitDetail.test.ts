@@ -4,7 +4,6 @@ import { createElement, type ReactNode } from 'react';
 import { TUNING } from '@/config/tuning';
 import { RepositoryProvider } from '@/context/RepositoryContext';
 import { LocalRepository, MemoryKV, type HabitRepository } from '@/data';
-import { isBackfilledRow } from '@/domain/backfill';
 import { addDays } from '@/domain/dates';
 import { localNoonOn } from '@/lib/device';
 import type { Habit, HabitEntry, SkipReason } from '@/models';
@@ -18,8 +17,9 @@ import { useHabitDetail, type HabitDetailView } from './useHabitDetail';
  *
  * `TODAY` is a **Sunday**, so `mondayOf(TODAY)` starts the current ISO week and the
  * chart's twelve buckets are easy to name. Timestamps are never asserted literally:
- * a backfill's stamp is the day's **local** noon (§6.3), so the assertions go through
- * `isBackfilledRow(entry, localNoonOn(entry.date))` and hold in any timezone.
+ * a backfill's stamp is the day's **local** noon (§6.3), so the assertions read the
+ * hook's own `JournalRow.backfilled` and hold in any timezone. `localNoonOn` appears
+ * only where a fixture has to *be* a noon-pinned row.
  */
 const TODAY = '2026-03-29'; // Sunday
 const THIS_MONDAY = '2026-03-23';
@@ -179,6 +179,39 @@ describe('useHabitDetail — the journal is a date walk (D7)', () => {
     expect(dates).not.toContain(addDays(CREATED, -1));
   });
 
+  it('reaches a day older than the chart, and that row is editable there', async () => {
+    // §6.3's backfill range is `createdAt`부터 오늘까지, and a day's own journal line is
+    // the only gesture that reaches an arbitrary date — the heatmap's cells are under
+    // §6.0's 44px, and the button names one date. So a journal clipped to the chart's
+    // twelve weeks would leave an older gap unreachable.
+    const old = addDays(TODAY, -100);
+    const born = habit({ createdAt: `${addDays(old, -1)}T00:00:00.000Z` });
+    const row = activity(old, 6);
+    const result = await detail(await seed(born, [row]));
+
+    expect(dayOf(result.current, old).rows).toHaveLength(1);
+    // The chart is unmoved: `TUNING.growthChartWeeks` is its constant, not the walk's.
+    expect(result.current.chart?.bars).toHaveLength(TUNING.growthChartWeeks);
+
+    await act(async () => {
+      await result.current.editEntry({ ...row, actual: 2 });
+    });
+    expect(dayOf(result.current, old).state).toBe('partial');
+
+    await act(async () => {
+      await result.current.removeEntry(row.id);
+    });
+    expect(dayOf(result.current, old).state).toBe('missed');
+  });
+
+  it('marks today, and only today, as today', async () => {
+    // The delete confirm names the day it changes, and `3월 29일` for today is false.
+    const result = await detail(await seed(habit()));
+
+    expect(dayOf(result.current, TODAY).isToday).toBe(true);
+    expect(result.current.journal.filter((day) => day.isToday)).toHaveLength(1);
+  });
+
   it('keeps a day’s rows together and reports the summed chip amount', async () => {
     const entries = [
       activity(addDays(TODAY, -1), 3, '18:30:00'),
@@ -224,9 +257,20 @@ describe('useHabitDetail — the journal is a date walk (D7)', () => {
     ];
     const result = await detail(await seed(habit(), entries));
     const rows = dayOf(result.current, past).rows;
+    // By id, not by position: local noon sorts before or after 07:00Z depending on the
+    // device timezone, and the two rows are told apart by the hook's own reading of
+    // each — so dropping the call in `journalDay` fails here.
+    const rowOf = (id: string) => {
+      const row = rows.find((each) => each.entry.id === id);
+      if (row == null) throw new Error(`no journal row for ${id}`);
+      return row;
+    };
+    const [ordinary, pinned] = entries;
 
-    expect(rows.filter((row) => row.backfilled)).toHaveLength(1);
-    for (const row of rows) expect(row.timeEditable).toBe(!row.backfilled);
+    expect(rowOf(ordinary.id).backfilled).toBe(false);
+    expect(rowOf(ordinary.id).timeEditable).toBe(true);
+    expect(rowOf(pinned.id).backfilled).toBe(true);
+    expect(rowOf(pinned.id).timeEditable).toBe(false);
   });
 });
 
@@ -282,6 +326,19 @@ describe('useHabitDetail — the growth chart’s geometry (D5)', () => {
     expect(starred).toHaveLength(1);
     expect(starred?.[0].weeksAgo).toBe(0);
     expect(result.current.chart?.best).toBe(10);
+  });
+
+  it('reports this week’s running total beside the best week', async () => {
+    const entries = [
+      activity(addDays(THIS_MONDAY, -6), 20), // last week
+      activity(THIS_MONDAY, 4),
+      activity(addDays(THIS_MONDAY, 1), 3),
+    ];
+    const result = await detail(await seed(habit(), entries));
+
+    // The week `today` falls in, still running — the canvas's `최고 62 · 이번 주 37`.
+    expect(result.current.chart?.thisWeek).toBe(7);
+    expect(result.current.chart?.best).toBe(20);
   });
 
   it('stars nothing when nothing was ever recorded', async () => {
@@ -403,6 +460,24 @@ describe('useHabitDetail — backfill (D10, D14)', () => {
     expect(result.current.nextBackfillDate).toBeNull();
   });
 
+  it('withholds the skip chips on a date an activity row already covers (§4.1)', async () => {
+    const covered = addDays(TODAY, -4);
+    const empty = addDays(TODAY, -5);
+    const result = await detail(await seed(habit(), [activity(covered, 6)]));
+
+    // No composer, no date to answer about.
+    expect(result.current.composerAffordances).toBeNull();
+
+    // Activity overrides skip, so a skip row written on `covered` would change no
+    // state, no miss and no diagnosis — the composer must not offer the reason chips.
+    act(() => result.current.openBackfill(covered));
+    expect(result.current.composerAffordances?.skippable).toBe(false);
+    expect(result.current.composerAffordances?.hasActivityToday).toBe(true);
+
+    act(() => result.current.openBackfill(empty));
+    expect(result.current.composerAffordances?.skippable).toBe(true);
+  });
+
   it('ignores a request to open a date the §6.3 range forbids', async () => {
     const result = await detail(await seed(habit()));
 
@@ -428,7 +503,7 @@ describe('useHabitDetail — backfill (D10, D14)', () => {
     expect(day.state).toBe('done');
     expect(day.rows).toHaveLength(1);
     expect(day.rows[0].entry.actual).toBe(5);
-    expect(isBackfilledRow(day.rows[0].entry, localNoonOn(past))).toBe(true);
+    expect(day.rows[0].backfilled).toBe(true);
     expect(day.rows[0].timeEditable).toBe(false);
   });
 
@@ -514,7 +589,8 @@ describe('useHabitDetail — the delete confirm (AC 9)', () => {
     const rows = [activity(past, 6), activity(past, 6, '18:00:00')];
     const result = await detail(await seed(habit(), rows));
 
-    // The day stays `over` either way: nothing is emptied, no miss is erased, and the
+    // 6 + 6 against a floor of 5: deleting one leaves 6, so the day drops from `over`
+    // to `done` and stays floor-met. Nothing is emptied, no miss is erased and the
     // streak does not move.
     expect(result.current.deletePreview(rows[0].id)).toBeNull();
     expect(result.current.deletePreview('nobody')).toBeNull();
