@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { SKIP_REASON_LABELS } from '@/config/copy';
 import { TUNING } from '@/config/tuning';
 import { useRepository } from '@/context/RepositoryContext';
+import { buildBackfillActivity, buildBackfillSkip } from '@/domain/backfill';
 import { type ClassifiedDay, isFloorMet } from '@/domain/classify';
 import { newId } from '@/lib/device';
 import type { Habit, HabitEntry, SkipReason } from '@/models';
@@ -79,8 +80,9 @@ export interface QuickLog {
    * §2).
    *
    * `opts.note` is the optional free-text note the user fills in *before* tapping a
-   * chip, so the gesture stays two taps. It takes no `date`: this hook records today,
-   * and reason-tagging a past day is backfill's job (#14).
+   * chip, so the gesture stays two taps. The day it writes to is the hook's `date`,
+   * which is `today` unless the caller stepped the date control back (§6.2 B4) — so
+   * reason-tagging a past day is this same chip, on a backfilled row (#14).
    */
   logSkip(habit: Habit, reason: SkipReason, opts?: { note?: string }): Promise<void>;
   /**
@@ -112,7 +114,16 @@ export interface QuickLog {
 }
 
 export interface QuickLogOptions {
-  /** The day being recorded — 'YYYY-MM-DD'. */
+  /**
+   * The day being recorded — 'YYYY-MM-DD'. Defaults to `today`; Today's date control
+   * (§6.2 B4) steps it back, and every date but `today` makes the write a **backfill**
+   * under the §6.3 rules.
+   */
+  date?: string;
+  /**
+   * True today. Not interchangeable with `date`: it is the §6.3 upper bound, and it is
+   * what decides whether a write is an ordinary log or a backfill.
+   */
   today: string;
   now?: () => Date;
   /** Called after both the append and the undo, so the consumer reloads. */
@@ -201,11 +212,38 @@ export function logAffordances(habit: Habit, day: ClassifiedDay | undefined): Lo
 
 export function useQuickLog({
   today,
+  date = today,
   now = () => new Date(),
   onChange,
 }: QuickLogOptions): QuickLog {
   const repository = useRepository();
   const [toast, setToast] = useState<QuickLogToast | null>(null);
+
+  /**
+   * Is this write a backfill? (#14 D4) Every write to a date other than `today` is,
+   * and every one of them is stamped by `src/domain/backfill.ts` rather than by
+   * `now()`.
+   *
+   * The reason is §7.3's total order `(timestamp ASC, id ASC)`: a backfill is
+   * noon-pinned with a strictly increasing sub-noon offset per repeat, which is the
+   * only thing that makes `effectiveSkipReason` deterministic. A wall clock on a past
+   * day would order the row against that day's real rows by the hour the user happens
+   * to be sitting at — 21:00 today would place a backfill after a 09:00 row it knows
+   * nothing about. So `opts.timestamp`, B3's time reveal, is ignored on a backfill too;
+   * the canvas says as much on the control itself (`Backfill.logic.js:81` —
+   * `🕑 낮 12:00으로 기록`).
+   */
+  const isBackfill = date !== today;
+
+  /**
+   * The date's rows, read from the **repository** rather than taken from the caller's
+   * loaded snapshot: `nextBackfillTimestamp` has to see every row already on the date,
+   * or two backfills in one render both compute `T12:00:00` and the offsets stop being
+   * strictly increasing.
+   */
+  function rowsOnDate(habitId: string): Promise<HabitEntry[]> {
+    return repository.getEntries(habitId, date, date);
+  }
 
   function dismissToast() {
     setToast(null);
@@ -238,14 +276,25 @@ export function useQuickLog({
     // write so undo can never resolve to a different one.
     const entryId = newId();
 
-    await repository.upsertEntry({
-      id: entryId,
-      habitId: habit.id,
-      // `date` is the authoritative day (§3.3); `timestamp` only orders within it.
-      date: today,
-      timestamp: opts.timestamp ?? now().toISOString(),
-      actual,
-    });
+    await repository.upsertEntry(
+      isBackfill
+        ? {
+            // The builder's own `actual` is the habit's floor — the amount its one-tap
+            // fill writes. The composer may have staged another, and the amount is the
+            // caller's; what the builder contributes is the noon pin and the §6.3
+            // range assertion, which is why it is called either way.
+            ...buildBackfillActivity(habit, date, await rowsOnDate(habit.id), entryId, today),
+            actual,
+          }
+        : {
+            id: entryId,
+            habitId: habit.id,
+            // `date` is the authoritative day (§3.3); `timestamp` only orders within it.
+            date,
+            timestamp: opts.timestamp ?? now().toISOString(),
+            actual,
+          },
+    );
 
     setToast({ entryId, message: '기록됨', detail: detailOf(habit, actual) });
     onChange();
@@ -262,12 +311,16 @@ export function useQuickLog({
     const note = opts.note?.trim();
 
     await repository.upsertEntry({
-      id: entryId,
-      habitId: habit.id,
-      date: today,
-      timestamp: now().toISOString(),
-      actual: 0,
-      skipReason: reason,
+      ...(isBackfill
+        ? buildBackfillSkip(habit, date, await rowsOnDate(habit.id), entryId, reason, today)
+        : {
+            id: entryId,
+            habitId: habit.id,
+            date,
+            timestamp: now().toISOString(),
+            actual: 0,
+            skipReason: reason,
+          }),
       // Absent, not empty: a stored '' would be indistinguishable from a real note.
       note: note != null && note.length > 0 ? note : undefined,
     });

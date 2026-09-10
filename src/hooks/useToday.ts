@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 
 import { useRepository } from '@/context/RepositoryContext';
+import { isBackfillableDate } from '@/domain/backfill';
 import {
   type ClassifiedDay,
   classifyDay,
@@ -9,7 +10,7 @@ import {
   isMissDay,
   sortDayRows,
 } from '@/domain/classify';
-import { compareDates, dateOf } from '@/domain/dates';
+import { addDays, compareDates, dateOf } from '@/domain/dates';
 import { computeXP } from '@/domain/score';
 import { localToday } from '@/lib/device';
 import type { DayState, Habit, HabitEntry, SkipReason } from '@/models';
@@ -30,6 +31,11 @@ import {
  * - the repository arrives through `RepositoryProvider`, never constructed here;
  * - `today` is a parameter. Day-state depends on it (`pending` vs `missed`,
  *   ADR-0001), so a test must be able to pin it;
+ * - `date` — the day being *looked at* — is a second parameter (#14 D1). The two used
+ *   to be one, and the date control (§6.2 B4) splits them: `date` says which rows to
+ *   read and write, `today` stays the basis for `pending` vs `missed` and the
+ *   §6.3 upper bound. Substituting `date` there would make every past day `pending`
+ *   and quietly repeal ADR-0001;
  * - `now` is a parameter too. It stamps the row's `timestamp`, which is the domain's
  *   ordering key (§3.3), so pinning it is what makes the feed's order assertable.
  *
@@ -116,22 +122,77 @@ export interface DeleteEffect {
   stateAfter: DayState | undefined;
 }
 
-export interface TodayView {
-  /** The day being recorded — 'YYYY-MM-DD'. */
+/**
+ * The date control (§6.2 B4) as **derived values** — #14 D2.
+ *
+ * Every judgment the stepper makes lives here rather than in the JSX: `testMatch` is
+ * `<rootDir>/src/**` and there are no component render tests, so a condition written in
+ * `app/today.tsx` is a condition nothing asserts. The screen applies *words* to these
+ * fields (`design/parts/Backfill.body.html:15–23`) and decides nothing.
+ */
+export interface DateControl {
+  /** The day being recorded. */
   date: string;
+  /** True today — the §6.3 upper bound and the `pending`/`missed` basis (ADR-0001). */
+  today: string;
+  /**
+   * Which of the three labels the date reads as (`Backfill.logic.js:67`): `오늘 · …`,
+   * `어제 · …`, or the date alone. The *judgment* is here; the wording is the screen's.
+   */
+  kind: 'today' | 'yesterday' | 'other';
+  /** `date === today`. The `›` control is dead here (canvas `:18`). */
+  atToday: boolean;
+  /** A non-today date — writes go through the §6.3 backfill rules (canvas `:65`). */
+  isBackfill: boolean;
+  /**
+   * Where `‹` and `›` move to, or `null` when the control is dead. `prevDate` stops at
+   * `earliest`; `nextDate` stops at `today` — the future is blocked (§6.3).
+   */
+  prevDate: string | null;
+  nextDate: string | null;
+  /** Where the 어제 chip moves to; `null` when yesterday predates every habit on screen. */
+  yesterdayDate: string | null;
+  /**
+   * The earliest selectable date: the **earliest `createdAt` among the visible habits**
+   * (#14 D3). Per-habit range is per-habit (`isBackfillableDate`), but the stepper is
+   * one control over several habits, so it takes the union and habits not yet created
+   * on the chosen date simply drop out of `rows` — the footnote at
+   * `Backfill.body.html:90` is what tells the user so. With no habits at all it equals
+   * `today` and the stepper is pinned there.
+   */
+  earliest: string;
+}
+
+export interface TodayView {
+  /**
+   * The day being recorded — 'YYYY-MM-DD'. Today unless the date control stepped it
+   * back (§6.2 B4), in which case every write to it is a backfill (§6.3).
+   */
+  date: string;
+  /** The date control's derived state (§6.2 B4) — see `DateControl`. */
+  dateControl: DateControl;
   loading: boolean;
-  /** Every non-archived habit, in repository order — the target selector's options. */
+  /**
+   * The habits selectable **on `date`**, in repository order — the target selector's
+   * options. Non-archived, and (#14 D3) created on or before `date`: a habit that did
+   * not exist yet cannot be backfilled into, and `isBackfillableDate` says so.
+   */
   rows: TodayHabitRow[];
-  /** Today's rows across all habits, in the domain total order (§7.3). */
+  /** The date's rows across all habits, in the domain total order (§7.3). */
   feed: TodayFeedItem[];
   /** Habits whose day is floor-met. `over` implies `done`, so both count (§4.1). */
   questsDone: number;
-  /** Rows recorded today — many per habit are expected (§3.3). */
+  /** Rows recorded on `date` — many per habit are expected (§3.3). */
   logCount: number;
   /**
-   * XP today's rows added, from the domain: `computeXP` with them minus `computeXP`
-   * without them. Never a stored or invented figure — the same before/after delta
-   * `describeLogEffect` takes (§4.2), summed over the day instead of over one log.
+   * XP the **selected day's** rows added, from the domain: `computeXP` over the history
+   * with them minus `computeXP` over the history without them. Never a stored or
+   * invented figure — the same before/after delta `describeLogEffect` takes (§4.2),
+   * summed over the day instead of over one log.
+   *
+   * On a backfilled day the delta is measured against the whole history through
+   * *today*, not through `date`: XP is run-keyed (streak bonuses, milestones), so what
+   * the day's rows are worth is what removing them would cost overall.
    */
   xpToday: number;
   /**
@@ -243,14 +304,17 @@ interface Loaded {
   rows: TodayHabitRow[];
   feed: TodayFeedItem[];
   xpToday: number;
+  /** The stepper's lower bound (#14 D3) — see `DateControl.earliest`. */
+  earliest: string | null;
 }
 
-const EMPTY: Loaded = { rows: [], feed: [], xpToday: 0 };
+const EMPTY: Loaded = { rows: [], feed: [], xpToday: 0, earliest: null };
 
 export function useToday({
   today = localToday(),
+  date = today,
   now = () => new Date(),
-}: { today?: string; now?: () => Date } = {}): TodayView {
+}: { today?: string; date?: string; now?: () => Date } = {}): TodayView {
   const repository = useRepository();
   const [loaded, setLoaded] = useState<Loaded>(EMPTY);
   const [loading, setLoading] = useState(true);
@@ -276,30 +340,49 @@ export function useToday({
       // not: pause is "later", not "over" (ADR-0003), and a paused day still records.
       const visible = habits.filter((habit) => habit.lifecycle !== 'archived');
 
+      // #14 D3 — the stepper's lower bound is the union over the habits on screen, so
+      // it is taken before the per-date filter below narrows them.
+      const earliest = visible
+        .map((habit) => dateOf(habit.createdAt))
+        .reduce<string | null>(
+          (lowest, start) => (lowest == null || compareDates(start, lowest) < 0 ? start : lowest),
+          null,
+        );
+
+      // #14 D3 — a habit that did not exist on `date` is not shown at all, rather than
+      // shown inert: `isBackfillableDate` is the domain's own answer to "may this habit
+      // be written to on this day?", and a disabled row would need copy the canvas
+      // does not have (its footnote `:90` already explains the absence).
+      const selectable = visible.filter((habit) => isBackfillableDate(habit, date, today));
+
       const perHabit = await Promise.all(
-        visible.map(async (habit) => {
+        selectable.map(async (habit) => {
           // The XP delta is run-keyed (streak bonuses, milestones), so it needs the
-          // habit's whole history, not just today. V1 keeps entry volume small and
-          // §7.3 makes performance a non-criterion.
+          // habit's whole history **through today** — not merely through `date` — or a
+          // backfill's worth would be measured against a truncated run. V1 keeps entry
+          // volume small and §7.3 makes performance a non-criterion.
           const start = dateOf(habit.createdAt);
-          const from = compareDates(start, today) < 0 ? start : today;
+          const from = compareDates(start, date) < 0 ? start : date;
           const history = await repository.getEntries(habit.id, from, today);
-          const rowsToday = history.filter((entry) => entry.date === today);
-          const before = history.filter((entry) => entry.date !== today);
+          const rowsOnDate = history.filter((entry) => entry.date === date);
+          const before = history.filter((entry) => entry.date !== date);
 
           return {
             habit,
-            day: dayStates(habit, rowsToday, today, today, today)[0],
-            rowsToday,
+            // `today` stays the last argument (#14 D1): it is what separates `pending`
+            // from `missed`, and passing `date` would make every past day pending.
+            day: dayStates(habit, rowsOnDate, date, date, today)[0],
+            rowsOnDate,
             xp: computeXP(history, habit) - computeXP(before, habit),
           };
         }),
       );
 
-      const byId = new Map(visible.map((habit) => [habit.id, habit]));
-      const allRows = perHabit.flatMap((entry) => entry.rowsToday);
+      const byId = new Map(selectable.map((habit) => [habit.id, habit]));
+      const allRows = perHabit.flatMap((entry) => entry.rowsOnDate);
 
       const next: Loaded = {
+        earliest,
         rows: perHabit.map(({ habit, day }) => ({
           habit,
           day,
@@ -325,13 +408,13 @@ export function useToday({
     return () => {
       cancelled = true;
     };
-  }, [repository, today, version]);
+  }, [repository, date, today, version]);
 
   function rowFor(habitId: string): TodayHabitRow | undefined {
     return loaded.rows.find((row) => row.habit.id === habitId);
   }
 
-  const quick = useQuickLog({ today, now, onChange: reload });
+  const quick = useQuickLog({ date, today, now, onChange: reload });
 
   /**
    * #10's public signature, kept: the screen names a habit by id and this resolves it
@@ -364,15 +447,17 @@ export function useToday({
     const synthetic: HabitEntry = {
       id: 'preview',
       habitId,
-      date: today,
-      timestamp: now().toISOString(),
+      date,
+      // A preview is never stored, so the exact stamp only has to fall on the day —
+      // the real one comes from `nextBackfillTimestamp` at write time (§6.3).
+      timestamp: date === today ? now().toISOString() : `${date}T12:00:00.000Z`,
       actual: staged,
     };
 
     return {
       // The one sum, from `progress` — which takes it from the domain's `day.sum`.
       sum: row.progress.sum + staged,
-      state: classifyDay([...entries, synthetic], row.habit, today, today),
+      state: classifyDay([...entries, synthetic], row.habit, date, today),
     };
   }
 
@@ -421,8 +506,29 @@ export function useToday({
     return { habit: item.habit, emptiesDay, carriesMiss, stateAfter };
   }
 
+  /**
+   * #14 D2 — every judgment the date control makes, derived here. `earliest` falls back
+   * to `today` before the first load settles and when there are no habits at all, which
+   * pins the stepper to today in both cases.
+   */
+  const earliest = loaded.earliest ?? today;
+  const back = addDays(date, -1);
+  const yesterday = addDays(today, -1);
+  const dateControl: DateControl = {
+    date,
+    today,
+    kind: date === today ? 'today' : date === yesterday ? 'yesterday' : 'other',
+    atToday: date === today,
+    isBackfill: date !== today,
+    prevDate: compareDates(back, earliest) >= 0 ? back : null,
+    nextDate: compareDates(date, today) < 0 ? addDays(date, 1) : null,
+    yesterdayDate: compareDates(yesterday, earliest) >= 0 ? yesterday : null,
+    earliest,
+  };
+
   return {
-    date: today,
+    date,
+    dateControl,
     loading,
     rows: loaded.rows,
     feed: loaded.feed,
