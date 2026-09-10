@@ -367,4 +367,53 @@ describe('useDashboard', () => {
       expect(result.current.toast).toBeNull();
     });
   });
+
+  /**
+   * #14 D9 — the row's 연속 날수. The number itself is `computeStreak`'s and is proven
+   * in `src/domain/streak.test.ts`; what belongs here is that the Dashboard reads it
+   * over the whole history and that a backfill repairs it in place (ADR-0001).
+   */
+  describe('the streak count (#14)', () => {
+    it('counts consecutive floor-met days ending today', async () => {
+      const dates = [3, 2, 1, 0].map((n) => addDays(TODAY, -n));
+      const result = await dashboard(
+        new LocalRepository(
+          await seed([habit()], dates.map((date) => activity('h1', date, 5))),
+        ),
+      );
+
+      expect(result.current.rows[0].streak).toBe(4);
+    });
+
+    it('reads past the heatmap window rather than clipping at it', async () => {
+      const created = addDays(TODAY, -(TUNING.heatmapDays + 5));
+      const dates = Array.from({ length: TUNING.heatmapDays + 6 }, (_, i) => addDays(created, i));
+      const result = await dashboard(
+        new LocalRepository(
+          await seed(
+            [habit({ createdAt: `${created}T09:00:00.000Z` })],
+            dates.map((date) => activity('h1', date, 5)),
+          ),
+        ),
+      );
+
+      expect(result.current.rows[0].streak).toBe(dates.length);
+      expect(dates.length).toBeGreaterThan(TUNING.heatmapDays);
+    });
+
+    it('breaks on an unrecorded day and re-joins both runs once it is backfilled (AC 8a)', async () => {
+      const gap = addDays(TODAY, -2);
+      const entries = [3, 1, 0]
+        .map((n) => addDays(TODAY, -n))
+        .map((date) => activity('h1', date, 5));
+      const repository = new LocalRepository(await seed([habit()], entries));
+
+      expect((await dashboard(repository)).current.rows[0].streak).toBe(2);
+
+      // One appended row on the missed date — the same repair the date control writes.
+      await repository.upsertEntry(activity('h1', gap, 5));
+
+      expect((await dashboard(repository)).current.rows[0].streak).toBe(4);
+    });
+  });
 });

@@ -839,4 +839,313 @@ describe('useToday', () => {
       });
     });
   });
+
+  /**
+   * #14 — the date control (§6.2 B4) and the §6.3 backfill write rules.
+   *
+   * Every judgment the stepper makes is asserted here rather than on the screen: no
+   * component render tests exist and `testMatch` is `<rootDir>/src/**`, so anything
+   * decided in `app/today.tsx` is decided where nothing can reach it (D2).
+   */
+  describe('the date control and backfill (#14)', () => {
+    const YESTERDAY = addDays(TODAY, -1);
+    /** The habit fixture's own creation date — the stepper's lower bound (D3). */
+    const CREATED = addDays(TODAY, -3);
+
+    async function screenOn(repository: HabitRepository, date: string, now = stepClock()) {
+      const { result } = renderHook(() => useToday({ today: TODAY, date, now }), {
+        wrapper: wrapperFor(repository),
+      });
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      return result;
+    }
+
+    async function rowsFor(repository: HabitRepository, date: string): Promise<HabitEntry[]> {
+      return repository.getEntries('h1', date, date);
+    }
+
+    /**
+     * A **local** wall-clock stamp on `date`. The backfill pin is local noon, so an
+     * assertion written as a `Z` literal would hold only where the offset is zero.
+     */
+    function atLocal(date: string, hour: number, minute = 0): string {
+      const [year, month, day] = date.split('-').map(Number);
+      return new Date(year, month - 1, day, hour, minute).toISOString();
+    }
+    const noonOn = (date: string) => atLocal(date, 12);
+
+    it('reads the chosen date while today still decides pending vs missed (D1, ADR-0001)', async () => {
+      const repository = new LocalRepository(await seed([habit()]));
+
+      // The same empty habit, seen from two dates: today is still open, yesterday is a
+      // recorded failure. Passing `date` as the classifier's "today" would make both
+      // pending and repeal ADR-0001 silently.
+      expect(dayOf((await screenOn(repository, TODAY)).current, 'h1')?.state).toBe('pending');
+      expect(dayOf((await screenOn(repository, YESTERDAY)).current, 'h1')?.state).toBe('missed');
+    });
+
+    it('defaults to today, with the forward step dead and 어제 one tap away (AC 1, AC 2)', async () => {
+      const result = await todayScreen(new LocalRepository(await seed([habit()])));
+      const control = result.current.dateControl;
+
+      expect(result.current.date).toBe(TODAY);
+      expect(control).toMatchObject({
+        kind: 'today',
+        isBackfill: false,
+        // §6.3 — the future is blocked, so there is nowhere forward to go.
+        nextDate: null,
+        prevDate: YESTERDAY,
+        yesterdayDate: YESTERDAY,
+        earliest: CREATED,
+      });
+    });
+
+    it('steps back to createdAt and no further, and names yesterday as yesterday (AC 2)', async () => {
+      const repository = new LocalRepository(await seed([habit()]));
+
+      const onYesterday = (await screenOn(repository, YESTERDAY)).current.dateControl;
+      expect(onYesterday).toMatchObject({
+        kind: 'yesterday',
+        isBackfill: true,
+        prevDate: addDays(TODAY, -2),
+        nextDate: TODAY,
+      });
+
+      const onCreated = (await screenOn(repository, CREATED)).current.dateControl;
+      // The lower bound is the habit's creation date: `‹` is dead on it.
+      expect(onCreated).toMatchObject({ kind: 'other', prevDate: null, nextDate: addDays(CREATED, 1) });
+    });
+
+    it('takes the earliest createdAt on screen as the lower bound and hides habits younger than the date (D3)', async () => {
+      const young = binary({ createdAt: `${YESTERDAY}T09:00:00.000Z` });
+      const repository = new LocalRepository(await seed([habit(), young]));
+
+      const onYesterday = await screenOn(repository, YESTERDAY);
+      expect(onYesterday.current.rows.map((row) => row.habit.id)).toEqual(['h1', 'b1']);
+      // The union, not the per-habit bound: the older habit is still steppable past the
+      // younger one's creation date.
+      expect(onYesterday.current.dateControl.earliest).toBe(CREATED);
+
+      const onCreated = await screenOn(repository, CREATED);
+      // `b1` did not exist yet, so it is absent rather than shown inert
+      // (`design/parts/Backfill.body.html:90` is the copy that explains the absence).
+      expect(onCreated.current.rows.map((row) => row.habit.id)).toEqual(['h1']);
+    });
+
+    it('leaves the whole stepper dead on a habit created today — day one of an install (D3)', async () => {
+      const repository = new LocalRepository(
+        await seed([habit({ createdAt: `${TODAY}T09:00:00.000Z` })]),
+      );
+      const result = await screenOn(repository, TODAY);
+
+      // AC 1's one-tap 어제 is unavailable here, and correctly so: there is no yesterday
+      // to write into. The chip is dead rather than a no-op (§6.3 blocks it either way).
+      expect(result.current.dateControl).toMatchObject({
+        earliest: TODAY,
+        prevDate: null,
+        nextDate: null,
+        yesterdayDate: null,
+      });
+    });
+
+    it('measures the day’s XP against the whole run, so a backfill is worth something (D1)', async () => {
+      const repository = new LocalRepository(await seed([habit()]));
+      const result = await screenOn(repository, YESTERDAY);
+
+      expect(result.current.xpToday).toBe(0);
+
+      await log(result, 'h1', 5);
+
+      // The figure is `computeXP`'s (proven in `score.test.ts`); what is asserted here
+      // is that the delta is taken over the *selected* day's rows, not silently over
+      // today's — a backfilled day would otherwise always read +0 XP.
+      expect(result.current.xpToday).toBeGreaterThan(0);
+    });
+
+    it('pins the stepper to today when there are no habits at all (D3)', async () => {
+      const result = await todayScreen(new LocalRepository(new MemoryKV()));
+
+      expect(result.current.dateControl).toMatchObject({
+        earliest: TODAY,
+        prevDate: null,
+        nextDate: null,
+        yesterdayDate: null,
+      });
+    });
+
+    it('stamps a past-date log at noon and appends beside the day’s existing rows (AC 3, AC 4)', async () => {
+      const repository = new LocalRepository(await seed([habit()]));
+      const existing: HabitEntry = {
+        id: 'old',
+        habitId: 'h1',
+        date: YESTERDAY,
+        timestamp: atLocal(YESTERDAY, 9),
+        actual: 2,
+      };
+      await repository.upsertEntry(existing);
+
+      const result = await screenOn(repository, YESTERDAY);
+      await log(result, 'h1', 5);
+
+      const stored = await rowsFor(repository, YESTERDAY);
+      expect(stored).toHaveLength(2);
+      // The pre-existing row is untouched — backfill appends, never overwrites (§6.3).
+      expect(stored.find((row) => row.id === 'old')).toEqual(existing);
+      const added = stored.find((row) => row.id !== 'old');
+      expect(added?.date).toBe(YESTERDAY);
+      // Local noon, not the clock the user is sitting at: the 09:00 row above must not
+      // be outranked by the hour of the backfill (§7.3's total order), and the feed
+      // reads the stamp back with `getHours()`.
+      expect(added?.timestamp).toBe(noonOn(YESTERDAY));
+      expect(new Date(added!.timestamp).getHours()).toBe(12);
+      expect(added?.actual).toBe(5);
+    });
+
+    it('gives repeated backfills of one date strictly increasing sub-noon offsets (AC 3)', async () => {
+      const repository = new LocalRepository(await seed([habit()]));
+      const result = await screenOn(repository, YESTERDAY);
+
+      await log(result, 'h1', 1);
+      await log(result, 'h1', 1);
+
+      const stamps = (await rowsFor(repository, YESTERDAY)).map((row) => row.timestamp).sort();
+      expect(stamps).toEqual([
+        noonOn(YESTERDAY),
+        new Date(Date.parse(noonOn(YESTERDAY)) + 1_000).toISOString(),
+      ]);
+    });
+
+    it('ignores the B3 time override on a backfill and keeps using the clock on today (D4)', async () => {
+      const repository = new LocalRepository(await seed([habit()]));
+
+      const past = await screenOn(repository, YESTERDAY);
+      await log(past, 'h1', 5, { timestamp: atLocal(YESTERDAY, 21) });
+      // The noon pin is the sole basis of the day's total order, so a wall clock cannot
+      // override it — the canvas puts the same sentence on the control
+      // (`design/parts/Backfill.logic.js:81`).
+      expect((await rowsFor(repository, YESTERDAY))[0].timestamp).toBe(noonOn(YESTERDAY));
+
+      const present = await screenOn(repository, TODAY, stepClock());
+      await log(present, 'h1', 5);
+      expect((await rowsFor(repository, TODAY))[0].timestamp).toBe(`${TODAY}T09:00:00.000Z`);
+    });
+
+    it('recovers a missed day: one backfilled log reclassifies it to done (AC 8a)', async () => {
+      const repository = new LocalRepository(await seed([habit()]));
+      const result = await screenOn(repository, YESTERDAY);
+
+      expect(dayOf(result.current, 'h1')?.state).toBe('missed');
+      expect(dayOf(result.current, 'h1')?.isMiss).toBe(true);
+
+      await log(result, 'h1', 5);
+
+      expect(dayOf(result.current, 'h1')?.state).toBe('done');
+      expect(dayOf(result.current, 'h1')?.isMiss).toBe(false);
+      expect(result.current.questsDone).toBe(1);
+    });
+
+    it('reason-tags a past day with a noon-pinned skip row (AC 4)', async () => {
+      const repository = new LocalRepository(await seed([habit()]));
+      const result = await screenOn(repository, YESTERDAY);
+
+      await logSkip(result, habit(), 'cue', { note: '깜빡' });
+
+      const [row] = await rowsFor(repository, YESTERDAY);
+      expect(row).toMatchObject({
+        date: YESTERDAY,
+        timestamp: noonOn(YESTERDAY),
+        actual: 0,
+        skipReason: 'cue',
+        note: '깜빡',
+      });
+      expect(dayOf(result.current, 'h1')?.state).toBe('skip');
+    });
+
+    it('flags only the rows that actually carry the noon pin, row by row (AC 4)', async () => {
+      const repository = new LocalRepository(await seed([habit()]));
+      // A real 09:00 log on the same past day. Its time column reads 09:00, so the
+      // 「낮 12시로 남음」 note must not appear beside it.
+      await repository.upsertEntry({
+        id: 'morning',
+        habitId: 'h1',
+        date: YESTERDAY,
+        timestamp: atLocal(YESTERDAY, 9),
+        actual: 2,
+      });
+      const result = await screenOn(repository, YESTERDAY);
+      await log(result, 'h1', 5);
+
+      const byId = new Map(result.current.feed.map((item) => [item.entry.id, item]));
+      expect(byId.get('morning')?.backfilled).toBe(false);
+      expect([...byId.values()].filter((item) => item.backfilled)).toHaveLength(1);
+    });
+
+    it('never flags a row on today, even one logged at noon sharp', async () => {
+      const repository = new LocalRepository(await seed([habit()]));
+      await repository.upsertEntry({
+        id: 'noon',
+        habitId: 'h1',
+        date: TODAY,
+        timestamp: noonOn(TODAY),
+        actual: 5,
+      });
+      const result = await screenOn(repository, TODAY);
+
+      // Today holds nothing to have backfilled, so the stamp says nothing about how the
+      // row was written.
+      expect(result.current.feed[0].backfilled).toBe(false);
+    });
+
+    it('keeps a backfilled row’s noon pin through an edit of its amount and note', async () => {
+      const repository = new LocalRepository(await seed([habit()]));
+      const result = await screenOn(repository, YESTERDAY);
+      await log(result, 'h1', 5);
+
+      const before = result.current.feed[0].entry;
+      await act(async () => {
+        await result.current.editEntry({ ...before, actual: 9, note: '고침' });
+      });
+
+      const after = result.current.feed[0];
+      expect(after.entry.actual).toBe(9);
+      expect(after.entry.note).toBe('고침');
+      // The stamp is the day's total order (§7.3), not an editable field of the row —
+      // `EntryEditor` withholds the time reveal on such a row for this reason.
+      expect(after.entry.timestamp).toBe(noonOn(YESTERDAY));
+      expect(after.backfilled).toBe(true);
+    });
+
+    /**
+     * AC 9 — the composer must not carry one day's staged answer onto another. The
+     * screen remounts it on `${habit.id}:${date}`, which no test can see; what a test
+     * *can* see is that the values the composer prefills itself from are the chosen
+     * day's, so a stale note or amount has nothing to be seeded from.
+     */
+    it('derives the composer’s prefill and skip reason from the chosen date, not from today (AC 9)', async () => {
+      const repository = new LocalRepository(await seed([habit()]));
+      await repository.upsertEntry({
+        id: 's1',
+        habitId: 'h1',
+        date: YESTERDAY,
+        timestamp: noonOn(YESTERDAY),
+        actual: 0,
+        skipReason: 'cue',
+      });
+      await repository.upsertEntry({
+        id: 'a1',
+        habitId: 'h1',
+        date: TODAY,
+        timestamp: `${TODAY}T09:00:00.000Z`,
+        actual: 3,
+      });
+
+      const onYesterday = rowOf((await screenOn(repository, YESTERDAY)).current, 'h1');
+      expect(onYesterday.skipReasonToday).toBe('cue');
+      expect(onYesterday.defaultAmount).toBe(5);
+
+      const onToday = rowOf((await screenOn(repository, TODAY)).current, 'h1');
+      expect(onToday.skipReasonToday).toBeUndefined();
+      expect(onToday.defaultAmount).toBe(3);
+    });
+  });
 });

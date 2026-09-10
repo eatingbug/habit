@@ -3,8 +3,9 @@ import { useEffect, useState } from 'react';
 import { TUNING } from '@/config/tuning';
 import { useRepository } from '@/context/RepositoryContext';
 import { dayStates } from '@/domain/classify';
-import { windowEndingAt } from '@/domain/dates';
+import { compareDates, dateOf, windowEndingAt } from '@/domain/dates';
 import { heatCells, type HeatCell } from '@/domain/heatLevel';
+import { computeStreak } from '@/domain/streak';
 import { localToday } from '@/lib/device';
 import type { Habit, SkipReason, Stat } from '@/models';
 
@@ -33,6 +34,16 @@ export interface DashboardRow extends LogAffordances {
   stat?: Stat;
   /** `TUNING.heatmapDays` cells, ascending, ending today. */
   cells: HeatCell[];
+  /**
+   * Consecutive floor-met days ending today (§4.2) — the canvas's `🔥 N`
+   * (`design/parts/Dashboard.body.html:38`).
+   *
+   * Never stored, always recomputed from the rows, which is what makes backfill a pure
+   * repair: filling a `missed` date re-joins the runs on either side of it (ADR-0001,
+   * #14). Read from the whole history, not the heatmap window — a run longer than
+   * `TUNING.heatmapDays` would otherwise be silently clipped.
+   */
+  streak: number;
 }
 
 export interface DashboardView {
@@ -86,12 +97,20 @@ export function useDashboard({ today = localToday() }: { today?: string } = {}):
 
       const loaded = await Promise.all(
         visible.map(async (habit) => {
-          const entries = await repository.getEntries(habit.id, from, to);
+          // `computeStreak` walks back to `createdAt`, so the fetch starts at whichever
+          // of the two is earlier; `heatCells` is given its own window either way.
+          const start = dateOf(habit.createdAt);
+          const entries = await repository.getEntries(
+            habit.id,
+            compareDates(start, from) < 0 ? start : from,
+            to,
+          );
 
           return {
             habit,
             stat: statFor(habit.statId),
             cells: heatCells(habit, entries, from, to, today),
+            streak: computeStreak(entries, habit, today),
             // The one-tap control reads a classified day, not a heat cell: a cell is a
             // *rendering* instruction, and deriving an affordance from one is how this
             // drifted away from Today's identical derivation once already.
