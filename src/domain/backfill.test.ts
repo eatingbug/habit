@@ -104,12 +104,15 @@ describe('isBackfillableDate (§6.3 allowed range)', () => {
 
 describe('nextBackfillTimestamp (§6.3 noon pin)', () => {
   it('pins the first backfill of a date to that day’s local noon', () => {
-    const stamp = nextBackfillTimestamp(noonOn(ago(3)), []);
+    const date = ago(3);
+    const at = new Date(nextBackfillTimestamp(noonOn(date), []));
 
-    expect(stamp).toBe(noonOn(ago(3)));
-    // The claim that survives a change of timezone: the user reads it back as 12:00.
-    expect(new Date(stamp).getHours()).toBe(12);
-    expect(new Date(stamp).getMinutes()).toBe(0);
+    // The property, not the constant: the user reads the stamp back off the local
+    // clock (`clockOf`), and what it must read there is 12:00 on the target date.
+    expect([at.getHours(), at.getMinutes(), at.getSeconds()]).toEqual([12, 0, 0]);
+    expect([at.getFullYear(), at.getMonth() + 1, at.getDate()]).toEqual(
+      date.split('-').map(Number),
+    );
   });
 
   it('still pins to noon when the date already holds ordinary rows on either side of noon', () => {

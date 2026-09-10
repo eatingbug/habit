@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 
 import { useRepository } from '@/context/RepositoryContext';
-import { isBackfillableDate } from '@/domain/backfill';
+import { isBackfilledRow, isBackfillableDate } from '@/domain/backfill';
 import {
   type ClassifiedDay,
   classifyDay,
@@ -81,6 +81,17 @@ export interface TodayHabitRow extends LogAffordances {
 export interface TodayFeedItem {
   habit: Habit;
   entry: HabitEntry;
+  /**
+   * Was **this row** written by a backfill — a past-dated row carrying the §6.3 noon
+   * pin? The feed shows its time column from the row's own stamp, so the note saying
+   * the stamp is noon has to be true of the row, not of the date the screen happens to
+   * be showing: a row genuinely logged at 09:00 yesterday sits in the same feed and
+   * reads 09:00.
+   *
+   * Derived here rather than in the JSX for the usual reason (#14 D2): nothing under
+   * `app/` is reachable by a test.
+   */
+  backfilled: boolean;
 }
 
 /**
@@ -397,6 +408,9 @@ export function useToday({
         feed: sortDayRows(allRows).map((entry) => ({
           habit: byId.get(entry.habitId) as Habit,
           entry,
+          // On today there is nothing to have backfilled, and a row logged by hand at
+          // 12:00 sharp would otherwise be labelled as one.
+          backfilled: entry.date !== today && isBackfilledRow(entry, localNoonOn(entry.date)),
         })),
         xpToday: perHabit.reduce((total, entry) => total + entry.xp, 0),
       };

@@ -1061,6 +1061,60 @@ describe('useToday', () => {
       expect(dayOf(result.current, 'h1')?.state).toBe('skip');
     });
 
+    it('flags only the rows that actually carry the noon pin, row by row (AC 4)', async () => {
+      const repository = new LocalRepository(await seed([habit()]));
+      // A real 09:00 log on the same past day. Its time column reads 09:00, so the
+      // 「낮 12시로 남음」 note must not appear beside it.
+      await repository.upsertEntry({
+        id: 'morning',
+        habitId: 'h1',
+        date: YESTERDAY,
+        timestamp: atLocal(YESTERDAY, 9),
+        actual: 2,
+      });
+      const result = await screenOn(repository, YESTERDAY);
+      await log(result, 'h1', 5);
+
+      const byId = new Map(result.current.feed.map((item) => [item.entry.id, item]));
+      expect(byId.get('morning')?.backfilled).toBe(false);
+      expect([...byId.values()].filter((item) => item.backfilled)).toHaveLength(1);
+    });
+
+    it('never flags a row on today, even one logged at noon sharp', async () => {
+      const repository = new LocalRepository(await seed([habit()]));
+      await repository.upsertEntry({
+        id: 'noon',
+        habitId: 'h1',
+        date: TODAY,
+        timestamp: noonOn(TODAY),
+        actual: 5,
+      });
+      const result = await screenOn(repository, TODAY);
+
+      // Today holds nothing to have backfilled, so the stamp says nothing about how the
+      // row was written.
+      expect(result.current.feed[0].backfilled).toBe(false);
+    });
+
+    it('keeps a backfilled row’s noon pin through an edit of its amount and note', async () => {
+      const repository = new LocalRepository(await seed([habit()]));
+      const result = await screenOn(repository, YESTERDAY);
+      await log(result, 'h1', 5);
+
+      const before = result.current.feed[0].entry;
+      await act(async () => {
+        await result.current.editEntry({ ...before, actual: 9, note: '고침' });
+      });
+
+      const after = result.current.feed[0];
+      expect(after.entry.actual).toBe(9);
+      expect(after.entry.note).toBe('고침');
+      // The stamp is the day's total order (§7.3), not an editable field of the row —
+      // `EntryEditor` withholds the time reveal on such a row for this reason.
+      expect(after.entry.timestamp).toBe(noonOn(YESTERDAY));
+      expect(after.backfilled).toBe(true);
+    });
+
     /**
      * AC 9 — the composer must not carry one day's staged answer onto another. The
      * screen remounts it on `${habit.id}:${date}`, which no test can see; what a test

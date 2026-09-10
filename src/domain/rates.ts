@@ -14,6 +14,12 @@ import { windowEndingAt } from './dates';
  * The five-rule diagnosis engine reads `floorCompletionRate` and lands with #20; this
  * module holds only the two rates themselves, because backfill's recovery is measured
  * in them (ADR-0001) and that is what #14 needs.
+ *
+ * **Nothing renders these yet, and that is deliberate.** #14 plants the two functions
+ * and proves the ADR-0001 trade through them (`rates.test.ts` — "backfilling a missed
+ * day to done raises the user-facing success rate"); where a rate is *shown*, and in
+ * what words, is decided by #15 (habit detail) and #20 (status light). So the absence
+ * of a production caller on this branch is the assignment, not an oversight.
  */
 
 /**

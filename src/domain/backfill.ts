@@ -52,17 +52,41 @@ const NOON_MINUTE_MS = 60_000;
  * Comparison is on instants, not on strings: two stamps for the same moment can be
  * written differently, and only the noon *minute* is scanned, so an ordinary log at
  * 09:00 or 21:00 local cannot drag the pin off noon. `rowsOnDate` may be passed in any
- * order. Past the 60th backfill of one date the minute is used up and the sequence
- * restarts at noon — harmless, because the `id` tiebreak keeps the §7.3 total order
- * well-defined.
+ * order. Past the 60th backfill of one date the offsets run out of the minute: the
+ * 61st stamp, `noon + 60s`, is already outside the scanned band, so every backfill
+ * from then on returns that same instant. Harmless, because the `id` tiebreak keeps
+ * §7.3's total order well-defined — the rows stop being ordered *among themselves* by
+ * time, which is a distinction no user of a 61-times-backfilled day can perceive.
  */
 export function nextBackfillTimestamp(localNoon: string, rowsOnDate: HabitEntry[]): string {
   const noon = Date.parse(localNoon);
   const band = rowsOnDate
-    .map((row) => Date.parse(row.timestamp))
-    .filter((at) => at >= noon && at < noon + NOON_MINUTE_MS);
+    .filter((row) => isBackfilledRow(row, localNoon))
+    .map((row) => Date.parse(row.timestamp));
 
   return new Date(band.length === 0 ? noon : Math.max(...band) + 1_000).toISOString();
+}
+
+/**
+ * Does this row carry the §6.3 noon pin — i.e. was it written by a backfill?
+ *
+ * The same band `nextBackfillTimestamp` writes into, read back: a stamp in the noon
+ * minute of its own day is one this module placed, and anything else is a row the user
+ * logged at a time of their own. Sharing the band with the writer is the point — a
+ * screen that tested `12:00` on its own would stop recognising the second and later
+ * backfills of a date.
+ *
+ * `localNoon` is the row's *own* date at local noon, passed in for the same reason
+ * `nextBackfillTimestamp` takes it: the timezone is not this layer's to read (§2.2).
+ *
+ * Not a claim about intent. A row logged by hand at exactly 12:00 is indistinguishable
+ * from a backfill and reads as one, which is why the caller must also know the row is
+ * not on today — on today there is nothing to have backfilled.
+ */
+export function isBackfilledRow(entry: HabitEntry, localNoon: string): boolean {
+  const at = Date.parse(entry.timestamp);
+  const noon = Date.parse(localNoon);
+  return at >= noon && at < noon + NOON_MINUTE_MS;
 }
 
 /**

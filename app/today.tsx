@@ -105,16 +105,7 @@ function stateLabel(state: DayState): string {
  * screen reader would otherwise announce "07:10 독서 +3쪽" with no hint that the line
  * does anything. An a11y label describes the affordance, so no canvas citation applies.
  */
-function FeedRow({
-  item,
-  isBackfill,
-  onPress,
-}: {
-  item: TodayFeedItem;
-  /** Is the feed showing a past day? Then every line on it is a backfilled row. */
-  isBackfill: boolean;
-  onPress: () => void;
-}) {
+function FeedRow({ item, onPress }: { item: TodayFeedItem; onPress: () => void }) {
   const { colors } = useTheme();
   /**
    * §3.3's row discriminator — the *presence of a reason*, never `actual === 0`. A
@@ -169,10 +160,13 @@ function FeedRow({
       {item.entry.note != null && (
         <Text style={[styles.feedNote, { color: colors.faint }]}>메모: {item.entry.note}</Text>
       )}
-      {/* `Backfill.logic.js:52` — on a past day the time column reads noon for every
-          line, which is a fact about how the row was recorded rather than about when
-          the user did the thing. This says so, on the same `.backnote` second line. */}
-      {isBackfill && (
+      {/* `Backfill.logic.js:52` — a backfilled row's time column reads noon, which is a
+          fact about how it was recorded rather than about when the user did the thing.
+          This says so, on the same `.backnote` second line. Per **row**
+          (`item.backfilled`), not per screen date: a row genuinely logged at 09:00
+          yesterday shows 09:00 in the same feed, and the note would be a lie beside it.
+          The artboard never shows that case — it seeds every past-day row at 12:00. */}
+      {item.backfilled && (
         <Text style={[styles.feedNote, { color: colors.faint }]}>지난 날 기록 · 낮 12시로 남음</Text>
       )}
     </Pressable>
@@ -603,6 +597,13 @@ type RowKind = 'activity' | 'skip';
  * only when the fields read a clock the original does not (`restampedAtLocalTime`);
  * otherwise the original string is stored back verbatim, seconds and all.
  *
+ * On a **backfilled** row the reveal is withheld entirely, and the same static line the
+ * composer shows takes its place. That is the composer's rule carried across, not a new
+ * one: a backfill is noon-pinned so the day's total order is defined (§6.3/§7.3), and
+ * offering to restamp it here would undo, one row at a time, the invariant the control
+ * one component away refuses to break. Making past rows time-editable is a capability
+ * #14 was not asked for; #15's journal can add it, with its own copy.
+ *
  * The reveal has no `지금으로` reset, unlike the composer's: with the original passed
  * through verbatim there is nothing to reset *to* but the time already in the fields.
  * Lifting a shared `TimeReveal` out of `Composer` waits for #15's journal, the second
@@ -773,8 +774,13 @@ function EntryEditor({
       {/* B3's reveal, prefilled from *this row's* stamp. Reopening it and pressing
           저장 changes nothing: `restampedAtLocalTime` returns the original verbatim
           while the fields read its own clock, so the row keeps the sub-minute position
-          §7.3's total order gives it. */}
-      {timeOpen ? (
+          §7.3's total order gives it.
+
+          Withheld on a backfilled row (`item.backfilled`), which keeps the noon pin
+          intact — same rule and same sentence as the composer's. */}
+      {item.backfilled ? (
+        <Footnote>🕑 낮 12:00으로 기록</Footnote>
+      ) : timeOpen ? (
         <View style={styles.amountRow}>
           <NumberField
             accessibilityLabel="시"
@@ -1015,7 +1021,6 @@ export default function Today() {
               <FeedRow
                 key={item.entry.id}
                 item={item}
-                isBackfill={dateControl.isBackfill}
                 onPress={() => setEditingId(item.entry.id)}
               />
             ))}
