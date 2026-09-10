@@ -47,6 +47,22 @@ export interface DeleteConfirmFacts {
   /** The delete erases a miss the day currently counts. */
   carriesMiss: boolean;
   /**
+   * How the sentences name the day being changed. Defaults to `오늘`, which is the
+   * only day `app/today.tsx` can delete from; the journal (§6.3) holds past-dated
+   * rows and passes that row's own date, because `오늘` would be false there.
+   */
+  dayLabel?: string;
+  /**
+   * The run before and after the delete, both figures, when the caller has decided
+   * the user should be told (`useHabitDetail.showsStreak`). Absent ⇒ no streak clause:
+   * on today there is nothing to break, since an emptied today falls back to `pending`
+   * (ADR-0001), which is why `app/today.tsx` never passes them.
+   *
+   * Both numbers, never their difference: `20일 → 4일` says which is which.
+   */
+  streakBefore?: number;
+  streakAfter?: number;
+  /**
    * The day's new reading, already resolved to screen copy by the caller — the state →
    * label map is the screen's (`stateLabel`), so this file takes the label, not a
    * `DayState`. **Absent** for a paused date the engine has no opinion about
@@ -76,23 +92,32 @@ export interface DeleteConfirmFacts {
  * screen's. So the clause names what the row was **counted as** (실패) and what stops
  * — never how the day now reads.
  *
- * Two things are deliberately **absent**, per the ticket's analysis of ADR-0001:
- * - no `missed` and no streak figure. Today is still open, so emptying today leaves it
- *   `pending` — nothing breaks, and there is no number to quote. That warning belongs
- *   to a screen holding past-dated rows (#15).
- * - nothing about the day's state without a `stateAfterLabel`: the engine has no
- *   opinion about an empty paused day, so neither does the sentence.
+ * Every clause is the caller's to ask for, and two of them are asked for by only one
+ * screen:
+ * - the streak figures, which need a **past** date whose run actually changes. Today
+ *   is still open, so emptying it leaves it `pending` and breaks nothing (ADR-0001) —
+ *   `app/today.tsx` passes neither number and gets no such clause.
+ * - the day's new reading, omitted without a `stateAfterLabel`: the engine has no
+ *   opinion about an empty paused day (ADR-0003), so neither does the sentence.
+ *
+ * The day is never called `missed`. A day whose last row is deleted is repairable by
+ * the same gesture that emptied it, and the clauses say what is lost, not that the day
+ * has failed.
  */
 export function deleteConfirmLines(facts: DeleteConfirmFacts): string[] {
   const lines: string[] = [];
+  const day = facts.dayLabel ?? '오늘';
   if (facts.emptiesDay) {
-    lines.push(`이 기록을 지우면 오늘 ${facts.habitName}에 남는 기록이 없어요.`);
+    lines.push(`이 기록을 지우면 ${day} ${facts.habitName}에 남는 기록이 없어요.`);
   }
   if (facts.carriesMiss) {
     lines.push('실패로 세던 기록이 바로 이 줄이라, 지우면 그 실패는 더 세지 않아요.');
   }
+  if (facts.streakBefore != null && facts.streakAfter != null) {
+    lines.push(`연속 날수가 다시 계산돼요 — ${facts.streakBefore}일 → ${facts.streakAfter}일.`);
+  }
   if (facts.stateAfterLabel != null) {
-    lines.push(`지운 뒤 오늘: ${facts.stateAfterLabel}`);
+    lines.push(`지운 뒤 ${day}: ${facts.stateAfterLabel}`);
   }
   return lines;
 }

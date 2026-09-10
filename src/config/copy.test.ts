@@ -53,9 +53,10 @@ describe('SKIP_REASON_LABELS', () => {
  * `jest.config.js` cannot reach at all.
  *
  * The assertions name the *claims*, not the exact sentences: what must hold is that a
- * clause appears only when its condition does, and that two forbidden claims — a
- * `missed`/실패 reversal of the day and a streak figure — never appear (ADR-0001: today
- * is still open, so neither is true on this screen).
+ * clause appears only when its condition does. Every call here is `app/today.tsx`'s —
+ * no `dayLabel`, no streak figures — so what they pin is that call's shape: no
+ * `missed`/실패 reversal of the day and no streak number reaches the screen where
+ * today is still open and neither is true (ADR-0001).
  */
 describe('deleteConfirmLines', () => {
   const facts = { habitName: '팔굽혀펴기', emptiesDay: false, carriesMiss: false };
@@ -122,7 +123,7 @@ describe('deleteConfirmLines', () => {
     expect(lines.some((line) => line.includes('지운 뒤 오늘'))).toBe(false);
   });
 
-  it('never claims the day fails or that a streak breaks (ADR-0001)', () => {
+  it('never claims the day fails or quotes a streak for today\u2019s caller (ADR-0001)', () => {
     const all = deleteConfirmLines({
       habitName: '독서',
       emptiesDay: true,
@@ -131,7 +132,9 @@ describe('deleteConfirmLines', () => {
     }).join(' ');
 
     // Today is still open: emptying it leaves it `pending`, so there is no reversal to
-    // `missed` and no figure to quote. Both belong to a past-dated screen (#15).
+    // `missed` and no figure to quote. The streak clause exists for the journal
+    // (§6.3), which passes `streakBefore`/`streakAfter`; this call passes neither, and
+    // that absence is what must keep the numbers off Today.
     expect(all).not.toMatch(/연속|스트릭|일 째|미스/);
     expect(all).not.toContain('실패로 바뀝니다');
     expect(all).not.toMatch(/\d/);
