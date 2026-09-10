@@ -23,16 +23,16 @@ import {
 import { useDashboard, type DashboardRow } from '@/hooks/useDashboard';
 import type { SkipReason } from '@/models';
 import { useTheme } from '@/theme/ThemeProvider';
-import { FONT_SIZE, RADIUS, SPACE } from '@/theme/tokens';
+import { FONT_FAMILY, FONT_SIZE, RADIUS, SPACE } from '@/theme/tokens';
 
 /**
  * Dashboard — SPEC §6.1; layout from `design/parts/Dashboard.body.html`.
  *
  * The artboard is the finished design, so it shows more than this screen renders. The
- * stat cards / XP bars (#17), the status lights and the "손볼 습관 N개" aggregate (#20)
- * and the streak count (#14) each belong to a later ticket and are left out rather
- * than stubbed: a hardcoded number would read as data the user does not have. What
- * ships here is the row itself — name, stat tag, the `TUNING.heatmapDays` heatmap, the
+ * stat cards / XP bars (#17) and the status lights and "손볼 습관 N개" aggregate (#20)
+ * each belong to a later ticket and are left out rather than stubbed: a hardcoded
+ * number would read as data the user does not have. What ships here is the row itself —
+ * name, stat tag, the `TUNING.heatmapDays` heatmap, the 🔥 streak count (#14), the
  * one-tap log with its 실행취소 toast (#11), and the long-press skip chips (#12).
  */
 
@@ -127,6 +127,17 @@ function HabitRow({
         </View>
       </Pressable>
       <View style={styles.qbottom}>
+        {/* `.streak` (`design/parts/Dashboard.body.html:38`) — 연속 날수, ahead of the
+            ribbon it summarises. The number is `useDashboard`'s `computeStreak`, never
+            stored: filling a past day re-joins the run through it (ADR-0001, #14).
+            Hidden from assistive tech as a bare glyph+number would announce as "fire
+            twelve"; the row's own accessible name carries it in words instead. */}
+        <Text
+          style={[styles.streak, { color: colors.muted }]}
+          accessibilityLabel={`연속 ${row.streak}일`}
+        >
+          🔥 {row.streak}
+        </Text>
         {/* B5's gesture is on the **ribbon**, not on today's individual cell. Two
             reasons: one cell is a `TUNING.heatmapDays`-th of the strip (~15px), far
             under §6.0's 44px tap target; and `Heatmap` is deliberately hidden from
@@ -271,6 +282,13 @@ const styles = StyleSheet.create({
   // squeeze the name or the heatmap.
   qcue: { fontSize: FONT_SIZE.sm, marginLeft: 'auto', maxWidth: 120, flexShrink: 1 },
   qbottom: { flexDirection: 'row', alignItems: 'center', gap: 9 },
+  // `.streak` (`design/_tokens.css:83`) — mono, muted, the smallest step. Tabular
+  // numerals so the ribbon beside it does not shift as the count crosses ten.
+  streak: {
+    fontSize: FONT_SIZE.xs,
+    fontFamily: FONT_FAMILY.mono,
+    fontVariant: ['tabular-nums'],
+  },
   // The strip carries `.ribbon`'s `flex: 1` up to the row, so the heatmap still takes
   // every pixel the one-tap control leaves.
   strip: { flex: 1, minWidth: 0 },

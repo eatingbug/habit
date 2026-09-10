@@ -21,6 +21,7 @@ import { isFloorMet } from '@/domain/classify';
 import { weekdayOf } from '@/domain/dates';
 import {
   useToday,
+  type DateControl,
   type DeleteEffect,
   type TodayFeedItem,
   type TodayHabitRow,
@@ -34,10 +35,15 @@ import { FONT_FAMILY, FONT_SIZE, SPACE, TAP_TARGET } from '@/theme/tokens';
  * Today — SPEC §6.2; layout from `design/parts/Today.body.html`, copy from the
  * design canvas.
  *
- * The artboard is the finished design, so it shows more than this screen renders. The
- * 어제 stepper (#14), free logs (#16), the reward toast (#17) and the at-risk save
- * banner (#18) each belong to a later ticket and are left out rather than stubbed — a
- * hardcoded number would read as data the user does not have.
+ * The artboard is the finished design, so it shows more than this screen renders. Free
+ * logs (#16), the reward toast (#17) and the at-risk save banner (#18) each belong to a
+ * later ticket and are left out rather than stubbed — a hardcoded number would read as
+ * data the user does not have.
+ *
+ * The date control (§6.2 B4, #14) is here, and its own artboard is
+ * `design/parts/Backfill.body.html`. Every judgment it makes — where the steps may go,
+ * whether the date reads as 오늘/어제/a date, whether a write is a backfill — is
+ * `useToday`'s `dateControl`; this file only applies the words.
  *
  * A feed line is also a **control** (#13): tapping it swaps the composer for
  * `EntryEditor` on that one row. Every judgment behind the delete confirm is
@@ -169,15 +175,93 @@ function chipLabel(amount: number, floor: number): string {
   return `지난번 ${amount}`;
 }
 
+/**
+ * The heading over the date — `오늘` / `어제` / `지난 날` (#14). The kind is
+ * `dateControl.kind`'s judgment; these are the words for it. `지난 날` is the canvas's
+ * own name for a backfilled day (`design/parts/Backfill.body.html:3`, `:67`).
+ */
+function headingFor(kind: DateControl['kind']): string {
+  return kind === 'today' ? '오늘' : kind === 'yesterday' ? '어제' : '지난 날';
+}
+
+/**
+ * The date control (§6.2 B4) — layout and copy from `design/parts/Backfill.body.html:15–23`
+ * and the label rule at `design/parts/Backfill.logic.js:67`.
+ *
+ * It decides nothing: where each control may go, and which of the three labels applies,
+ * are `dateControl`'s fields. Every control carries §6.0's 44px minimum (`tap`), and
+ * the two arrows carry the canvas's own `aria-label`s — `‹`/`›` alone name nothing.
+ */
+function DateControlBar({
+  control,
+  onPick,
+}: {
+  control: DateControl;
+  onPick: (date: string) => void;
+}) {
+  const { colors } = useTheme();
+  const label =
+    control.kind === 'today'
+      ? `오늘 · ${headerDate(control.date)}`
+      : control.kind === 'yesterday'
+        ? `어제 · ${headerDate(control.date)}`
+        : headerDate(control.date);
+
+  return (
+    <View style={styles.dateGroup}>
+      <View style={styles.rowline}>
+        <Eyebrow>날짜</Eyebrow>
+        {/* `.backnote` at `Backfill.body.html:12` — the allowed range, in words. */}
+        <Text style={[styles.rangeNote, { color: colors.faint }]}>만든 날부터 오늘까지</Text>
+      </View>
+      <View style={styles.dateCtl}>
+        <Button
+          label="‹"
+          accessibilityLabel="이전 날"
+          disabled={control.prevDate == null}
+          onPress={() => control.prevDate != null && onPick(control.prevDate)}
+          tap
+        />
+        <Text style={[styles.dateLabel, { color: colors.text }]} numberOfLines={1}>
+          {label}
+        </Text>
+        <Button
+          label="›"
+          accessibilityLabel="다음 날"
+          disabled={control.nextDate == null}
+          onPress={() => control.nextDate != null && onPick(control.nextDate)}
+          tap
+        />
+        <Button
+          label="오늘"
+          variant={control.kind === 'today' ? 'sel' : 'default'}
+          onPress={() => onPick(control.today)}
+          tap
+        />
+        <Button
+          label="어제"
+          variant={control.kind === 'yesterday' ? 'sel' : 'default'}
+          disabled={control.yesterdayDate == null}
+          onPress={() => control.yesterdayDate != null && onPick(control.yesterdayDate)}
+          tap
+        />
+      </View>
+    </View>
+  );
+}
+
 function Composer({
   row,
   date,
+  isBackfill,
   previewOf,
   onLog,
   onSkip,
 }: {
   row: TodayHabitRow;
   date: string;
+  /** Is this a past date? Then the row is noon-pinned and B3's override does nothing. */
+  isBackfill: boolean;
   previewOf: (staged: number) => { sum: number; state: DayState } | null;
   onLog: (actual: number, opts?: { timestamp?: string }) => Promise<void>;
   onSkip: (reason: SkipReason, opts?: { note?: string }) => Promise<void>;
@@ -373,8 +457,16 @@ function Composer({
       )}
 
       {/* B3 — the time picker is collapsed behind "🕑 지금 HH:MM" and revealed only to
-          override. `timestamp` is ordering and tiebreak only (§3.3), so this is rare. */}
-      {timeOpen ? (
+          override. `timestamp` is ordering and tiebreak only (§3.3), so this is rare.
+
+          On a backfill there is nothing to override: the row is noon-pinned so the
+          day's total order is defined (§6.3/§7.3), and `useQuickLog` ignores an override
+          there. The control becomes the canvas's static statement of that fact
+          (`design/parts/Backfill.logic.js:81`) rather than a field that would silently
+          do nothing. */}
+      {isBackfill ? (
+        <Footnote>🕑 낮 12:00으로 기록</Footnote>
+      ) : timeOpen ? (
         <View style={styles.amountRow}>
           <NumberField
             accessibilityLabel="시"
@@ -427,10 +519,10 @@ function Composer({
           SPEC §6.2 does put an optional note on the activity path, but that is #13's
           edit surface, not this ticket's.)
 
-          The guarantee is scoped to the habit and to the skip path — `Composer` is
-          keyed on the habit, so switching habits remounts and cannot carry a note
-          across. It is *not* scoped by date: this screen records only today, and #14
-          owns the 어제 stepper (§6.2 B4) and the note's behaviour across it.
+          The guarantee is scoped to the habit, to the skip path **and to the date** —
+          `Composer` is keyed on `${habit.id}:${date}` (#14 D7), so switching habits or
+          stepping the date remounts, and a note typed for one day can never be picked
+          up by a chip tapped on another.
 
           Two deviations from the canvas, both deliberate:
           - **Copy.** `메모 (선택)` is the front half of
@@ -465,6 +557,14 @@ function Composer({
       )}
 
       {row.day?.state === 'partial' && <Footnote>최소엔 못 미침, 실패 아님</Footnote>}
+      {/* The one day-state line this screen did not have a state for until now
+          (`design/parts/Backfill.logic.js:42`). `pending` and `partial` already have
+          their say — the chip above, the progress line, and the footnote on the line
+          before this one — so only `missed` gets new copy, and it is the sentence that
+          says the day is repairable rather than merely lost (ADR-0001). */}
+      {row.day?.state === 'missed' && (
+        <Footnote>기록이 없어 실패로 잡힌 날 — 지금 채우면 회복됩니다</Footnote>
+      )}
       {error != null && <Banner>{error}</Banner>}
     </Card>
   );
@@ -747,11 +847,18 @@ function EntryEditor({
 
 export default function Today() {
   const { colors } = useTheme();
+  /**
+   * The day being recorded (§6.2 B4). `null` is "today" — the hook owns what today is
+   * (`localToday()`), so holding a date here before the user has picked one would pin
+   * the screen to the day it mounted.
+   */
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const {
     date,
     rows,
     feed,
     questsDone,
+    dateControl,
     logCount,
     xpToday,
     loading,
@@ -763,7 +870,7 @@ export default function Today() {
     deletePreview,
     toast,
     undoLast,
-  } = useToday();
+  } = useToday({ date: selectedDate ?? undefined });
   const [selectedId, setSelectedId] = useState<string | null>(null);
   /**
    * The feed row being edited (#13). Held as an **id**, and the item derived from the
@@ -785,7 +892,9 @@ export default function Today() {
         <View style={styles.rowline}>
           <View>
             <Eyebrow>{headerDate(date)}</Eyebrow>
-            <Text style={[styles.heading, { color: colors.text }]}>오늘</Text>
+            <Text style={[styles.heading, { color: colors.text }]}>
+              {headingFor(dateControl.kind)}
+            </Text>
           </View>
           <View>
             <Text style={[styles.tally, { color: colors.muted }]}>
@@ -794,6 +903,21 @@ export default function Today() {
             <Text style={[styles.tally, { color: colors.text }]}>+{xpToday} XP</Text>
           </View>
         </View>
+
+        <DateControlBar control={dateControl} onPick={setSelectedDate} />
+
+        {/* `Backfill.body.html:67` / `:73` — what a write to this day will do. Both are
+            neutral: they state a mechanism, and neither is a warning. */}
+        {dateControl.isBackfill ? (
+          <Banner variant="neutral">
+            지난 날 기록 — 시각은 그날 낮 12시로 남습니다. 원래 있던 기록을 지우지 않고 옆에
+            더해집니다. 실패로 잡혀 있던 날이면 성공으로 바뀌고, 연속 날수가 다시 계산됩니다.
+          </Banner>
+        ) : (
+          <Banner variant="neutral">
+            오늘 기록은 지금 시각으로 남습니다. 순서를 매길 때만 쓰이니 신경 안 쓰셔도 돼요.
+          </Banner>
+        )}
 
         {loading ? (
           <Text style={[styles.notice, { color: colors.muted }]}>불러오는 중…</Text>
@@ -833,9 +957,12 @@ export default function Today() {
               />
             ) : (
               <Composer
-                key={selected.habit.id}
+                // #14 D7 — the date is part of the identity: stepping it must not leave
+                // an amount, a time or a skip note staged for the day before.
+                key={`${selected.habit.id}:${date}`}
                 row={selected}
                 date={date}
+                isBackfill={dateControl.isBackfill}
                 previewOf={(stagedAmount) => previewOf(selected.habit.id, stagedAmount)}
                 onLog={(actual, opts) => logActivity(selected.habit.id, actual, opts)}
                 onSkip={(reason, opts) => logSkip(selected.habit, reason, opts)}
@@ -844,9 +971,13 @@ export default function Today() {
           </>
         )}
 
-        <Eyebrow>오늘 기록</Eyebrow>
+        {/* `Backfill.logic.js:82` / `:58` — the feed and its empty line name the day
+            they are about, so a past day's empty feed cannot be read as today's. */}
+        <Eyebrow>{dateControl.atToday ? '오늘 기록' : '이 날 기록'}</Eyebrow>
         {feed.length === 0 ? (
-          <Text style={[styles.notice, { color: colors.muted }]}>오늘 기록이 아직 없어요.</Text>
+          <Text style={[styles.notice, { color: colors.muted }]}>
+            {dateControl.atToday ? '오늘은 아직 기록이 없어요' : '이 날엔 기록이 없어요'}
+          </Text>
         ) : (
           <View style={styles.feed}>
             {feed.map((item) => (
@@ -858,6 +989,11 @@ export default function Today() {
             ))}
           </View>
         )}
+
+        {/* `Backfill.body.html:90` — the two ends of the range, in one sentence. It is
+            also what explains a habit's absence from the list on an early date (#14 D3),
+            which is why no per-row "not created yet" copy was invented. */}
+        <Footnote>아직 오지 않은 날, 습관을 만들기 전 날짜는 고를 수 없어요.</Footnote>
       </ScrollView>
 
       <ToastOverlay toast={toast} onUndo={() => void undoLast()} />
@@ -882,6 +1018,12 @@ const styles = StyleSheet.create({
     fontVariant: ['tabular-nums'],
   },
   notice: { fontSize: FONT_SIZE.base },
+  // `.datectl` (`design/parts/Backfill.body.html:15`) — the arrows, the label and the
+  // two chips on one wrapping row, under their own eyebrow.
+  dateGroup: { gap: SPACE.sm },
+  dateCtl: { flexDirection: 'row', alignItems: 'center', gap: SPACE.md - 2, flexWrap: 'wrap' },
+  dateLabel: { fontSize: FONT_SIZE.base, fontWeight: '600', flexShrink: 1 },
+  rangeNote: { fontSize: FONT_SIZE.sm },
   composerHead: { flexDirection: 'row', alignItems: 'center', gap: SPACE.md },
   composerName: { fontSize: FONT_SIZE.md, fontWeight: '600', letterSpacing: -0.14, flexShrink: 1 },
   amountRow: { flexDirection: 'row', alignItems: 'center', gap: SPACE.md - 2 },
