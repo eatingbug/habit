@@ -924,6 +924,36 @@ describe('useToday', () => {
       expect(onCreated.current.rows.map((row) => row.habit.id)).toEqual(['h1']);
     });
 
+    it('leaves the whole stepper dead on a habit created today — day one of an install (D3)', async () => {
+      const repository = new LocalRepository(
+        await seed([habit({ createdAt: `${TODAY}T09:00:00.000Z` })]),
+      );
+      const result = await screenOn(repository, TODAY);
+
+      // AC 1's one-tap 어제 is unavailable here, and correctly so: there is no yesterday
+      // to write into. The chip is dead rather than a no-op (§6.3 blocks it either way).
+      expect(result.current.dateControl).toMatchObject({
+        earliest: TODAY,
+        prevDate: null,
+        nextDate: null,
+        yesterdayDate: null,
+      });
+    });
+
+    it('measures the day’s XP against the whole run, so a backfill is worth something (D1)', async () => {
+      const repository = new LocalRepository(await seed([habit()]));
+      const result = await screenOn(repository, YESTERDAY);
+
+      expect(result.current.xpToday).toBe(0);
+
+      await log(result, 'h1', 5);
+
+      // The figure is `computeXP`'s (proven in `score.test.ts`); what is asserted here
+      // is that the delta is taken over the *selected* day's rows, not silently over
+      // today's — a backfilled day would otherwise always read +0 XP.
+      expect(result.current.xpToday).toBeGreaterThan(0);
+    });
+
     it('pins the stepper to today when there are no habits at all (D3)', async () => {
       const result = await todayScreen(new LocalRepository(new MemoryKV()));
 
