@@ -327,22 +327,6 @@ export interface TodayView {
    */
   deletePreview(entryId: string): DeleteEffect | null;
   /**
-   * May a **free log** be written to the day on screen? True only on today (#16).
-   *
-   * Reading a past day's free logs is unrestricted — they show in that day's feed —
-   * but creating one is not: the canvas names the composer's free tab `오늘 일기`
-   * (`design/parts/Today.logic.js:135`), §6.2 B4 describes the date control entirely
-   * in habit terms ("A non-today entry is a **backfill** and follows the §6.3 rules"),
-   * and §6.3 is about repairing `missed` days — which a free log cannot do, since it
-   * touches no day state at all. The §6.3 noon pin is `HabitEntry`-typed
-   * (`nextBackfillTimestamp`), so a past-dated free log would need a second copy of
-   * that convention for a need no AC states (CLAUDE.md §2).
-   *
-   * A field rather than a condition in the JSX: `jest.config.js` matches `src/**` only,
-   * so the screen hides the free tab when this is false and decides nothing itself.
-   */
-  freeLogAvailable: boolean;
-  /**
    * What the composer's target selector offers on `date`, the free tab **first** as on
    * the canvas (`design/parts/Today.logic.js:135`). One list over both kinds, so the
    * screen's "is there anything to choose between?" test counts them together: gating
@@ -712,8 +696,23 @@ export function useToday({
     earliest,
   };
 
-  // Taken off the date control rather than recomputed: "is the day on screen today?"
-  // already has one encoding here (`isBackfill`), and a second would be free to drift.
+  /**
+   * May a **free log** be written to the day on screen? True only on today (#16).
+   *
+   * Reading a past day's free logs is unrestricted — they show in that day's feed —
+   * but creating one is not: the canvas names the composer's free tab `오늘 일기`
+   * (`design/parts/Today.logic.js:135`), §6.2 B4 describes the date control entirely
+   * in habit terms ("A non-today entry is a **backfill** and follows the §6.3 rules"),
+   * and §6.3 is about repairing `missed` days — which a free log cannot do, since it
+   * touches no day state at all. The §6.3 noon pin is `HabitEntry`-typed
+   * (`nextBackfillTimestamp`), so a past-dated free log would need a second copy of
+   * that convention for a need no AC states (CLAUDE.md §2).
+   *
+   * Taken off the date control rather than recomputed: "is the day on screen today?"
+   * already has one encoding here (`isBackfill`), and a second would be free to drift.
+   * Local, not returned: the screen reads `targetOptions` and `resolvesToFree`, which
+   * are the two things this rule decides.
+   */
   const freeLogAvailable = !dateControl.isBackfill;
 
   const targetOptions: TargetOption[] = [
@@ -780,7 +779,6 @@ export function useToday({
     removeEntry,
     previewOf,
     deletePreview,
-    freeLogAvailable,
     targetOptions,
     resolvesToFree,
     logFree,

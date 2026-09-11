@@ -1338,15 +1338,11 @@ describe('useToday', () => {
       expect(result.current.xpToday).toBe(0);
     });
 
-    it('offers the free path on today only, while still reading a past day', async () => {
+    it('refuses a write on a past date while its existing free logs still read', async () => {
       const repository = new LocalRepository(await seed([habit()]));
       await seedFree(repository, { id: 'past', date: YESTERDAY });
 
-      const onToday = await todayScreen(repository);
-      expect(onToday.current.freeLogAvailable).toBe(true);
-
       const onYesterday = await screenOn(repository, YESTERDAY);
-      expect(onYesterday.current.freeLogAvailable).toBe(false);
       // The read is unaffected — the day's own free log is in its feed.
       expect(freeFeed(onYesterday.current).map((item) => item.log.id)).toEqual(['past']);
 
@@ -1487,7 +1483,6 @@ describe('useToday', () => {
       const repository = new LocalRepository(await seed([habit(), binary()]));
       const result = await optionsOn(repository, YESTERDAY);
 
-      expect(result.current.freeLogAvailable).toBe(false);
       expect(result.current.targetOptions.map((option) => option.value)).toEqual([
         'h1',
         'b1',
