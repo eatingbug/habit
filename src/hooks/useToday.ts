@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 
+import { LOG_TYPE_LABELS } from '@/config/copy';
 import { useRepository } from '@/context/RepositoryContext';
 import { isBackfilledRow, isBackfillableDate } from '@/domain/backfill';
 import {
@@ -11,9 +12,10 @@ import {
 } from '@/domain/classify';
 import { addDays, compareDates, dateOf } from '@/domain/dates';
 import { deleteOutcome, type DeleteOutcome } from '@/domain/deleteEffect';
+import { sortByDomainOrder } from '@/domain/feed';
 import { computeXP } from '@/domain/score';
-import { localNoonOn, localToday } from '@/lib/device';
-import type { DayState, Habit, HabitEntry, SkipReason } from '@/models';
+import { localNoonOn, localToday, newId } from '@/lib/device';
+import type { DayState, FreeLog, Habit, HabitEntry, LogType, SkipReason } from '@/models';
 
 import {
   logAffordances,
@@ -77,8 +79,9 @@ export interface TodayHabitRow extends LogAffordances {
   suggestTarget: boolean;
 }
 
-/** One line of the chronological feed (§6.2). Free logs interleave here in #16. */
-export interface TodayFeedItem {
+/** A habit row's line of the chronological feed (§6.2). */
+export interface TodayHabitFeedItem {
+  kind: 'habit';
   habit: Habit;
   entry: HabitEntry;
   /**
@@ -93,6 +96,29 @@ export interface TodayFeedItem {
    */
   backfilled: boolean;
 }
+
+/**
+ * A free log's line of the same feed (#16, §6.2 "habit entries and free logs
+ * interleaved by timestamp"). It carries no habit and no amount: a `FreeLog` has no
+ * `habitId` at all (§3.4, CONCEPT §9.4 deliberate decoupling).
+ */
+export interface TodayFreeFeedItem {
+  kind: 'free';
+  log: FreeLog;
+  /**
+   * The type's user-facing name (`LOG_TYPE_LABELS`). Resolved here rather than in the
+   * row's JSX for the usual reason (#14 D2): `jest.config.js` matches `src/**` only,
+   * so a lookup written in `app/` is one no test can reach.
+   */
+  label: string;
+}
+
+/**
+ * One line of the chronological feed (§6.2), of either kind. A discriminated union
+ * rather than one widened shape: the two rows share no field but the ordering pair,
+ * and `kind` is what makes `tsc` name every place that has to tell them apart.
+ */
+export type TodayFeedItem = TodayHabitFeedItem | TodayFreeFeedItem;
 
 /**
  * Why deleting one row deserves a confirm — the whole basis of the warning, derived so
@@ -183,7 +209,13 @@ export interface TodayView {
   feed: TodayFeedItem[];
   /** Habits whose day is floor-met. `over` implies `done`, so both count (§4.1). */
   questsDone: number;
-  /** Rows recorded on `date` — many per habit are expected (§3.3). */
+  /**
+   * Everything recorded on `date` — the feed's length. Many habit rows per habit are
+   * expected (§3.3), and free logs count too (#16 D4): §6.2's tally is
+   * "quests done / **logs** / XP earned today", and a free log is a log. The AC-4
+   * exclusion list is XP·연속·하루 상태 — a count is none of those, and `questsDone`
+   * and `xpToday` below are unchanged by a free log.
+   */
   logCount: number;
   /**
    * XP the **selected day's** rows added, from the domain: `computeXP` over the history
@@ -237,22 +269,74 @@ export interface TodayView {
    */
   editEntry(entry: HabitEntry): Promise<void>;
   /**
-   * Delete one row of the feed by id (#13, AC 4–6). Immediate and untoasted; whether
-   * the screen should confirm first is `deletePreview`'s answer, not this function's —
-   * so a caller that skips the check still deletes, exactly as AC 4 requires of the
-   * ordinary case.
+   * Delete one **habit row** of the feed by id (#13, AC 4–6). Immediate and untoasted;
+   * whether the screen should confirm first is `deletePreview`'s answer, not this
+   * function's — so a caller that skips the check still deletes, exactly as AC 4
+   * requires of the ordinary case.
+   *
+   * Throws on a free log's id rather than passing it to `deleteEntry`, which scans the
+   * per-habit collections and silently no-ops on a miss
+   * (`LocalRepository.deleteEntry`). A delete control that quietly does nothing is a
+   * stored fact the user believes is gone; free logs go through `removeFreeLog`.
    */
   removeEntry(entryId: string): Promise<void>;
   /**
-   * Does deleting this row need a result-aware confirm, and on what basis? `null`
-   * means **no** — delete it immediately (AC 4), which is also the answer for an id
-   * the feed does not hold.
+   * Does deleting this **habit row** need a result-aware confirm, and on what basis?
+   * `null` means **no** — delete it immediately (AC 4), which is also the answer for
+   * an id the feed does not hold and for a **free log's** id: a free log carries no
+   * scoring weight (§3.4), so it can neither empty a habit's day nor erase a miss, and
+   * #16 AC 6 asks for its delete to be immediate.
    *
    * Computed the same way `previewOf` is: the remaining row set is run back through the
    * domain (`dayStates`, the shared walk that owns ADR-0003's scope rule) rather than
    * compared against a local rule of our own.
    */
   deletePreview(entryId: string): DeleteEffect | null;
+  /**
+   * May a **free log** be written to the day on screen? (#16 D3) True only on today.
+   *
+   * Reading a past day's free logs is unrestricted — they show in that day's feed —
+   * but creating one is not: the canvas names the composer's free tab `오늘 일기`
+   * (`design/parts/Today.logic.js:135`), §6.2 B4 describes the date control entirely
+   * in habit terms ("A non-today entry is a **backfill** and follows the §6.3 rules"),
+   * and §6.3 is about repairing `missed` days — which a free log cannot do, since it
+   * touches no day state at all. The §6.3 noon pin is `HabitEntry`-typed
+   * (`nextBackfillTimestamp`), so a past-dated free log would need a second copy of
+   * that convention for a need no AC states (CLAUDE.md §2).
+   *
+   * A field rather than a condition in the JSX, for the usual reason (#14 D2): the
+   * screen hides the free tab when this is false and decides nothing itself.
+   */
+  freeLogAvailable: boolean;
+  /**
+   * Write one free log on **today** (#16 AC 1). Always a fresh `id`, and `date` is set
+   * explicitly to today at creation — §3.4 makes `date` authoritative for grouping, so
+   * it may never be left to be re-derived from `timestamp` in some other timezone.
+   *
+   * `opts.timestamp` is B3's time reveal, which §6.2 says "applies to habit entries and
+   * free logs alike"; it orders the row within the day and never contradicts its
+   * `date`. Rejects a call on a past date — see `freeLogAvailable`.
+   */
+  logFree(type: LogType, text: string, opts?: { timestamp?: string }): Promise<void>;
+  /**
+   * Rewrite one existing free log, keyed on `log.id` (#16 AC 5, AC 7 — `text`, `type`
+   * and `timestamp` are all editable, §3.4). The caller passes the **whole** row for
+   * the same reason `editEntry` does: the write replaces the stored element, so an
+   * omitted `timestamp` would silently reorder the feed.
+   */
+  editFreeLog(log: FreeLog): Promise<void>;
+  /**
+   * Delete one free log by id — **immediate, no confirm** (#16 AC 6).
+   *
+   * §3.4 sends the reader to §6.2 for the delete rule, and §6.2 revised itself in
+   * place ("*This revises the earlier blanket 'native Alert on every delete, no
+   * undo-toast' rule*"): a deliberate delete is immediate for an ordinary row, and the
+   * two guarded cases are the **last remaining row of a date** and a **miss-bearing
+   * skip**. A free log is neither — it carries no scoring weight (§3.4), so deleting
+   * it empties no habit's day and erases no miss. Following §3.4's pointer therefore
+   * yields "immediate", with nothing for `deletePreview` to warn about.
+   */
+  removeFreeLog(id: string): Promise<void>;
   /** The live 실행취소 toast for a one-tap/quick-chip append (B6). */
   toast: QuickLogToast | null;
   undoLast(): Promise<void>;
@@ -394,6 +478,10 @@ export function useToday({
 
       const byId = new Map(selectable.map((habit) => [habit.id, habit]));
       const allRows = perHabit.flatMap((entry) => entry.rowsOnDate);
+      // §3.4 — free logs are grouped by their own declared `date`, which is what
+      // `getFreeLogs` filters on. They are read for **any** `date`, including a past
+      // one: only *writing* them is today-only (#16 D3).
+      const freeLogs = await repository.getFreeLogs(date, date);
 
       const next: Loaded = {
         earliest,
@@ -403,15 +491,34 @@ export function useToday({
           day,
           ...composerReadings(habit, day),
         })),
-        // One sort over the merged rows, so the feed's order is the domain's total
-        // order across habits and not a per-habit concatenation.
-        feed: sortDayRows(allRows).map((entry) => ({
-          habit: byId.get(entry.habitId) as Habit,
-          entry,
-          // On today there is nothing to have backfilled, and a row logged by hand at
-          // 12:00 sharp would otherwise be labelled as one.
-          backfilled: entry.date !== today && isBackfilledRow(entry, localNoonOn(entry.date)),
-        })),
+        // One sort over the habit rows **and** the free logs together, so the feed is
+        // the domain's total order across both kinds (§6.2) — not a per-habit
+        // concatenation, and not habit rows with free ones appended. The ordering pair
+        // is lifted to the top level because that is all the two shapes share.
+        feed: sortByDomainOrder([
+          ...allRows.map((entry) => ({
+            id: entry.id,
+            timestamp: entry.timestamp,
+            item: {
+              kind: 'habit',
+              habit: byId.get(entry.habitId) as Habit,
+              entry,
+              // On today there is nothing to have backfilled, and a row logged by hand
+              // at 12:00 sharp would otherwise be labelled as one.
+              backfilled:
+                entry.date !== today && isBackfilledRow(entry, localNoonOn(entry.date)),
+            } satisfies TodayHabitFeedItem,
+          })),
+          ...freeLogs.map((log) => ({
+            id: log.id,
+            timestamp: log.timestamp,
+            item: {
+              kind: 'free',
+              log,
+              label: LOG_TYPE_LABELS[log.type],
+            } satisfies TodayFreeFeedItem,
+          })),
+        ]).map((row): TodayFeedItem => row.item),
         xpToday: perHabit.reduce((total, entry) => total + entry.xp, 0),
       };
 
@@ -481,8 +588,15 @@ export function useToday({
     };
   }
 
+  /** The feed's habit lines only — the ones `deleteEntry` and `deleteOutcome` know. */
+  function habitItemFor(id: string): TodayHabitFeedItem | undefined {
+    return loaded.feed.find(
+      (item): item is TodayHabitFeedItem => item.kind === 'habit' && item.entry.id === id,
+    );
+  }
+
   function deletePreview(entryId: string): DeleteEffect | null {
-    const item = loaded.feed.find((entry) => entry.entry.id === entryId);
+    const item = habitItemFor(entryId);
     if (item == null) return null;
 
     const outcome = deleteOutcome(
@@ -498,6 +612,24 @@ export function useToday({
     if (!outcome.emptiesDay && !outcome.carriesMiss) return null;
 
     return { habit: item.habit, ...outcome };
+  }
+
+  /**
+   * The habit-delete path, guarded against the free-log ids the feed now also holds.
+   * Not user-facing Korean, for the same reason `logActivity`'s throw is not: the only
+   * caller is the row editor, which knows which kind of row it opened, so reaching
+   * here with a free log's id is a defect in this app and not a state the user can
+   * produce.
+   */
+  async function removeEntry(entryId: string): Promise<void> {
+    const isFreeLog = loaded.feed.some(
+      (item) => item.kind === 'free' && item.log.id === entryId,
+    );
+    if (isFreeLog) {
+      throw new Error(`useToday.removeEntry: ${entryId} is a free log — use removeFreeLog`);
+    }
+
+    await quick.removeEntry(entryId);
   }
 
   /**
@@ -519,6 +651,41 @@ export function useToday({
     earliest,
   };
 
+  // #16 D3 — one encoding, taken off the date control rather than recomputed.
+  const freeLogAvailable = !dateControl.isBackfill;
+
+  async function logFree(
+    type: LogType,
+    text: string,
+    opts: { timestamp?: string } = {},
+  ): Promise<void> {
+    if (!freeLogAvailable) {
+      throw new Error(`useToday.logFree: ${date} is not today — free logs are today-only`);
+    }
+
+    await repository.upsertFreeLog({
+      id: newId(),
+      // Stated, never derived: §3.4 makes `date` authoritative for the day the log
+      // belongs to, and `timestamp` is a UTC instant that lands on the neighbouring
+      // day for anyone far enough east or west. The stamp must never contradict this.
+      date: today,
+      timestamp: opts.timestamp ?? now().toISOString(),
+      type,
+      text: text.trim(),
+    });
+    reload();
+  }
+
+  async function editFreeLog(log: FreeLog): Promise<void> {
+    await repository.upsertFreeLog({ ...log, text: log.text.trim() });
+    reload();
+  }
+
+  async function removeFreeLog(id: string): Promise<void> {
+    await repository.deleteLog(id);
+    reload();
+  }
+
   return {
     date,
     dateControl,
@@ -533,9 +700,13 @@ export function useToday({
     logActivity,
     logSkip: quick.logSkip,
     editEntry: quick.editEntry,
-    removeEntry: quick.removeEntry,
+    removeEntry,
     previewOf,
     deletePreview,
+    freeLogAvailable,
+    logFree,
+    editFreeLog,
+    removeFreeLog,
     toast: quick.toast,
     undoLast: quick.undoLast,
   };

@@ -1,4 +1,4 @@
-import type { SkipReason } from '@/models';
+import type { LogType, SkipReason } from '@/models';
 
 /**
  * User-facing strings that no single layer can own.
@@ -37,6 +37,28 @@ export const SKIP_REASON_LABELS: Record<SkipReason, string> = {
   floor: '너무 힘듦',
   exception: '예외',
   identity: '안 내킴',
+};
+
+/**
+ * The four free-log type chips (§3.4, §6.2 "Free log path: type chips") — copy from
+ * `design/parts/Today.logic.js:158`, the canvas's only source for them. Keyed in the
+ * order §3.4 declares the `LogType` union, which is also the canvas's chip order, and
+ * the chip row iterates these keys for the same reason `SKIP_REASON_LABELS`' consumers
+ * do: a separate order array could silently omit a type while the `Record` still
+ * type-checks.
+ *
+ * `win` reads `잘한 일` and `idea` reads `떠오른 생각` — the canvas's words, not the
+ * 성취/아이디어 of the ticket's prose, which the canvas does not say anywhere.
+ *
+ * No emoji: the canvas seeds one on a single sample feed row
+ * (`design/parts/Today.logic.js:20`) and defines none for the chips, so a set of four
+ * would be copy we invented.
+ */
+export const LOG_TYPE_LABELS: Record<LogType, string> = {
+  note: '메모',
+  win: '잘한 일',
+  mood: '기분',
+  idea: '떠오른 생각',
 };
 
 /** What `deleteConfirmLines` needs to know — see `useToday.DeleteEffect` for each. */
