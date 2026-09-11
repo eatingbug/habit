@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { TUNING } from '@/config/tuning';
 import { useRepository } from '@/context/RepositoryContext';
 import { isBackfillableDate, isBackfilledRow } from '@/domain/backfill';
-import { dayStates, type ClassifiedDay } from '@/domain/classify';
+import { dayStates, sortDayRows, type ClassifiedDay } from '@/domain/classify';
 import { dateOf, daysBetween, windowEndingAt } from '@/domain/dates';
 import { deleteOutcome, type DeleteOutcome } from '@/domain/deleteEffect';
 import { heatCells, type HeatCell } from '@/domain/heatLevel';
@@ -298,6 +298,18 @@ export interface HabitDetailView {
    * field).
    */
   composerAffordances: LogAffordances | null;
+  /**
+   * What the open composer's amount field starts prefilled with (§6.2 B2) — `null`
+   * when no composer is open. The date's first record gets the habit's `floor` ("I did
+   * my minimum" is the dominant case); from the second record on it gets the date's
+   * last amount, because a second log is usually another helping of the same size.
+   * Binary has no amount to stage, so it is always 1 (§3.3).
+   *
+   * It lives here and not in the composer's JSX for the same reason
+   * `composerAffordances` does: it is a rule, and nothing under `app/` is reachable by
+   * a test.
+   */
+  composerDefaultAmount: number | null;
   /** Ignores a date the §6.3 range forbids, so a stale cell cannot open a bad composer. */
   openBackfill(date: string): void;
   closeBackfill(): void;
@@ -425,6 +437,26 @@ function patchedText(current: string | undefined, next: string | null | undefine
   return trimmed != null && trimmed.length > 0 ? trimmed : undefined;
 }
 
+/**
+ * Everything the open composer reads off its date: what the date affords, and the
+ * amount the field starts prefilled with — the floor on the date's first record, the
+ * date's last amount afterwards (§6.2 B2). Skip rows carry `actual: 0`, which is not a
+ * legal staged amount, and the order is the domain's (`sortDayRows`), never the
+ * repository's array order — `useToday.composerReadings` reads its day the same way.
+ */
+function composerReadings(habit: Habit, day: ClassifiedDay) {
+  const activity = sortDayRows(
+    day.entries.filter((row) => row.actual > 0 && row.skipReason == null),
+  );
+
+  return {
+    affordances: logAffordances(habit, day),
+    // Binary has no amount: its floor is 1 and a row is always `actual: 1` (§3.3).
+    defaultAmount:
+      habit.kind === 'count' ? (activity[activity.length - 1]?.actual ?? habit.floor) : 1,
+  };
+}
+
 interface Loaded {
   habit: Habit | null;
   /** The habit's rows from its birth through today — the range `computeStreak` walks. */
@@ -503,6 +535,11 @@ export function useHabitDetail(
   const chart = habit == null ? null : growthChart(habit, entries, today);
   const forming = habit == null ? null : formingExpectation(habit, entries, today);
   const heatWindow = windowEndingAt(today, TUNING.heatmapDays);
+  /** The open composer's date, classified once — both its readings come off that day. */
+  const composer =
+    habit == null || backfillDate == null
+      ? null
+      : composerReadings(habit, dayStates(habit, entries, backfillDate, backfillDate, today)[0]);
 
   function openBackfill(date: string): void {
     if (habit == null || !isBackfillableDate(habit, date, today)) return;
@@ -611,10 +648,8 @@ export function useHabitDetail(
             editsAmounts: habit.kind === 'count',
           },
     backfillDate,
-    composerAffordances:
-      habit == null || backfillDate == null
-        ? null
-        : logAffordances(habit, dayStates(habit, entries, backfillDate, backfillDate, today)[0]),
+    composerAffordances: composer?.affordances ?? null,
+    composerDefaultAmount: composer?.defaultAmount ?? null,
     openBackfill,
     closeBackfill: () => setBackfillDate(null),
     fillDay,

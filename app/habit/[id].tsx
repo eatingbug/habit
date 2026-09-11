@@ -549,6 +549,7 @@ function DayComposer({
   date,
   dayLabel,
   affordances,
+  defaultAmount,
   onFill,
   onSkip,
   onClose,
@@ -563,17 +564,31 @@ function DayComposer({
    * `oneTapAmount`/`hasActivityToday` are the one-tap rule (`logAffordances`).
    */
   affordances: LogAffordances;
+  /**
+   * `composerDefaultAmount` — the floor on the date's first record, the date's last
+   * amount afterwards (§6.2 B2), derived in the hook the way Today derives its
+   * `defaultAmount`. It differing from the one-tap's `+1` is the rule, not a
+   * disagreement: the field stages another helping, the button appends one.
+   */
+  defaultAmount: number;
   onFill: (actual?: number) => Promise<void>;
   onSkip: (reason: SkipReason, opts?: { note?: string }) => Promise<void>;
   onClose: () => void;
 }) {
   const { colors } = useTheme();
   const isCount = habit.kind === 'count';
-  const [amount, setAmount] = useState(`${habit.floor}`);
+  /**
+   * `null` means "untouched", so the field falls back to `defaultAmount`. A write
+   * resets it to `null`, which is what re-prefills the field with the date's new
+   * default rather than leaving the old number staged (`app/today.tsx` stages the
+   * same way).
+   */
+  const [staged, setStaged] = useState<string | null>(null);
   const [note, setNote] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
+  const amount = staged ?? `${defaultAmount}`;
   const parsed = Number(amount);
   // §3.3: an activity row is `actual > 0`. Zero is not one — the way to say "didn't do
   // it" is a skip row with a reason.
@@ -598,6 +613,7 @@ function DayComposer({
     setError(null);
     try {
       await write();
+      setStaged(null);
       setNote('');
     } catch {
       setError('기록하지 못했어요. 잠시 뒤 다시 눌러 주세요.');
@@ -628,7 +644,7 @@ function DayComposer({
             accessibilityLabel="기록할 양"
             value={amount}
             onChangeText={(next) => {
-              setAmount(next);
+              setStaged(next);
               setError(null);
             }}
             placeholder={`${habit.floor}`}
@@ -1098,17 +1114,20 @@ export default function HabitDetail() {
                   {/* Both surfaces open **under the day they act on**: the journal is
                       as long as the habit's life, and one pinned to the top of the
                       screen would be off-screen for the day that opened it. */}
-                  {view.backfillDate === day.date && view.composerAffordances != null && (
-                    <DayComposer
-                      habit={shown}
-                      date={day.date}
-                      dayLabel={day.isToday ? '오늘' : monthDay(day.date)}
-                      affordances={view.composerAffordances}
-                      onFill={view.fillDay}
-                      onSkip={view.skipDay}
-                      onClose={view.closeBackfill}
-                    />
-                  )}
+                  {view.backfillDate === day.date &&
+                    view.composerAffordances != null &&
+                    view.composerDefaultAmount != null && (
+                      <DayComposer
+                        habit={shown}
+                        date={day.date}
+                        dayLabel={day.isToday ? '오늘' : monthDay(day.date)}
+                        affordances={view.composerAffordances}
+                        defaultAmount={view.composerDefaultAmount}
+                        onFill={view.fillDay}
+                        onSkip={view.skipDay}
+                        onClose={view.closeBackfill}
+                      />
+                    )}
                   {editingDay?.date === day.date && editingRow != null && (
                     <RowEditor
                       key={editingRow.entry.id}

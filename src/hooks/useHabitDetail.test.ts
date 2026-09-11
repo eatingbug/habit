@@ -478,6 +478,32 @@ describe('useHabitDetail — backfill (D10, D14)', () => {
     expect(result.current.composerAffordances?.skippable).toBe(true);
   });
 
+  it('prefills the composer with the floor, then with the date\'s last amount (§6.2 B2)', async () => {
+    const past = addDays(TODAY, -5);
+    // Seeded newest-first on purpose: the prefill is the day's **last** amount in the
+    // domain's order (`sortDayRows`), never the repository's array order.
+    const result = await detail(
+      await seed(habit(), [activity(past, 3, '18:00:00'), activity(past, 7, '07:00:00')]),
+    );
+
+    // No composer, nothing prefilled.
+    expect(result.current.composerDefaultAmount).toBeNull();
+
+    const empty = addDays(TODAY, -6);
+    act(() => result.current.openBackfill(empty));
+    expect(result.current.composerDefaultAmount).toBe(5);
+
+    act(() => result.current.openBackfill(past));
+    expect(result.current.composerDefaultAmount).toBe(3);
+  });
+
+  it('prefills a binary composer with 1, which is the only amount it has (§3.3)', async () => {
+    const result = await detail(await seed(binary()), 'b1');
+
+    act(() => result.current.openBackfill(addDays(TODAY, -3)));
+    expect(result.current.composerDefaultAmount).toBe(1);
+  });
+
   it('ignores a request to open a date the §6.3 range forbids', async () => {
     const result = await detail(await seed(habit()));
 
