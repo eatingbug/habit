@@ -1264,6 +1264,32 @@ describe('useToday', () => {
       ]);
     });
 
+    it('breaks a tie between a habit row and a free log by id, not by kind (§7.3)', async () => {
+      // The same instant for both rows, so the `id` half of `(timestamp ASC, id ASC)`
+      // is the only thing deciding the order. Run twice with the ids swapped: a merge
+      // that always put one kind first would satisfy exactly one of the two.
+      const at = `${TODAY}T10:00:00.000Z`;
+
+      async function feedIdsWith(entryId: string, logId: string): Promise<string[]> {
+        const repository = new LocalRepository(await seed([habit()]));
+        await repository.upsertEntry({
+          id: entryId,
+          habitId: 'h1',
+          date: TODAY,
+          timestamp: at,
+          actual: 5,
+        });
+        await seedFree(repository, { id: logId, timestamp: at });
+        const result = await screenOn(repository, TODAY);
+        return result.current.feed.map((item) =>
+          item.kind === 'free' ? item.log.id : item.entry.id,
+        );
+      }
+
+      expect(await feedIdsWith('a-row', 'z-log')).toEqual(['a-row', 'z-log']);
+      expect(await feedIdsWith('z-row', 'a-log')).toEqual(['a-log', 'z-row']);
+    });
+
     it('counts as a log while touching no XP, no quest and no day state (AC 4, D4)', async () => {
       const repository = new LocalRepository(await seed([habit()]));
       const result = await todayScreen(repository);
@@ -1337,7 +1363,7 @@ describe('useToday', () => {
         await result.current.editFreeLog({
           ...stored,
           type: 'win',
-          text: '사실 오늘 잘한 일이었다',
+          text: '  사실 오늘 잘한 일이었다  ',
           timestamp: `${TODAY}T18:00:00.000Z`,
         });
       });
@@ -1347,6 +1373,8 @@ describe('useToday', () => {
       expect(free).toHaveLength(1);
       expect(free[0].log.id).toBe('f1');
       expect(free[0].log.type).toBe('win');
+      // Trimmed on the edit path too, as on the write path — `useQuickLog`'s
+      // "absent, not empty" convention, applied to the one field this row has.
       expect(free[0].log.text).toBe('사실 오늘 잘한 일이었다');
       expect(free[0].log.timestamp).toBe(`${TODAY}T18:00:00.000Z`);
       // The label is re-derived from the new type, not carried over from the old one.
