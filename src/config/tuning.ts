@@ -61,6 +61,14 @@ export const TUNING = {
   // (issue #20) rather than stripping support while automaticity is still weak.
   formingToEstablishedDays: 30,
   formingToEstablishedRate: 0.8,
+  /**
+   * The repetitions the §6.3 Forming expectation panel measures progress against —
+   * Lally et al. (2010)'s ~66-day median to automaticity, the number the C7b note
+   * above reconciles the 30-day mode switch with. Progress is counted in
+   * `showedUpDays`, never in calendar days: a shaky stretch is "still forming", not
+   * "failing" (canvas `design/parts/HabitDetail.body.html:17` — `41일째 / 보통 66일`).
+   */
+  formingExpectationDays: 66,
 
   // §12.5 — Reflection trigger. TODO §12.5: adaptive later.
   /** 0 = Sunday. */

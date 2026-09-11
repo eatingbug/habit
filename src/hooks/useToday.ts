@@ -7,10 +7,10 @@ import {
   classifyDay,
   dayStates,
   isFloorMet,
-  isMissDay,
   sortDayRows,
 } from '@/domain/classify';
 import { addDays, compareDates, dateOf } from '@/domain/dates';
+import { deleteOutcome, type DeleteOutcome } from '@/domain/deleteEffect';
 import { computeXP } from '@/domain/score';
 import { localNoonOn, localToday } from '@/lib/device';
 import type { DayState, Habit, HabitEntry, SkipReason } from '@/models';
@@ -103,34 +103,20 @@ export interface TodayFeedItem {
  * Deliberately **not** a per-feed-item field: it is computed when the delete control is
  * pressed, because there is no reason to run the classifier once per visible row
  * (CLAUDE.md §2).
+ *
+ * The judgment itself is `src/domain/deleteEffect.ts`, shared with the habit journal
+ * (#15), which asks the same question of past dates. This type only adds the habit the
+ * confirm names.
+ *
+ * `app/today.tsx` renders **no** streak figure from `streakBefore`/`streakAfter`. This
+ * feed only ever holds `date === today`, where an emptied day falls back to `pending`
+ * rather than `missed` (ADR-0001, `streak.test.ts` — "keeps a pending today
+ * transparent"), so nothing is broken and the honest number to quote would be "one
+ * fewer day so far", which is not a warning. The `missed` reversal and the cut streak
+ * belong to the screen that holds past-dated rows (#15).
  */
-export interface DeleteEffect {
+export interface DeleteEffect extends DeleteOutcome {
   habit: Habit;
-  /**
-   * This delete leaves **no row at all** for that `(habit, date)` (AC 5). Per habit,
-   * not per date across habits: the day's state — the thing the user loses — only
-   * exists per habit (§4.1).
-   *
-   * Note what this does *not* claim. On **today** the emptied day falls back to
-   * `pending`, not `missed`: ADR-0001 makes an empty *past* day a miss, and today is
-   * still open (`streak.test.ts` — "keeps a pending today transparent"). So no streak
-   * breaks and no miss appears. The `missed` reversal and the broken streak belong to a
-   * screen that holds past-dated rows (#15).
-   */
-  emptiesDay: boolean;
-  /**
-   * This delete **erases a recorded miss** (AC 6): the day counts as a miss now and
-   * does not once the row is gone. `isMissDay` decides both halves, so `exception` — a
-   * skip that is no miss at all (ADR-0001) — raises no warning, and neither does
-   * deleting one of two skip rows, which leaves the day a miss regardless.
-   */
-  carriesMiss: boolean;
-  /**
-   * What that `(habit, date)` becomes once the row is gone. `undefined` when the date
-   * is paused and would be left empty — the engine has no opinion about such a day at
-   * all (ADR-0003), so the screen must say nothing about its state.
-   */
-  stateAfter: DayState | undefined;
 }
 
 /**
@@ -321,9 +307,21 @@ interface Loaded {
   xpToday: number;
   /** The stepper's lower bound (#14 D3) — see `DateControl.earliest`. */
   earliest: string | null;
+  /**
+   * Each visible habit's rows from its birth through today, by habit id — the range
+   * the load effect already reads for the XP delta, kept because `deleteOutcome`
+   * recomputes the streak over exactly that range and `deletePreview` is synchronous.
+   */
+  history: Map<string, HabitEntry[]>;
 }
 
-const EMPTY: Loaded = { rows: [], feed: [], xpToday: 0, earliest: null };
+const EMPTY: Loaded = {
+  rows: [],
+  feed: [],
+  xpToday: 0,
+  earliest: null,
+  history: new Map(),
+};
 
 export function useToday({
   today = localToday(),
@@ -388,6 +386,7 @@ export function useToday({
             // from `missed`, and passing `date` would make every past day pending.
             day: dayStates(habit, rowsOnDate, date, date, today)[0],
             rowsOnDate,
+            history,
             xp: computeXP(history, habit) - computeXP(before, habit),
           };
         }),
@@ -398,6 +397,7 @@ export function useToday({
 
       const next: Loaded = {
         earliest,
+        history: new Map(perHabit.map(({ habit, history }) => [habit.id, history])),
         rows: perHabit.map(({ habit, day }) => ({
           habit,
           day,
@@ -485,45 +485,19 @@ export function useToday({
     const item = loaded.feed.find((entry) => entry.entry.id === entryId);
     if (item == null) return null;
 
-    const row = rowFor(item.habit.id);
-    const rowsOnDate = row?.day?.entries ?? [];
-    const remaining = rowsOnDate.filter((entry) => entry.id !== entryId);
-
-    const emptiesDay = remaining.length === 0;
-
-    // The shared walk, not `classifyDay` plus a scope test of our own: it returns no
-    // day at all for a paused date left empty, which is precisely `undefined` here
-    // (ADR-0003, and `classify.ts`'s own instruction to use `dayStates`).
-    const stateAfter = dayStates(
+    const outcome = deleteOutcome(
       item.habit,
-      remaining,
-      item.entry.date,
-      item.entry.date,
+      loaded.history.get(item.habit.id) ?? [],
+      item.entry,
       today,
-    )[0]?.state;
+    );
 
-    /**
-     * "Does this delete **erase** the recorded miss?" — not "is the day a miss?". Both
-     * halves are needed: a date can hold two skip rows (`skippable` only withholds a
-     * skip once an *activity* row exists), and deleting one of them leaves the day a
-     * miss all the same. Warning there would contradict `stateAfter` inside the same
-     * paragraph of confirm copy.
-     *
-     * An unclassified day carries no miss, so `stateAfter === undefined` (a paused
-     * date left empty, ADR-0003) is the not-a-miss side of the second half.
-     *
-     * No test that the deleted row is itself a skip: a day carrying a miss through
-     * `skip` holds no activity row (§4.1), and `missed` means it holds nothing at all —
-     * so any row that can be deleted off a miss-carrying day *is* a skip. `isMissDay`
-     * is what keeps `exception` out of the warning (ADR-0001).
-     */
-    const missBefore = row?.day != null && isMissDay(row.day.state, rowsOnDate);
-    const missAfter = stateAfter != null && isMissDay(stateAfter, remaining);
-    const carriesMiss = missBefore && !missAfter;
+    // The **gate** is this screen's, not the domain's: `deleteOutcome` reports, and
+    // Today asks for a confirm on the two consequences AC 5–6 name. The streak fields
+    // are deliberately not part of it — see `DeleteEffect`.
+    if (!outcome.emptiesDay && !outcome.carriesMiss) return null;
 
-    if (!emptiesDay && !carriesMiss) return null;
-
-    return { habit: item.habit, emptiesDay, carriesMiss, stateAfter };
+    return { habit: item.habit, ...outcome };
   }
 
   /**
