@@ -33,6 +33,7 @@ import {
   type JournalDay,
   type JournalRow,
 } from '@/hooks/useHabitDetail';
+import type { LogAffordances } from '@/hooks/useQuickLog';
 import { restampedAtLocalTime } from '@/lib/device';
 import type { DayState, Habit, HabitEntry, SkipReason } from '@/models';
 import { useTheme } from '@/theme/ThemeProvider';
@@ -61,11 +62,20 @@ import { FONT_FAMILY, FONT_SIZE, RADIUS, SPACE, TAP_TARGET, type Palette } from 
  * - the 빠짐없이 pill — #18 (engagement streak);
  * - the journal's free-log lines (메모 · 성취 · 기분 · 아이디어) — #16.
  *
- * One canvas gesture of **this** ticket is absent: tapping a heatmap cell. `Heatmap`
- * is one summary hidden from assistive tech, and its cells are ~15px wide — under
- * §6.0's 44px minimum — which is why the Dashboard long-presses the whole ribbon
- * instead of a cell. The two controls that do open a composer carry the same §6.3
- * gate over a longer reach: the journal's own line for a date (every day of the
+ * The ribbon's cells are not controls. §6.3 offers backfill entry as an **or** — "tap
+ * a past-date in the heatmap (or a '+ add past entry' button)" — and this screen ships
+ * the button one. The canvas is the layout authority and it says the same: the
+ * `HabitDetail` canvas (`design/parts/HabitDetail.body.html`) draws no heatmap at all,
+ * and the ribbon this screen does draw comes from `YesNo.body.html:31`, where it is
+ * `aria-hidden="true"` — a read-only strip, not a row of dates to press. A cell could
+ * not be one anyway: it is a `TUNING.heatmapDays`-th of the strip, far under
+ * `TAP_TARGET` (`src/theme/tokens.ts:116`), which is the repo convention
+ * `app/index.tsx:143–153` follows when it refuses the same affordance on the Dashboard
+ * ribbon and keeps `Heatmap` hidden from assistive tech.
+ *
+ * So the two controls that open a composer are both text-sized, and both apply §6.3's
+ * backfill range (`createdAt` 부터 오늘까지) over a longer reach than the ribbon's:
+ * the journal's own line for a date (every day of the
  * habit's life against the ribbon's `TUNING.heatmapDays`), and `+ 지난 날 기록 추가`,
  * which the hook points at the most recent `missed` day (`view.nextBackfillDate`).
  *
@@ -537,15 +547,22 @@ function DesignRow({ label, value, empty }: { label: string; value?: string; emp
 function DayComposer({
   habit,
   date,
-  skippable,
+  dayLabel,
+  affordances,
   onFill,
   onSkip,
   onClose,
 }: {
   habit: Habit;
   date: string;
-  /** `composerAffordances.skippable` — §4.1's precedence, derived once in the hook. */
-  skippable: boolean;
+  /** `오늘` on today — one screen, one name for the day (`JournalDay.isToday`). */
+  dayLabel: string;
+  /**
+   * `composerAffordances` — what this date affords, derived once in the hook the way
+   * Today and the Dashboard derive theirs. `skippable` is §4.1's precedence, and
+   * `oneTapAmount`/`hasActivityToday` are the one-tap rule (`logAffordances`).
+   */
+  affordances: LogAffordances;
   onFill: (actual?: number) => Promise<void>;
   onSkip: (reason: SkipReason, opts?: { note?: string }) => Promise<void>;
   onClose: () => void;
@@ -561,6 +578,16 @@ function DayComposer({
   // §3.3: an activity row is `actual > 0`. Zero is not one — the way to say "didn't do
   // it" is a skip row with a reason.
   const canLog = amount.trim().length > 0 && Number.isFinite(parsed) && parsed > 0;
+
+  // The shared derivation, not a second copy of the rule: the floor on the date's first
+  // record, otherwise 1. `app/today.tsx` words the two cases exactly this way. (Its
+  // binary `✓ 했어요` is not imported — there the label is load-bearing on a `disabled`
+  // this append-only composer does not have.)
+  const oneTapLabel = isCount
+    ? affordances.hasActivityToday
+      ? '+1 더'
+      : `✓ 최소만큼 했어요 (+${habit.floor}${habit.floorUnit})`
+    : '✓ 완료';
 
   async function run(write: () => Promise<void>) {
     if (saving) return;
@@ -582,17 +609,17 @@ function DayComposer({
   return (
     <Card>
       <View style={styles.rowline}>
-        <Eyebrow>{monthDay(date)} 기록 추가</Eyebrow>
+        <Eyebrow>{dayLabel} 기록 추가</Eyebrow>
         <Button label="닫기" variant="ghost" onPress={onClose} />
       </View>
 
       {/* B1's one-tap, in the canvas's composer wording (`Backfill.body.html:35`). */}
       <Button
-        label={isCount ? `✓ 최소만큼 했어요 (+${habit.floor}${habit.floorUnit})` : '✓ 완료'}
+        label={oneTapLabel}
         variant="pri"
         block
         disabled={saving}
-        onPress={() => void run(() => onFill())}
+        onPress={() => void run(() => onFill(affordances.oneTapAmount))}
       />
 
       {isCount && (
@@ -624,7 +651,7 @@ function DayComposer({
           precedence means a skip written there changes no state, no miss and no
           diagnosis, so offering it would promise something untrue. The condition is
           the hook's `skippable`, the same field Today and the Dashboard read. */}
-      {skippable && (
+      {affordances.skippable && (
         <View style={[styles.skipGroup, { borderColor: colors.border }]}>
           <TextField
             accessibilityLabel="못 한 이유 메모"
@@ -870,9 +897,9 @@ function RowEditor({
  * One journal day (`.jday`) — the date, the computed chip, and the day's rows.
  *
  * The journal is a **date walk**: a past day with no rows still gets a line, and that
- * line is the control that fills it (`day.backfillable`). It carries §6.0's 44px
- * minimum and an assembled accessible name, because three separate `Text`s would tell a
- * screen reader nothing about what pressing does.
+ * line is the control that fills it (`day.backfillable`). It carries `TAP_TARGET`
+ * (`src/theme/tokens.ts:116`) and an assembled accessible name, because three separate
+ * `Text`s would tell a screen reader nothing about what pressing does.
  */
 function JournalDayRow({
   day,
@@ -894,7 +921,9 @@ function JournalDayRow({
       <View style={styles.jc}>
         <Pressable
           accessibilityRole={day.backfillable ? 'button' : undefined}
-          accessibilityLabel={day.backfillable ? `${monthDay(day.date)} ${label} — 기록 추가` : undefined}
+          accessibilityLabel={
+            day.backfillable ? `${day.isToday ? '오늘' : monthDay(day.date)} ${label} — 기록 추가` : undefined
+          }
           disabled={!day.backfillable}
           onPress={onOpen}
           style={({ pressed }) => [styles.jchip, pressed && { opacity: 0.6 }]}
@@ -1030,10 +1059,12 @@ export default function HabitDetail() {
 
         return (
           <View key={name} style={styles.journalGroup}>
-            {/* The canvas foots a five-row journal with this button; ours runs to
-                every day of the habit's life. The composer opens inline under the day
-                it acts on and the list is newest-first, so from the foot the press
-                would open a panel far above it with no visible change at the thumb. */}
+            {/* **A deviation from the canvas.** `HabitDetail.body.html:53` foots a
+                five-row journal with this button, full width (`btn block tap`); we put
+                it in the journal's eyebrow row, without `block`. Ours runs to every day
+                of the habit's life, and the composer opens inline under the day it acts
+                on in a newest-first list — so from the foot the press would open a panel
+                far above it, with no visible change at the thumb. */}
             <View style={styles.rowline}>
               <Eyebrow>저널</Eyebrow>
               {gap != null && (
@@ -1071,7 +1102,8 @@ export default function HabitDetail() {
                     <DayComposer
                       habit={shown}
                       date={day.date}
-                      skippable={view.composerAffordances.skippable}
+                      dayLabel={day.isToday ? '오늘' : monthDay(day.date)}
+                      affordances={view.composerAffordances}
                       onFill={view.fillDay}
                       onSkip={view.skipDay}
                       onClose={view.closeBackfill}
@@ -1199,7 +1231,7 @@ const styles = StyleSheet.create({
   jday: { flexDirection: 'row', gap: SPACE.lg - 2, paddingVertical: SPACE.md + 1, borderBottomWidth: 1 },
   jd: { width: 52, fontFamily: FONT_FAMILY.mono, fontSize: FONT_SIZE.sm, paddingTop: 2 },
   jc: { flex: 1, gap: SPACE.sm },
-  // §6.0's 44px minimum: the chip is the control that opens the day's composer.
+  // `TAP_TARGET` (`src/theme/tokens.ts:116`): the chip is the control that opens the day's composer.
   jchip: { alignSelf: 'flex-start', justifyContent: 'center', minHeight: TAP_TARGET },
   // Each row is the control that opens its own editor, so it carries the minimum too.
   jrow: { justifyContent: 'center', minHeight: TAP_TARGET, borderRadius: RADIUS.sm, gap: SPACE.xs },

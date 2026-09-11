@@ -181,9 +181,9 @@ describe('useHabitDetail — the journal is a date walk (D7)', () => {
 
   it('reaches a day older than the chart, and that row is editable there', async () => {
     // §6.3's backfill range is `createdAt`부터 오늘까지, and a day's own journal line is
-    // the only gesture that reaches an arbitrary date — the heatmap's cells are under
-    // §6.0's 44px, and the button names one date. So a journal clipped to the chart's
-    // twelve weeks would leave an older gap unreachable.
+    // the only gesture that reaches an arbitrary date — the ribbon is read-only (a cell
+    // is far under `TAP_TARGET`) and the button names one date. So a journal clipped to
+    // the chart's twelve weeks would leave an older gap unreachable.
     const old = addDays(TODAY, -100);
     const born = habit({ createdAt: `${addDays(old, -1)}T00:00:00.000Z` });
     const row = activity(old, 6);

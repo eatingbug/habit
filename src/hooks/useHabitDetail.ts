@@ -247,9 +247,12 @@ export interface HabitDetailView {
    * The habit's **whole life** — `createdAt` through today, one line per date, newest
    * first (§6.3). Not the chart's twelve weeks: §6.3's backfill range is `createdAt`
    * 부터 오늘까지 and a day's own journal line is the only gesture that reaches an
-   * **arbitrary** date — the heatmap's cells are under §6.0's 44px, and
-   * `nextBackfillDate` names one date, the most recent gap. So a shorter walk would
-   * leave an older gap unreachable. §7.3 makes the length a non-criterion.
+   * **arbitrary** date — the ribbon is a read-only strip (its cells are far under
+   * `TAP_TARGET`, `src/theme/tokens.ts:116`), and `nextBackfillDate` names one date,
+   * the most recent gap. So a shorter walk would leave an older gap unreachable.
+   * §7.3 rules volume/performance out as a V1 criterion; its stated reason is
+   * rows-per-date, so it bounds the work per line rather than licensing the number of
+   * lines — the walk's length is this hook's own call, and V1's histories are months.
    */
   journal: JournalDay[];
   /**
@@ -265,8 +268,9 @@ export interface HabitDetailView {
   nextBackfillDate: string | null;
   /**
    * `TUNING.heatmapDays` cells ending today, ascending — the ribbon the screen draws
-   * (D14). Read-only: the cells are ~15px wide, under §6.0's 44px, so the gesture that
-   * fills a past day is the journal's line for that date, not a cell.
+   * (D14). Read-only, as the canvas's own ribbon is (`YesNo.body.html:31`,
+   * `aria-hidden`): a cell is far under `TAP_TARGET` (`src/theme/tokens.ts:116`), so
+   * the gesture that fills a past day is the journal's line for that date, not a cell.
    */
   heatmap: HeatCell[];
   /**
