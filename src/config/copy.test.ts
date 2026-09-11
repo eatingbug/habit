@@ -1,6 +1,6 @@
-import type { SkipReason } from '@/models';
+import type { LogType, SkipReason } from '@/models';
 
-import { deleteConfirmLines, SKIP_REASON_LABELS } from './copy';
+import { deleteConfirmLines, LOG_TYPE_LABELS, SKIP_REASON_LABELS } from './copy';
 
 /**
  * `SKIP_REASON_LABELS` is a pure module value, so it is assertable in the same seam
@@ -169,5 +169,29 @@ describe('deleteConfirmLines', () => {
     // Half a comparison is not one: `연속 20일 → ?` would be worse than silence.
     expect(deleteConfirmLines({ ...facts, streakBefore: 20 })).toEqual([]);
     expect(deleteConfirmLines({ ...facts, streakAfter: 4 })).toEqual([]);
+  });
+});
+
+/** The canvas's chip order — `design/parts/Today.logic.js:158`. */
+const CANVAS_LOG_TYPES = ['메모', '잘한 일', '기분', '떠오른 생각'];
+
+describe('LOG_TYPE_LABELS', () => {
+  it('yields its labels in the canvas chip order', () => {
+    expect(Object.values(LOG_TYPE_LABELS)).toEqual(CANVAS_LOG_TYPES);
+  });
+
+  it('maps every LogType, so no free log can reach the feed unlabelled', () => {
+    // Listed literally rather than derived from the record under test: deriving the
+    // expectation from the subject would make this assertion vacuous.
+    const types: LogType[] = ['note', 'win', 'mood', 'idea'];
+    for (const type of types) expect(LOG_TYPE_LABELS[type]).toEqual(expect.any(String));
+    expect(Object.keys(LOG_TYPE_LABELS)).toEqual(types);
+  });
+
+  it('shares no label with a skip reason, which sits in the same feed', () => {
+    const overlap = Object.values(LOG_TYPE_LABELS).filter((label) =>
+      (Object.values(SKIP_REASON_LABELS) as string[]).includes(label),
+    );
+    expect(overlap).toEqual([]);
   });
 });

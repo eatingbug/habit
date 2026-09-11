@@ -16,18 +16,22 @@ import {
   TOAST_OVERLAY_CLEARANCE,
   ToastOverlay,
 } from '@/components';
-import { deleteConfirmLines, SKIP_REASON_LABELS } from '@/config/copy';
+import { deleteConfirmLines, LOG_TYPE_LABELS, SKIP_REASON_LABELS } from '@/config/copy';
 import { isFloorMet } from '@/domain/classify';
 import { weekdayOf } from '@/domain/dates';
 import {
+  feedItemId,
+  FREE_TARGET,
   useToday,
   type DateControl,
   type DeleteEffect,
   type TodayFeedItem,
+  type TodayFreeFeedItem,
+  type TodayHabitFeedItem,
   type TodayHabitRow,
 } from '@/hooks/useToday';
 import { restampedAtLocalTime, timestampAtLocalTime } from '@/lib/device';
-import type { DayState, HabitEntry, SkipReason } from '@/models';
+import type { DayState, FreeLog, HabitEntry, LogType, SkipReason } from '@/models';
 import { useTheme } from '@/theme/ThemeProvider';
 import { FONT_FAMILY, FONT_SIZE, SPACE, TAP_TARGET } from '@/theme/tokens';
 
@@ -106,6 +110,17 @@ function stateLabel(state: DayState): string {
  * does anything. An a11y label describes the affordance, so no canvas citation applies.
  */
 function FeedRow({ item, onPress }: { item: TodayFeedItem; onPress: () => void }) {
+  // Dispatch only — which row to draw, never a decision about what it says. The two
+  // kinds share the feed's ordering and nothing else (§3.4).
+  switch (item.kind) {
+    case 'habit':
+      return <HabitFeedRow item={item} onPress={onPress} />;
+    case 'free':
+      return <FreeFeedRow item={item} onPress={onPress} />;
+  }
+}
+
+function HabitFeedRow({ item, onPress }: { item: TodayHabitFeedItem; onPress: () => void }) {
   const { colors } = useTheme();
   /**
    * §3.3's row discriminator — the *presence of a reason*, never `actual === 0`. A
@@ -169,6 +184,49 @@ function FeedRow({ item, onPress }: { item: TodayFeedItem; onPress: () => void }
       {item.backfilled && (
         <Text style={[styles.feedNote, { color: colors.faint }]}>지난 날 기록 · 낮 12시로 남음</Text>
       )}
+    </Pressable>
+  );
+}
+
+/**
+ * A free log's feed line (#16) — the canvas's `feeditem freelog`
+ * (`design/parts/Today.logic.js:198`): the type's name where a habit's name goes, the
+ * fixed `자유 로그` in the amount column unemphasised (`amt plain`, so `colors.muted`,
+ * not `colors.done` — it is not an achievement), and **one** `.fnote` line beneath it.
+ *
+ * One line because the canvas's row has one such slot (`Today.body.html:88`) and its
+ * two instances fill it differently — the user's text (`Today.logic.js:20`) or the
+ * no-score sentence (`:196`). Which of the two this row shows is `item.note`, resolved
+ * in the hook alongside `item.label`: `jest.config.js` matches `src/**` only, so a
+ * choice between two sentences written here is one no test can reach.
+ *
+ * Also a control, like the habit row: pressing it opens the free-log editor (AC 5–6),
+ * so it carries the same 44px minimum and assembled a11y label.
+ */
+function FreeFeedRow({ item, onPress }: { item: TodayFreeFeedItem; onPress: () => void }) {
+  const { colors } = useTheme();
+
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`${clockOf(item.log.timestamp)} ${item.label} 자유 로그 — 수정`}
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.feedItem,
+        { borderColor: colors.border },
+        pressed && { backgroundColor: colors.accentWeak },
+      ]}
+    >
+      <View style={styles.feedRow}>
+        <Text style={[styles.feedTime, { color: colors.faint }]}>
+          {clockOf(item.log.timestamp)}
+        </Text>
+        <Text style={[styles.feedName, { color: colors.text }]} numberOfLines={1}>
+          {item.label}
+        </Text>
+        <Text style={[styles.feedAmount, { color: colors.muted }]}>자유 로그</Text>
+      </View>
+      <Text style={[styles.feedNote, { color: colors.faint }]}>{item.note}</Text>
     </Pressable>
   );
 }
@@ -255,6 +313,70 @@ function DateControlBar({
           tap
         />
       </View>
+    </View>
+  );
+}
+
+/**
+ * B3's time control: a collapsed `🕑 …` affordance that reveals an hour and a minute
+ * field (`design/parts/Today.body.html:63`, the canvas's `🕑 지금 {{ clock }}`).
+ * `timestamp` is ordering and tiebreak only (§3.3), so overriding it is rare and the
+ * fields stay out of the way until asked for.
+ *
+ * One component because all four writing surfaces on this screen now hold the same
+ * affordance — `Composer`, `FreeComposer`, `EntryEditor` and `FreeLogEditor` (#16 put
+ * the free path's two beside the habit path's two). Only the control is lifted: what
+ * the collapsed label says, what the fields are prefilled with and what a stamp is
+ * computed from differ per caller and stay there, because they are each caller's own
+ * rule about a stored fact.
+ *
+ * `onReset` is the composers' `지금으로`, rendered only when given: the editors pass
+ * the original stamp through verbatim, so there is nothing to reset *to* but the time
+ * already in the fields.
+ */
+function TimeReveal({
+  open,
+  label,
+  hour,
+  minute,
+  onChangeHour,
+  onChangeMinute,
+  onOpen,
+  onReset,
+}: {
+  open: boolean;
+  label: string;
+  hour: string;
+  minute: string;
+  onChangeHour: (value: string) => void;
+  onChangeMinute: (value: string) => void;
+  onOpen: () => void;
+  onReset?: () => void;
+}) {
+  const { colors } = useTheme();
+
+  if (!open) {
+    return <Button label={label} variant="ghost" onPress={onOpen} style={styles.time} />;
+  }
+
+  return (
+    <View style={styles.amountRow}>
+      <NumberField
+        accessibilityLabel="시"
+        value={hour}
+        onChangeText={onChangeHour}
+        placeholder="시"
+      />
+      <Text style={[styles.unit, { color: colors.muted }]}>:</Text>
+      <NumberField
+        accessibilityLabel="분"
+        value={minute}
+        onChangeText={onChangeMinute}
+        placeholder="분"
+      />
+      {onReset != null && (
+        <Button label="지금으로" variant="ghost" onPress={onReset} style={styles.grow} />
+      )}
     </View>
   );
 }
@@ -475,37 +597,15 @@ function Composer({
           do nothing. */}
       {isBackfill ? (
         <Footnote>🕑 낮 12:00으로 기록</Footnote>
-      ) : timeOpen ? (
-        <View style={styles.amountRow}>
-          <NumberField
-            accessibilityLabel="시"
-            value={hour}
-            onChangeText={setHour}
-            placeholder="시"
-          />
-          <Text style={[styles.unit, { color: colors.muted }]}>:</Text>
-          <NumberField
-            accessibilityLabel="분"
-            value={minute}
-            onChangeText={setMinute}
-            placeholder="분"
-          />
-          <Button
-            label="지금으로"
-            variant="ghost"
-            onPress={() => {
-              setTimeOpen(false);
-              setHour('');
-              setMinute('');
-            }}
-            style={styles.grow}
-          />
-        </View>
       ) : (
-        <Button
+        <TimeReveal
+          open={timeOpen}
           label={`🕑 지금 ${clockOf(new Date().toISOString())}`}
-          variant="ghost"
-          onPress={() => {
+          hour={hour}
+          minute={minute}
+          onChangeHour={setHour}
+          onChangeMinute={setMinute}
+          onOpen={() => {
             // Prefilled from now, so the revealed fields show what the collapsed
             // label promised — and an empty field can never stamp local midnight.
             const at = new Date();
@@ -513,7 +613,11 @@ function Composer({
             setMinute(`${at.getMinutes()}`.padStart(2, '0'));
             setTimeOpen(true);
           }}
-          style={styles.time}
+          onReset={() => {
+            setTimeOpen(false);
+            setHour('');
+            setMinute('');
+          }}
         />
       )}
 
@@ -579,6 +683,151 @@ function Composer({
   );
 }
 
+/**
+ * The free-log type chips (#16 AC 1) — the four `LOG_TYPE_LABELS`, iterated in the
+ * record's key order, which is §3.4's union order and the canvas's chip order
+ * (`design/parts/Today.logic.js:158`). Shared by the composer and the editor, which is
+ * what AC 7 needs: the type is as editable afterwards as it is choosable at creation.
+ */
+function LogTypeChips({
+  selected,
+  disabled,
+  onPick,
+}: {
+  selected: LogType;
+  disabled?: boolean;
+  onPick: (type: LogType) => void;
+}) {
+  return (
+    <View style={styles.chipRow}>
+      {(Object.keys(LOG_TYPE_LABELS) as LogType[]).map((type) => (
+        <Button
+          key={type}
+          label={LOG_TYPE_LABELS[type]}
+          variant={type === selected ? 'sel' : 'default'}
+          disabled={disabled}
+          onPress={() => onPick(type)}
+          tap
+        />
+      ))}
+    </View>
+  );
+}
+
+/**
+ * The composer's free-log path (#16) — layout and copy from
+ * `design/parts/Today.body.html:50–58`: the chip row, the note field, the submit
+ * button and the "no score" hint, in that order.
+ *
+ * Its own component rather than a branch inside `Composer`: the two share no field —
+ * no amount, no quick chips, no progress line, no skip path. The one thing they do
+ * share is the time reveal, and that is now `TimeReveal`, used by both of them and by
+ * both editors.
+ *
+ * **The time reveal is a recorded deviation from the canvas.** `Today.logic.js:179`
+ * sets `isHabit: !isFree`, and `Today.body.html:61–63` gates the `🕑 지금` block on it,
+ * so the artboard switches the control off for free logs. SPEC §6.2 says the time
+ * control "Applies to habit entries and free logs alike", §3.4 makes `timestamp`
+ * editable, and #16 AC 5 requires it — so it ships. Re-adding an element the canvas
+ * *actively excluded* is a deviation, unlike merely omitting one, so it is stated here.
+ *
+ * The default type is the first chip, `note`. The canvas seeds `기분`
+ * (`Today.logic.js:12`) to show the selected style on the artboard, which is sample
+ * data, not a stated default.
+ */
+function FreeComposer({
+  date,
+  onLog,
+}: {
+  date: string;
+  onLog: (type: LogType, text: string, opts?: { timestamp?: string }) => Promise<void>;
+}) {
+  const { colors } = useTheme();
+  const [type, setType] = useState<LogType>('note');
+  const [text, setText] = useState('');
+  const [timeOpen, setTimeOpen] = useState(false);
+  const [hour, setHour] = useState('');
+  const [minute, setMinute] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  // Same rule as `Composer`: the revealed fields are prefilled from now, so an invalid
+  // pair means the user typed one, and the submit goes disabled until it reads as a
+  // time rather than silently falling back to the clock.
+  const timestamp = timeOpen ? timestampAtLocalTime(date, hour, minute) : undefined;
+  const timeUsable = !timeOpen || timestamp != null;
+
+  async function submit() {
+    if (saving) return;
+
+    // Same reason as `Composer.submit`: a raised soft keyboard would sit over the
+    // bottom-pinned toast overlay.
+    Keyboard.dismiss();
+    setSaving(true);
+    setError(null);
+    try {
+      await onLog(type, text, { timestamp });
+      // The text is spent; the type is not. Two entries of the same kind in a row are
+      // the ordinary case, and re-picking the chip every time would be friction the
+      // canvas's persistent `freeType` selection does not have.
+      setText('');
+    } catch {
+      setError('기록하지 못했어요. 잠시 뒤 다시 눌러 주세요.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Card>
+      <LogTypeChips selected={type} disabled={saving} onPick={setType} />
+
+      {/* `Today.body.html:56` — the free path's own field, and the only place the
+          full sentence is true: this box does ask what happened today. */}
+      <TextField
+        accessibilityLabel="오늘 일기"
+        value={text}
+        onChangeText={setText}
+        placeholder="메모 (선택) — 오늘 무슨 일이 있었나요"
+      />
+
+      {/* `Today.body.html:57` */}
+      <Button
+        label="오늘 일기 남기기"
+        variant="pri"
+        block
+        disabled={saving || !timeUsable}
+        onPress={() => void submit()}
+      />
+
+      <TimeReveal
+        open={timeOpen}
+        label={`🕑 지금 ${clockOf(new Date().toISOString())}`}
+        hour={hour}
+        minute={minute}
+        onChangeHour={setHour}
+        onChangeMinute={setMinute}
+        onOpen={() => {
+          const at = new Date();
+          setHour(`${at.getHours()}`.padStart(2, '0'));
+          setMinute(`${at.getMinutes()}`.padStart(2, '0'));
+          setTimeOpen(true);
+        }}
+        onReset={() => {
+          setTimeOpen(false);
+          setHour('');
+          setMinute('');
+        }}
+      />
+
+      {/* `Today.body.html:58` — AC 4 said in words, where the user is about to act. */}
+      <Hint>그냥 오늘 있었던 일을 적는 칸이에요. 점수나 연속 날수와는 아무 상관 없습니다.</Hint>
+
+      {error != null && <Banner>{error}</Banner>}
+    </Card>
+  );
+}
+
 /** Which shape the edited row is being given — §3.3's two row kinds, as a choice. */
 type RowKind = 'activity' | 'skip';
 
@@ -604,10 +853,9 @@ type RowKind = 'activity' | 'skip';
  * one component away refuses to break. Making past rows time-editable is a capability
  * #14 was not asked for; #15's journal can add it, with its own copy.
  *
- * The reveal has no `지금으로` reset, unlike the composer's: with the original passed
- * through verbatim there is nothing to reset *to* but the time already in the fields.
- * Lifting a shared `TimeReveal` out of `Composer` waits for #15's journal, the second
- * caller — this ticket has no reason to touch `Composer` (CLAUDE.md §3).
+ * The reveal is `TimeReveal`, shared with the composers, and it is passed no
+ * `지금으로` reset unlike theirs: with the original stamp passed through verbatim there
+ * is nothing to reset *to* but the time already in the fields.
  */
 function EntryEditor({
   item,
@@ -616,7 +864,7 @@ function EntryEditor({
   deletePreview,
   onClose,
 }: {
-  item: TodayFeedItem;
+  item: TodayHabitFeedItem;
   onSave: (entry: HabitEntry) => Promise<void>;
   onDelete: (entryId: string) => Promise<void>;
   deletePreview: (entryId: string) => DeleteEffect | null;
@@ -780,28 +1028,15 @@ function EntryEditor({
           intact — same rule and same sentence as the composer's. */}
       {item.backfilled ? (
         <Footnote>🕑 낮 12:00으로 기록</Footnote>
-      ) : timeOpen ? (
-        <View style={styles.amountRow}>
-          <NumberField
-            accessibilityLabel="시"
-            value={hour}
-            onChangeText={setHour}
-            placeholder="시"
-          />
-          <Text style={[styles.unit, { color: colors.muted }]}>:</Text>
-          <NumberField
-            accessibilityLabel="분"
-            value={minute}
-            onChangeText={setMinute}
-            placeholder="분"
-          />
-        </View>
       ) : (
-        <Button
+        <TimeReveal
+          open={timeOpen}
           label={`🕑 ${clockOf(entry.timestamp)}`}
-          variant="ghost"
-          onPress={() => setTimeOpen(true)}
-          style={styles.time}
+          hour={hour}
+          minute={minute}
+          onChangeHour={setHour}
+          onChangeMinute={setMinute}
+          onOpen={() => setTimeOpen(true)}
         />
       )}
 
@@ -866,6 +1101,133 @@ function EntryEditor({
   );
 }
 
+/**
+ * The free-log editor (#16 AC 5–7) — the free composer, reopened on **one existing
+ * row** with its `id` preserved. It takes the composer's place on screen for the same
+ * reason `EntryEditor` does, and it is a separate small component rather than a
+ * generalization of `EntryEditor`: that one is about §3.3's activity↔skip
+ * discriminator, an amount and a habit, none of which a `FreeLog` has (CLAUDE.md §3).
+ *
+ * The whole row goes to `onSave`, because the write replaces the stored element — an
+ * omitted `timestamp` would silently reorder the feed (§3.4/§7.3). So the time reveal
+ * is prefilled from *this row's* stamp and the stamp is rewritten only when the fields
+ * read a clock the original does not (`restampedAtLocalTime`).
+ *
+ * **Delete is immediate, with no confirm.** §3.4 sends the reader to §6.2, which
+ * revised itself in place: a deliberate delete is immediate for an ordinary row, and
+ * the one guarded case is the last remaining row of a date or a miss-bearing skip.
+ * A free log is neither — it carries no scoring weight — so the citation itself yields
+ * "immediate", which is what AC 6 asks for. `deletePreview` is not consulted; it
+ * returns `null` for these ids by construction.
+ */
+function FreeLogEditor({
+  item,
+  onSave,
+  onDelete,
+  onClose,
+}: {
+  item: TodayFreeFeedItem;
+  onSave: (log: FreeLog) => Promise<void>;
+  onDelete: (id: string) => Promise<void>;
+  onClose: () => void;
+}) {
+  const { colors } = useTheme();
+  const { log } = item;
+
+  const [type, setType] = useState<LogType>(log.type);
+  const [text, setText] = useState(log.text);
+  const [timeOpen, setTimeOpen] = useState(false);
+  const [hour, setHour] = useState(clockOf(log.timestamp).slice(0, 2));
+  const [minute, setMinute] = useState(clockOf(log.timestamp).slice(3, 5));
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  const timestamp = timeOpen
+    ? restampedAtLocalTime(log.timestamp, log.date, hour, minute)
+    : log.timestamp;
+  const timeUsable = timestamp != null;
+
+  async function save() {
+    if (saving || !timeUsable) return;
+
+    Keyboard.dismiss();
+    setSaving(true);
+    setError(null);
+    try {
+      await onSave({ ...log, type, text, timestamp });
+      onClose();
+    } catch {
+      setError('기록을 고치지 못했어요. 잠시 뒤 다시 눌러 주세요.');
+      setSaving(false);
+    }
+  }
+
+  async function remove() {
+    if (saving) return;
+
+    Keyboard.dismiss();
+    setSaving(true);
+    setError(null);
+    try {
+      await onDelete(log.id);
+      onClose();
+    } catch {
+      setError('기록을 지우지 못했어요. 잠시 뒤 다시 눌러 주세요.');
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Card>
+      <View style={styles.composerHead}>
+        <Text style={[styles.composerName, { color: colors.text }]} numberOfLines={1}>
+          {item.label}
+        </Text>
+        {/* 캔버스 출처 없음 — 신규 문구. 근거: the same chip `EntryEditor` puts on the
+            card a feed row opens, with 일기 for the word the canvas uses for this
+            row's own path (`오늘 일기`, `design/parts/Today.logic.js:135`). */}
+        <Chip label={`${clockOf(log.timestamp)} 일기 수정`} variant="neutral" />
+      </View>
+
+      {/* AC 7 — the type, editable afterwards. The same chips the composer offers. */}
+      <LogTypeChips selected={type} disabled={saving} onPick={setType} />
+
+      <TextField
+        accessibilityLabel="오늘 일기"
+        value={text}
+        onChangeText={setText}
+        placeholder="메모 (선택) — 오늘 무슨 일이 있었나요"
+      />
+
+      <TimeReveal
+        open={timeOpen}
+        label={`🕑 ${clockOf(log.timestamp)}`}
+        hour={hour}
+        minute={minute}
+        onChangeHour={setHour}
+        onChangeMinute={setMinute}
+        onOpen={() => setTimeOpen(true)}
+      />
+
+      {/* The same three labels `EntryEditor` uses, for the same three actions. 삭제
+          commits straight away here — there is no consequence to warn about. */}
+      <View style={styles.editActions}>
+        <Button
+          label="저장"
+          variant="pri"
+          disabled={saving || !timeUsable}
+          onPress={() => void save()}
+          style={styles.grow}
+        />
+        <Button label="취소" variant="ghost" disabled={saving} onPress={onClose} tap />
+        <Button label="삭제" disabled={saving} onPress={() => void remove()} tap />
+      </View>
+
+      {error != null && <Banner>{error}</Banner>}
+    </Card>
+  );
+}
+
 export default function Today() {
   const { colors } = useTheme();
   /**
@@ -889,6 +1251,11 @@ export default function Today() {
     editEntry,
     removeEntry,
     deletePreview,
+    targetOptions,
+    resolvesToFree,
+    logFree,
+    editFreeLog,
+    removeFreeLog,
     toast,
     undoLast,
   } = useToday({ date: selectedDate ?? undefined });
@@ -897,11 +1264,18 @@ export default function Today() {
    * The feed row being edited (#13). Held as an **id**, and the item derived from the
    * live feed each render: the editor then closes itself on a delete, and on any reload
    * that drops the row, with no cleanup effect to keep in step.
+   *
+   * The id now spans two namespaces — a `HabitEntry.id` or a `FreeLog.id` (#16) — so
+   * the lookup reads whichever the item carries, and the editor is picked off the
+   * item's `kind` rather than off a second piece of state that could disagree with it.
    */
   const [editingId, setEditingId] = useState<string | null>(null);
 
-  const selected = rows.find((row) => row.habit.id === selectedId) ?? rows[0];
-  const editing = feed.find((item) => item.entry.id === editingId);
+  const selectedHabit = rows.find((row) => row.habit.id === selectedId) ?? rows[0];
+  // Whether the selection lands on the free path is the hook's question, not this
+  // file's — a selection held across a date step can go stale (`resolvesToFree`).
+  const freeTarget = resolvesToFree(selectedId);
+  const editing = feed.find((item) => feedItemId(item) === editingId);
 
   return (
     <View style={[styles.fill, { backgroundColor: colors.surface }]}>
@@ -947,53 +1321,80 @@ export default function Today() {
 
         {loading ? (
           <Text style={[styles.notice, { color: colors.muted }]}>불러오는 중…</Text>
-        ) : rows.length === 0 ? (
-          <Text style={[styles.notice, { color: colors.muted }]}>
-            아직 습관이 없습니다. 먼저 습관을 하나 만들어 주세요.
-          </Text>
         ) : (
           <>
+            {/* Still shown with no habits — the recording path this screen is for is
+                the habit one. It is no longer the *whole* screen, though: a free log
+                links to no habit at all (§3.4), so needing one first would be a
+                dependency the model deliberately does not have. */}
+            {rows.length === 0 && (
+              <Text style={[styles.notice, { color: colors.muted }]}>
+                아직 습관이 없습니다. 먼저 습관을 하나 만들어 주세요.
+              </Text>
+            )}
+
             {/* The target selector, withheld while a row is being edited: the editor is
                 about one row that already names its habit, and switching the *logging*
                 target underneath it would change nothing it shows.
-                "자유 로그" joins the selector in #16. */}
-            {rows.length > 1 && editing == null && (
+
+                Counted over `targetOptions`, which holds the free tab too (#16): on a
+                one-habit install there are two things to choose between, and gating on
+                the habits alone would hide the free path on the commonest screen. */}
+            {targetOptions.length > 1 && editing == null && (
               <SegmentedControl
                 label="기록 대상"
-                options={rows.map((row) => ({ value: row.habit.id, label: row.habit.name }))}
-                value={selected.habit.id}
+                options={targetOptions}
+                value={freeTarget ? FREE_TARGET : selectedHabit.habit.id}
                 onChange={setSelectedId}
               />
             )}
 
             {/* The editor takes the composer's place on the screen while it is open —
-                its habit comes from the tapped **feed item**, never from `selected`,
-                which is the logging target and may well be a different habit.
+                its row comes from the tapped **feed item**, never from `selectedHabit`,
+                which is the logging target and may well be a different habit — or the
+                free path. Which editor is the item's own `kind`, so the two can never
+                disagree.
 
-                Both are keyed: switching targets or tapping a second feed row remounts,
-                so no staged amount can ever be written to the row it was not typed for. */}
+                Everything here is keyed: switching targets or tapping a second feed row
+                remounts, so no staged amount or text can be written to the row it was
+                not typed for. */}
             {editing != null ? (
-              <EntryEditor
-                key={editing.entry.id}
-                item={editing}
-                onSave={editEntry}
-                onDelete={removeEntry}
-                deletePreview={deletePreview}
-                onClose={() => setEditingId(null)}
-              />
-            ) : (
+              editing.kind === 'habit' ? (
+                <EntryEditor
+                  key={editing.entry.id}
+                  item={editing}
+                  onSave={editEntry}
+                  onDelete={removeEntry}
+                  deletePreview={deletePreview}
+                  onClose={() => setEditingId(null)}
+                />
+              ) : (
+                <FreeLogEditor
+                  key={editing.log.id}
+                  item={editing}
+                  onSave={editFreeLog}
+                  onDelete={removeFreeLog}
+                  onClose={() => setEditingId(null)}
+                />
+              )
+            ) : freeTarget ? (
+              // Keyed on the date for the same reason the habit composer is, even
+              // though the free path only ever writes to today: stepping away and back
+              // must not leave yesterday's half-typed text staged.
+              <FreeComposer key={`${FREE_TARGET}:${date}`} date={date} onLog={logFree} />
+            ) : selectedHabit != null ? (
               <Composer
                 // #14 D7 — the date is part of the identity: stepping it must not leave
                 // an amount, a time or a skip note staged for the day before.
-                key={`${selected.habit.id}:${date}`}
-                row={selected}
+                key={`${selectedHabit.habit.id}:${date}`}
+                row={selectedHabit}
                 date={date}
                 isBackfill={dateControl.isBackfill}
-                previewOf={(stagedAmount) => previewOf(selected.habit.id, stagedAmount)}
-                onLog={(actual, opts) => logActivity(selected.habit.id, actual, opts)}
-                onSkip={(reason, opts) => logSkip(selected.habit, reason, opts)}
+                previewOf={(stagedAmount) => previewOf(selectedHabit.habit.id, stagedAmount)}
+                onLog={(actual, opts) => logActivity(selectedHabit.habit.id, actual, opts)}
+                onSkip={(reason, opts) => logSkip(selectedHabit.habit, reason, opts)}
               />
-            )}
+            ) : null}
           </>
         )}
 
@@ -1017,13 +1418,10 @@ export default function Today() {
           </View>
         ) : (
           <View style={styles.feed}>
-            {feed.map((item) => (
-              <FeedRow
-                key={item.entry.id}
-                item={item}
-                onPress={() => setEditingId(item.entry.id)}
-              />
-            ))}
+            {feed.map((item) => {
+              const id = feedItemId(item);
+              return <FeedRow key={id} item={item} onPress={() => setEditingId(id)} />;
+            })}
           </View>
         )}
 

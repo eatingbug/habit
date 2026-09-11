@@ -1,13 +1,22 @@
 import { act, renderHook, waitFor } from '@testing-library/react-native';
 import { createElement, type ReactNode } from 'react';
 
+import { FREE_LOG_NO_TEXT_NOTE } from '@/config/copy';
 import { TUNING } from '@/config/tuning';
 import { RepositoryProvider } from '@/context/RepositoryContext';
 import { LocalRepository, MemoryKV, type HabitRepository, type KVStore } from '@/data';
 import { addDays } from '@/domain/dates';
-import type { Habit, HabitEntry, SkipReason } from '@/models';
+import type { FreeLog, Habit, HabitEntry, SkipReason } from '@/models';
 
-import { useToday, type TodayHabitRow, type TodayView } from './useToday';
+import {
+  feedItemId,
+  FREE_TARGET,
+  useToday,
+  type TodayFreeFeedItem,
+  type TodayHabitFeedItem,
+  type TodayHabitRow,
+  type TodayView,
+} from './useToday';
 
 /**
  * The hook seam (jest.config.js): a real `LocalRepository` over `MemoryKV`, so the
@@ -107,6 +116,15 @@ async function logSkip(
   await act(async () => {
     await result.current.logSkip(target, reason, opts);
   });
+}
+
+/**
+ * The feed's **habit** lines (#16). The feed is a discriminated union now — free logs
+ * interleave into it — so a test that reads `entry` narrows through this rather than
+ * asserting a field the union does not have.
+ */
+function habitFeed(view: TodayView): TodayHabitFeedItem[] {
+  return view.feed.filter((item): item is TodayHabitFeedItem => item.kind === 'habit');
 }
 
 function rowOf(view: TodayView, habitId: string): TodayHabitRow {
@@ -249,10 +267,10 @@ describe('useToday', () => {
     await log(result, 'b1', 1);
     await log(result, 'h1', 3);
 
-    expect(result.current.feed.map((item) => item.habit.id)).toEqual(['h1', 'b1', 'h1']);
-    const stamps = result.current.feed.map((item) => item.entry.timestamp);
+    expect(habitFeed(result.current).map((item) => item.habit.id)).toEqual(['h1', 'b1', 'h1']);
+    const stamps = habitFeed(result.current).map((item) => item.entry.timestamp);
     expect([...stamps].sort()).toEqual(stamps);
-    expect(result.current.feed.every((item) => item.entry.date === TODAY)).toBe(true);
+    expect(habitFeed(result.current).every((item) => item.entry.date === TODAY)).toBe(true);
     expect(result.current.logCount).toBe(3);
   });
 
@@ -503,11 +521,11 @@ describe('useToday', () => {
       await log(result, 'h1', 3);
       await log(result, 'h1', 4, { timestamp: `${TODAY}T02:00:00.000Z` });
 
-      const stamps = result.current.feed.map((item) => item.entry.timestamp);
+      const stamps = habitFeed(result.current).map((item) => item.entry.timestamp);
       expect(stamps[0]).toBe(`${TODAY}T02:00:00.000Z`);
       expect([...stamps].sort()).toEqual(stamps);
       // `date` is unchanged by the override — the row is still today's (§3.3).
-      expect(result.current.feed.every((item) => item.entry.date === TODAY)).toBe(true);
+      expect(habitFeed(result.current).every((item) => item.entry.date === TODAY)).toBe(true);
       expect(dayOf(result.current, 'h1')?.sum).toBe(7);
     });
   });
@@ -575,7 +593,7 @@ describe('useToday', () => {
       expect(rowOf(result.current, 'h1').skipReasonToday).toBe('cue');
       // A skip is a record, so it belongs in the day's log — but it completed nothing.
       expect(result.current.logCount).toBe(1);
-      expect(result.current.feed[0].entry.skipReason).toBe('cue');
+      expect(habitFeed(result.current)[0].entry.skipReason).toBe('cue');
       expect(result.current.questsDone).toBe(0);
     });
 
@@ -601,7 +619,7 @@ describe('useToday', () => {
 
       await logSkip(result, rowOf(result.current, 'h1').habit, 'floor', { note: '너무 피곤했어요' });
 
-      expect(result.current.feed[0].entry.note).toBe('너무 피곤했어요');
+      expect(habitFeed(result.current)[0].entry.note).toBe('너무 피곤했어요');
       expect(dayOf(result.current, 'h1')?.state).toBe('skip');
     });
 
@@ -680,7 +698,7 @@ describe('useToday', () => {
       expect(result.current.feed).toHaveLength(1);
       expect(dayOf(result.current, 'h1')?.state).toBe('skip');
       expect(rowOf(result.current, 'h1').skipReasonToday).toBe('cue');
-      expect(result.current.feed[0].entry.note).toBe('깜빡');
+      expect(habitFeed(result.current)[0].entry.note).toBe('깜빡');
 
       await act(async () => {
         await result.current.editEntry({ ...row, actual: 3 });
@@ -688,7 +706,7 @@ describe('useToday', () => {
 
       expect(result.current.feed).toHaveLength(1);
       expect(dayOf(result.current, 'h1')?.state).toBe('partial');
-      expect(result.current.feed[0].entry.skipReason).toBeUndefined();
+      expect(habitFeed(result.current)[0].entry.skipReason).toBeUndefined();
     });
 
     it('deletes a row and reverts the day, with no undo toast (AC 4, D5)', async () => {
@@ -1075,7 +1093,7 @@ describe('useToday', () => {
       const result = await screenOn(repository, YESTERDAY);
       await log(result, 'h1', 5);
 
-      const byId = new Map(result.current.feed.map((item) => [item.entry.id, item]));
+      const byId = new Map(habitFeed(result.current).map((item) => [item.entry.id, item]));
       expect(byId.get('morning')?.backfilled).toBe(false);
       expect([...byId.values()].filter((item) => item.backfilled)).toHaveLength(1);
     });
@@ -1093,7 +1111,7 @@ describe('useToday', () => {
 
       // Today holds nothing to have backfilled, so the stamp says nothing about how the
       // row was written.
-      expect(result.current.feed[0].backfilled).toBe(false);
+      expect(habitFeed(result.current)[0].backfilled).toBe(false);
     });
 
     it('keeps a backfilled row’s noon pin through an edit of its amount and note', async () => {
@@ -1101,12 +1119,12 @@ describe('useToday', () => {
       const result = await screenOn(repository, YESTERDAY);
       await log(result, 'h1', 5);
 
-      const before = result.current.feed[0].entry;
+      const before = habitFeed(result.current)[0].entry;
       await act(async () => {
         await result.current.editEntry({ ...before, actual: 9, note: '고침' });
       });
 
-      const after = result.current.feed[0];
+      const after = habitFeed(result.current)[0];
       expect(after.entry.actual).toBe(9);
       expect(after.entry.note).toBe('고침');
       // The stamp is the day's total order (§7.3), not an editable field of the row —
@@ -1146,6 +1164,355 @@ describe('useToday', () => {
       const onToday = rowOf((await screenOn(repository, TODAY)).current, 'h1');
       expect(onToday.skipReasonToday).toBeUndefined();
       expect(onToday.defaultAmount).toBe(3);
+    });
+  });
+  /**
+   * Free logs (#16). Every negative assertion here is paired with a positive one: a
+   * `FreeLog` is not a `HabitEntry`, so "write a free log, expect `xpToday` unchanged"
+   * would pass with the whole feature deleted. Each test therefore also asserts that
+   * the log **landed** in the feed.
+   */
+  describe('free logs (#16)', () => {
+    const YESTERDAY = addDays(TODAY, -1);
+
+    async function screenOn(repository: HabitRepository, date: string, now = stepClock()) {
+      const { result } = renderHook(() => useToday({ today: TODAY, date, now }), {
+        wrapper: wrapperFor(repository),
+      });
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      return result;
+    }
+
+    /**
+     * The feed's free lines. Keyed by `id` rather than read by position wherever the
+     * two kinds' order is what is under test — a `Z` stamp and a local-noon pin sort
+     * differently under `TZ=Asia/Seoul`.
+     */
+    function freeFeed(view: TodayView): TodayFreeFeedItem[] {
+      return view.feed.filter((item): item is TodayFreeFeedItem => item.kind === 'free');
+    }
+
+    /** A stored free log, written straight through the repository. */
+    async function seedFree(
+      repository: HabitRepository,
+      over: Partial<FreeLog> = {},
+    ): Promise<FreeLog> {
+      const log: FreeLog = {
+        id: 'f1',
+        date: TODAY,
+        // An explicit UTC stamp, never `localNoonOn`: the §6.3 noon pin is
+        // `HabitEntry`-typed, so free logs have no such convention, and borrowing one
+        // is how the row's day drifts off the `date` the assertion is about.
+        timestamp: `${TODAY}T08:00:00.000Z`,
+        type: 'mood',
+        text: '아침 공기가 좋았다',
+        ...over,
+      };
+      await repository.upsertFreeLog(log);
+      return log;
+    }
+
+    it('writes a free log on today, unlinked to any habit, with its type label (AC 1, AC 2)', async () => {
+      const repository = new LocalRepository(await seed([habit()]));
+      const result = await todayScreen(repository);
+
+      await act(async () => {
+        await result.current.logFree('idea', '  러닝 앱을 만들어 볼까  ');
+      });
+
+      const free = freeFeed(result.current);
+      expect(free).toHaveLength(1);
+      expect(free[0].log.type).toBe('idea');
+      expect(free[0].log.text).toBe('러닝 앱을 만들어 볼까');
+      // §3.4 — `date` is stated at creation and is what groups the day.
+      expect(free[0].log.date).toBe(TODAY);
+      expect(free[0].label).toBe('떠오른 생각');
+      // AC 2 — there is no habit link to have set, on the row or on the feed item.
+      expect(Object.keys(free[0].log).sort()).toEqual(['date', 'id', 'text', 'timestamp', 'type']);
+      expect(free[0]).not.toHaveProperty('habit');
+    });
+
+    it('interleaves free logs and habit rows in one chronological list (AC 3)', async () => {
+      const repository = new LocalRepository(await seed([habit()]));
+      const result = await todayScreen(repository);
+
+      // Written out of order, and all four stamps are `Z` literals so the order under
+      // test is the domain's and not the runner's timezone.
+      await log(result, 'h1', 5, { timestamp: `${TODAY}T09:00:00.000Z` });
+      await act(async () => {
+        await result.current.logFree('mood', '점심 먹고 나른함', {
+          timestamp: `${TODAY}T13:00:00.000Z`,
+        });
+      });
+      await act(async () => {
+        await result.current.logFree('note', '아침 메모', { timestamp: `${TODAY}T07:00:00.000Z` });
+      });
+      await log(result, 'h1', 2, { timestamp: `${TODAY}T11:00:00.000Z` });
+
+      expect(result.current.feed.map((item) => item.kind)).toEqual([
+        'free',
+        'habit',
+        'habit',
+        'free',
+      ]);
+      expect(
+        result.current.feed.map((item) =>
+          item.kind === 'free' ? item.log.timestamp : item.entry.timestamp,
+        ),
+      ).toEqual([
+        `${TODAY}T07:00:00.000Z`,
+        `${TODAY}T09:00:00.000Z`,
+        `${TODAY}T11:00:00.000Z`,
+        `${TODAY}T13:00:00.000Z`,
+      ]);
+    });
+
+    it('breaks a tie between a habit row and a free log by id, not by kind (§7.3)', async () => {
+      // The same instant for both rows, so the `id` half of `(timestamp ASC, id ASC)`
+      // is the only thing deciding the order. Run twice with the ids swapped: a merge
+      // that always put one kind first would satisfy exactly one of the two.
+      const at = `${TODAY}T10:00:00.000Z`;
+
+      async function feedIdsWith(entryId: string, logId: string): Promise<string[]> {
+        const repository = new LocalRepository(await seed([habit()]));
+        await repository.upsertEntry({
+          id: entryId,
+          habitId: 'h1',
+          date: TODAY,
+          timestamp: at,
+          actual: 5,
+        });
+        await seedFree(repository, { id: logId, timestamp: at });
+        const result = await screenOn(repository, TODAY);
+        return result.current.feed.map(feedItemId);
+      }
+
+      expect(await feedIdsWith('a-row', 'z-log')).toEqual(['a-row', 'z-log']);
+      expect(await feedIdsWith('z-row', 'a-log')).toEqual(['a-log', 'z-row']);
+    });
+
+    it('counts as a log while touching no XP, no quest and no day state (AC 4)', async () => {
+      const repository = new LocalRepository(await seed([habit()]));
+      const result = await todayScreen(repository);
+      expect(dayOf(result.current, 'h1')?.state).toBe('pending');
+
+      await act(async () => {
+        await result.current.logFree('win', '엘리베이터 대신 계단');
+      });
+
+      // It landed — without this half the assertions below pass with the whole
+      // feature deleted.
+      expect(freeFeed(result.current)).toHaveLength(1);
+      // §6.2's tally is "quests done / **logs** / XP earned today", and a free log is
+      // a log. The AC-4 exclusion list is XP·연속·하루 상태, none of which a count is.
+      expect(result.current.logCount).toBe(1);
+
+      expect(dayOf(result.current, 'h1')?.state).toBe('pending');
+      expect(dayOf(result.current, 'h1')?.isMiss).toBe(false);
+      expect(result.current.questsDone).toBe(0);
+      expect(result.current.xpToday).toBe(0);
+    });
+
+    it('shows in a past day\u2019s feed without repairing it: a missed day stays missed (AC 4)', async () => {
+      const repository = new LocalRepository(await seed([habit()]));
+      await seedFree(repository, {
+        id: 'past',
+        date: YESTERDAY,
+        timestamp: `${YESTERDAY}T21:00:00.000Z`,
+        type: 'note',
+        text: '어제 그냥 쉬었다',
+      });
+      const result = await screenOn(repository, YESTERDAY);
+
+      // Reading a past day's free logs is unrestricted — only writing is
+      // (`freeLogAvailable`).
+      expect(freeFeed(result.current).map((item) => item.log.id)).toEqual(['past']);
+      expect(result.current.logCount).toBe(1);
+
+      // ADR-0001 — a day with no habit rows is `missed`, and a free log is not a
+      // habit row. It repairs nothing.
+      expect(dayOf(result.current, 'h1')?.state).toBe('missed');
+      expect(dayOf(result.current, 'h1')?.isMiss).toBe(true);
+      expect(dayOf(result.current, 'h1')?.entries).toEqual([]);
+      expect(result.current.questsDone).toBe(0);
+      expect(result.current.xpToday).toBe(0);
+    });
+
+    it('refuses a write on a past date while its existing free logs still read', async () => {
+      const repository = new LocalRepository(await seed([habit()]));
+      await seedFree(repository, { id: 'past', date: YESTERDAY });
+
+      const onYesterday = await screenOn(repository, YESTERDAY);
+      // The read is unaffected — the day's own free log is in its feed.
+      expect(freeFeed(onYesterday.current).map((item) => item.log.id)).toEqual(['past']);
+
+      await expect(onYesterday.current.logFree('note', '안 됨')).rejects.toThrow(
+        /today-only/,
+      );
+      expect(await repository.getFreeLogs(YESTERDAY, YESTERDAY)).toHaveLength(1);
+    });
+
+    it('edits text, type and timestamp on the same row, keyed on id (AC 5, AC 7)', async () => {
+      const repository = new LocalRepository(await seed([habit()]));
+      const stored = await seedFree(repository);
+      const result = await screenOn(repository, TODAY);
+
+      await act(async () => {
+        await result.current.editFreeLog({
+          ...stored,
+          type: 'win',
+          text: '  사실 오늘 잘한 일이었다  ',
+          timestamp: `${TODAY}T18:00:00.000Z`,
+        });
+      });
+
+      const free = freeFeed(result.current);
+      // One row still — the upsert replaced it rather than spawning a duplicate.
+      expect(free).toHaveLength(1);
+      expect(free[0].log.id).toBe('f1');
+      expect(free[0].log.type).toBe('win');
+      // Trimmed on the edit path too, as on the write path — `useQuickLog`'s
+      // "absent, not empty" convention, applied to the one field this row has.
+      expect(free[0].log.text).toBe('사실 오늘 잘한 일이었다');
+      expect(free[0].log.timestamp).toBe(`${TODAY}T18:00:00.000Z`);
+      // The label is re-derived from the new type, not carried over from the old one.
+      expect(free[0].label).toBe('잘한 일');
+    });
+
+    it('has nothing to confirm on a free log, while the day\u2019s last habit row still warns (AC 6)', async () => {
+      const repository = new LocalRepository(await seed([habit()]));
+      await seedFree(repository);
+      await repository.upsertEntry({
+        id: 'r1',
+        habitId: 'h1',
+        date: TODAY,
+        timestamp: `${TODAY}T09:00:00.000Z`,
+        actual: 5,
+      });
+      const result = await screenOn(repository, TODAY);
+
+      // The free log is a live feed id, so `null` here is not merely the answer for an
+      // id the feed does not hold — and the habit row proves the same day *does*
+      // produce a warning, so the `null` is about the kind of row and nothing else.
+      expect(freeFeed(result.current).map((item) => item.log.id)).toEqual(['f1']);
+      expect(result.current.deletePreview('f1')).toBeNull();
+      expect(result.current.deletePreview('r1')).not.toBeNull();
+    });
+
+    it('deletes immediately through removeFreeLog, which removeEntry refuses (AC 6)', async () => {
+      const repository = new LocalRepository(await seed([habit()]));
+      await seedFree(repository);
+      const result = await screenOn(repository, TODAY);
+
+      // `deleteEntry` scans the per-habit collections and no-ops on a miss, so a free
+      // id sent down that path would silently do nothing. It throws instead.
+      await expect(result.current.removeEntry('f1')).rejects.toThrow(/removeFreeLog/);
+      expect(freeFeed(result.current)).toHaveLength(1);
+
+      await act(async () => {
+        await result.current.removeFreeLog('f1');
+      });
+
+      expect(result.current.feed).toEqual([]);
+      expect(result.current.logCount).toBe(0);
+      // No confirm to satisfy and no undo toast to press (AC 6).
+      expect(result.current.toast).toBeNull();
+      expect(await repository.getFreeLogs(TODAY, TODAY)).toEqual([]);
+    });
+
+    it('puts the user\u2019s text on the row\u2019s one note line, or the no-score note when there is none', async () => {
+      const repository = new LocalRepository(await seed([habit()]));
+      await seedFree(repository, { id: 'said', text: '아침 공기가 좋았다' });
+      await seedFree(repository, {
+        id: 'silent',
+        text: '',
+        timestamp: `${TODAY}T08:30:00.000Z`,
+      });
+      const result = await screenOn(repository, TODAY);
+
+      const notes = new Map(freeFeed(result.current).map((item) => [item.log.id, item.note]));
+      // The canvas's feed row has one such slot (`design/parts/Today.body.html:88`),
+      // filled with the text on one instance (`Today.logic.js:20`) and with the
+      // no-score sentence on the other (`:196`) — alternatives, not two lines.
+      expect(notes.get('said')).toBe('아침 공기가 좋았다');
+      expect(notes.get('silent')).toBe(FREE_LOG_NO_TEXT_NOTE);
+    });
+  });
+
+  /**
+   * The composer's target selector (#16). What the options **are** and whether
+   * a selection resolves to the free path are the hook's; which one is selected is the
+   * screen's own UI state.
+   */
+  describe('the target selector', () => {
+    const YESTERDAY = addDays(TODAY, -1);
+
+    async function optionsOn(repository: HabitRepository, date: string) {
+      const { result } = renderHook(() => useToday({ today: TODAY, date, now: stepClock() }), {
+        wrapper: wrapperFor(repository),
+      });
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      return result;
+    }
+
+    it('offers the free tab first, then the habits, on a one-habit install', async () => {
+      const repository = new LocalRepository(await seed([habit()]));
+      const result = await optionsOn(repository, TODAY);
+
+      // Two options on the commonest screen there is: gating the selector on the
+      // habits alone would hide the free path here (`Today.logic.js:135` puts it
+      // first).
+      expect(result.current.targetOptions).toEqual([
+        { value: FREE_TARGET, label: '오늘 일기' },
+        { value: 'h1', label: '팔굽혀펴기' },
+      ]);
+    });
+
+    it('offers the free tab alone when there are no habits yet', async () => {
+      const repository = new LocalRepository(await seed([]));
+      const result = await optionsOn(repository, TODAY);
+
+      expect(result.current.targetOptions).toEqual([
+        { value: FREE_TARGET, label: '오늘 일기' },
+      ]);
+      // Nothing selected, and the free path is the only one there is.
+      expect(result.current.resolvesToFree(null)).toBe(true);
+    });
+
+    it('withdraws the free tab on a past date, leaving the habits', async () => {
+      const repository = new LocalRepository(await seed([habit(), binary()]));
+      const result = await optionsOn(repository, YESTERDAY);
+
+      expect(result.current.targetOptions.map((option) => option.value)).toEqual([
+        'h1',
+        'b1',
+      ]);
+    });
+
+    it('refuses to resolve a free selection held across a step back to a past date', async () => {
+      const repository = new LocalRepository(await seed([habit()]));
+
+      const onToday = await optionsOn(repository, TODAY);
+      expect(onToday.current.resolvesToFree(FREE_TARGET)).toBe(true);
+
+      // The same selection the screen is still holding, on the day after the step: it
+      // must not resolve to a composer the date has withdrawn, or the screen would
+      // show no composer at all.
+      const onYesterday = await optionsOn(repository, YESTERDAY);
+      expect(onYesterday.current.resolvesToFree(FREE_TARGET)).toBe(false);
+      // …and a habit that does exist on that date still resolves to its own composer.
+      expect(onYesterday.current.resolvesToFree('h1')).toBe(false);
+      expect(onYesterday.current.targetOptions.map((option) => option.value)).toEqual(['h1']);
+    });
+
+    it('resolves a habit selection to the habit path while free logs are available', async () => {
+      const repository = new LocalRepository(await seed([habit()]));
+      const result = await optionsOn(repository, TODAY);
+
+      // The positive half: `resolvesToFree` returning `false` for everything would
+      // satisfy the two cases above on its own.
+      expect(result.current.resolvesToFree('h1')).toBe(false);
+      expect(result.current.resolvesToFree(FREE_TARGET)).toBe(true);
     });
   });
 });

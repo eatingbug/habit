@@ -1,6 +1,7 @@
 import type { DayState, Habit, HabitEntry, SkipReason } from '@/models';
 
 import { compareDates, dateOf, dateRange } from './dates';
+import { sortByDomainOrder } from './feed';
 
 /**
  * Day-level classification — SPEC §4.1.
@@ -22,23 +23,15 @@ function isSkipRow(entry: HabitEntry): boolean {
 
 /**
  * The domain's total order over a day's rows: `(timestamp ASC, then id ASC)`
- * (§7.3 invariant). Sorting a copy keeps callers permutation-invariant.
+ * (§7.3 invariant), as it applies to habit rows.
  *
- * The `id` tiebreak is load-bearing: same-day backfills can share a timestamp, and
- * "creation sequence" is unimplementable on non-monotonic UUIDs.
+ * The comparator itself lives in `./feed`, because the Today feed orders free logs by
+ * the same pair and a `FreeLog` is not a `HabitEntry` (§3.4). The signature stays
+ * narrow deliberately: every caller here passes `HabitEntry[]`, and the type is what
+ * says these are a habit's rows rather than anything carrying a stamp.
  */
 export function sortDayRows(entries: HabitEntry[]): HabitEntry[] {
-  return [...entries].sort((a, b) =>
-    a.timestamp === b.timestamp
-      ? a.id < b.id
-        ? -1
-        : a.id > b.id
-          ? 1
-          : 0
-      : a.timestamp < b.timestamp
-        ? -1
-        : 1,
-  );
+  return sortByDomainOrder(entries);
 }
 
 /**
