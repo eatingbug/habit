@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 
-import { LOG_TYPE_LABELS } from '@/config/copy';
+import { FREE_LOG_NO_TEXT_NOTE, FREE_TARGET_LABEL, LOG_TYPE_LABELS } from '@/config/copy';
 import { useRepository } from '@/context/RepositoryContext';
 import { isBackfilledRow, isBackfillableDate } from '@/domain/backfill';
 import {
@@ -107,10 +107,21 @@ export interface TodayFreeFeedItem {
   log: FreeLog;
   /**
    * The type's user-facing name (`LOG_TYPE_LABELS`). Resolved here rather than in the
-   * row's JSX for the usual reason (#14 D2): `jest.config.js` matches `src/**` only,
-   * so a lookup written in `app/` is one no test can reach.
+   * row's JSX for the usual reason: `jest.config.js` matches `src/**` only, so a lookup
+   * written in `app/` is one no test can reach.
    */
   label: string;
+  /**
+   * The row's single note line. The canvas's feed row has exactly one such slot
+   * (`design/parts/Today.body.html:88`) and fills it with the user's text on one
+   * instance (`Today.logic.js:20`) and with the no-score sentence on the other
+   * (`:196`), so the two are alternatives: the text when there is one,
+   * `FREE_LOG_NO_TEXT_NOTE` when there is not.
+   *
+   * A resolved string rather than a condition in the row's JSX, because choosing
+   * between two sentences is a judgment and `jest.config.js` matches `src/**` only.
+   */
+  note: string;
 }
 
 /**
@@ -119,6 +130,29 @@ export interface TodayFreeFeedItem {
  * and `kind` is what makes `tsc` name every place that has to tell them apart.
  */
 export type TodayFeedItem = TodayHabitFeedItem | TodayFreeFeedItem;
+
+/**
+ * A feed item's id, across the two namespaces the feed now holds — a `HabitEntry.id`
+ * or a `FreeLog.id`. One function because the screen reads it to key the list, to hold
+ * the row being edited and to reopen it, and the merge below reads it to sort: four
+ * copies of the same narrowing is one place for the two arms to drift apart.
+ */
+export function feedItemId(item: TodayFeedItem): string {
+  return item.kind === 'free' ? item.log.id : item.entry.id;
+}
+
+/**
+ * The target selector's free option. The value is the canvas's own tab id
+ * (`design/parts/Today.logic.js:135`); habit ids are UUIDs, so it can never collide
+ * with one.
+ */
+export const FREE_TARGET = 'free';
+
+/** One option of the composer's target selector — a habit, or the free path. */
+export interface TargetOption {
+  value: string;
+  label: string;
+}
 
 /**
  * Why deleting one row deserves a confirm — the whole basis of the warning, derived so
@@ -211,7 +245,7 @@ export interface TodayView {
   questsDone: number;
   /**
    * Everything recorded on `date` — the feed's length. Many habit rows per habit are
-   * expected (§3.3), and free logs count too (#16 D4): §6.2's tally is
+   * expected (§3.3), and free logs count too (#16): §6.2's tally is
    * "quests done / **logs** / XP earned today", and a free log is a log. The AC-4
    * exclusion list is XP·연속·하루 상태 — a count is none of those, and `questsDone`
    * and `xpToday` below are unchanged by a free log.
@@ -293,7 +327,7 @@ export interface TodayView {
    */
   deletePreview(entryId: string): DeleteEffect | null;
   /**
-   * May a **free log** be written to the day on screen? (#16 D3) True only on today.
+   * May a **free log** be written to the day on screen? True only on today (#16).
    *
    * Reading a past day's free logs is unrestricted — they show in that day's feed —
    * but creating one is not: the canvas names the composer's free tab `오늘 일기`
@@ -304,10 +338,32 @@ export interface TodayView {
    * (`nextBackfillTimestamp`), so a past-dated free log would need a second copy of
    * that convention for a need no AC states (CLAUDE.md §2).
    *
-   * A field rather than a condition in the JSX, for the usual reason (#14 D2): the
-   * screen hides the free tab when this is false and decides nothing itself.
+   * A field rather than a condition in the JSX: `jest.config.js` matches `src/**` only,
+   * so the screen hides the free tab when this is false and decides nothing itself.
    */
   freeLogAvailable: boolean;
+  /**
+   * What the composer's target selector offers on `date`, the free tab **first** as on
+   * the canvas (`design/parts/Today.logic.js:135`). One list over both kinds, so the
+   * screen's "is there anything to choose between?" test counts them together: gating
+   * on the habits alone would hide the free tab on a one-habit install, which is the
+   * commonest screen there is.
+   *
+   * Derived here and not in the screen because the list encodes two judgments —
+   * whether the free path is on offer at all (`freeLogAvailable`) and which habits
+   * exist on `date` (`rows`) — and `jest.config.js` matches `src/**` only, so a list
+   * assembled in `app/` is one no test can reach. Which option is *selected* is UI
+   * state and stays in the screen.
+   */
+  targetOptions: TargetOption[];
+  /**
+   * Does the screen's selection land on the free path? Asked rather than stored,
+   * because a selection can go stale under the date control: `FREE_TARGET` held from
+   * today and then stepped back would otherwise leave the screen with no composer at
+   * all, since the free option is withdrawn on a past date. With no habits on `date`
+   * the free path is the only one there is, so a null selection resolves to it too.
+   */
+  resolvesToFree(selectedId: string | null): boolean;
   /**
    * Write one free log on **today** (#16 AC 1). Always a fresh `id`, and `date` is set
    * explicitly to today at creation — §3.4 makes `date` authoritative for grouping, so
@@ -331,7 +387,7 @@ export interface TodayView {
    * §3.4 sends the reader to §6.2 for the delete rule, and §6.2 revised itself in
    * place ("*This revises the earlier blanket 'native Alert on every delete, no
    * undo-toast' rule*"): a deliberate delete is immediate for an ordinary row, and the
-   * two guarded cases are the **last remaining row of a date** and a **miss-bearing
+   * one guarded case is the **last remaining row of a date** or a **miss-bearing
    * skip**. A free log is neither — it carries no scoring weight (§3.4), so deleting
    * it empties no habit's day and erases no miss. Following §3.4's pointer therefore
    * yields "immediate", with nothing for `deletePreview` to warn about.
@@ -480,7 +536,7 @@ export function useToday({
       const allRows = perHabit.flatMap((entry) => entry.rowsOnDate);
       // §3.4 — free logs are grouped by their own declared `date`, which is what
       // `getFreeLogs` filters on. They are read for **any** `date`, including a past
-      // one: only *writing* them is today-only (#16 D3).
+      // one: only *writing* them is today-only (`freeLogAvailable`).
       const freeLogs = await repository.getFreeLogs(date, date);
 
       const next: Loaded = {
@@ -495,6 +551,10 @@ export function useToday({
         // the domain's total order across both kinds (§6.2) — not a per-habit
         // concatenation, and not habit rows with free ones appended. The ordering pair
         // is lifted to the top level because that is all the two shapes share.
+        // The ordering pair comes off each concrete row — `entry` or `log` — rather
+        // than off the assembled item: at this point the two are still separate maps,
+        // so neither arm has to ask what kind the other is. (`feedItemId` is for the
+        // callers downstream, which hold a `TodayFeedItem` and nothing narrower.)
         feed: sortByDomainOrder([
           ...allRows.map((entry) => ({
             id: entry.id,
@@ -516,6 +576,7 @@ export function useToday({
               kind: 'free',
               log,
               label: LOG_TYPE_LABELS[log.type],
+              note: log.text.length > 0 ? log.text : FREE_LOG_NO_TEXT_NOTE,
             } satisfies TodayFreeFeedItem,
           })),
         ]).map((row): TodayFeedItem => row.item),
@@ -651,8 +712,18 @@ export function useToday({
     earliest,
   };
 
-  // #16 D3 — one encoding, taken off the date control rather than recomputed.
+  // Taken off the date control rather than recomputed: "is the day on screen today?"
+  // already has one encoding here (`isBackfill`), and a second would be free to drift.
   const freeLogAvailable = !dateControl.isBackfill;
+
+  const targetOptions: TargetOption[] = [
+    ...(freeLogAvailable ? [{ value: FREE_TARGET, label: FREE_TARGET_LABEL }] : []),
+    ...loaded.rows.map((row) => ({ value: row.habit.id, label: row.habit.name })),
+  ];
+
+  function resolvesToFree(selectedId: string | null): boolean {
+    return freeLogAvailable && (selectedId === FREE_TARGET || loaded.rows.length === 0);
+  }
 
   async function logFree(
     type: LogType,
@@ -668,6 +739,12 @@ export function useToday({
       // Stated, never derived: §3.4 makes `date` authoritative for the day the log
       // belongs to, and `timestamp` is a UTC instant that lands on the neighbouring
       // day for anyone far enough east or west. The stamp must never contradict this.
+      //
+      // `today` and the screen's `date` are the **same string** wherever this runs —
+      // the guard above withdraws the free path on any other day — so this is not a
+      // behavioural choice and no test can tell the two apart. It is written as
+      // `today` so the row's day does not quietly depend on that guard staying where
+      // it is.
       date: today,
       timestamp: opts.timestamp ?? now().toISOString(),
       type,
@@ -704,6 +781,8 @@ export function useToday({
     previewOf,
     deletePreview,
     freeLogAvailable,
+    targetOptions,
+    resolvesToFree,
     logFree,
     editFreeLog,
     removeFreeLog,

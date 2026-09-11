@@ -61,6 +61,34 @@ export const LOG_TYPE_LABELS: Record<LogType, string> = {
   idea: '떠오른 생각',
 };
 
+/**
+ * What a free log's feed row says on its note line when the user wrote no text — copy
+ * from `design/parts/Today.logic.js:196`, the canvas's own `reward` for a
+ * `feeditem freelog` row.
+ *
+ * The canvas's feed row has exactly one such slot (`design/parts/Today.body.html:88`,
+ * `<span class="{{ f.rcls }}">{{ f.reward }}</span>`) and its two instances put
+ * different things in it: the user's text on the seeded row (`Today.logic.js:20`) and
+ * this sentence on a row just written (`:196`). So the two are alternatives, not two
+ * lines — and the composer already carries the standing version of this hint
+ * (`Today.body.html:58`), which is why repeating it under a row that says something is
+ * not wanted either.
+ *
+ * Here rather than in the row's JSX because *which* of the two a row shows is a
+ * judgment (`TodayFreeFeedItem.note`), and `jest.config.js` matches `src/**` only.
+ */
+export const FREE_LOG_NO_TEXT_NOTE = '점수에는 영향 없어요';
+
+/**
+ * The target selector's free option — the canvas's **first** tab
+ * (`design/parts/Today.logic.js:135`, `{ id: 'free', label: '오늘 일기' }`).
+ *
+ * Beside the labels above rather than in the screen for the same reason: the option
+ * list itself is `useToday.targetOptions`, and a hook cannot read copy that lives in
+ * `app/`.
+ */
+export const FREE_TARGET_LABEL = '오늘 일기';
+
 /** What `deleteConfirmLines` needs to know — see `useToday.DeleteEffect` for each. */
 export interface DeleteConfirmFacts {
   habitName: string;

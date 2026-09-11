@@ -1,6 +1,7 @@
 import { act, renderHook, waitFor } from '@testing-library/react-native';
 import { createElement, type ReactNode } from 'react';
 
+import { FREE_LOG_NO_TEXT_NOTE } from '@/config/copy';
 import { TUNING } from '@/config/tuning';
 import { RepositoryProvider } from '@/context/RepositoryContext';
 import { LocalRepository, MemoryKV, type HabitRepository, type KVStore } from '@/data';
@@ -8,6 +9,8 @@ import { addDays } from '@/domain/dates';
 import type { FreeLog, Habit, HabitEntry, SkipReason } from '@/models';
 
 import {
+  feedItemId,
+  FREE_TARGET,
   useToday,
   type TodayFreeFeedItem,
   type TodayHabitFeedItem,
@@ -1166,8 +1169,8 @@ describe('useToday', () => {
   /**
    * Free logs (#16). Every negative assertion here is paired with a positive one: a
    * `FreeLog` is not a `HabitEntry`, so "write a free log, expect `xpToday` unchanged"
-   * would pass with the whole feature deleted (D9). Each test therefore also asserts
-   * that the log **landed** in the feed.
+   * would pass with the whole feature deleted. Each test therefore also asserts that
+   * the log **landed** in the feed.
    */
   describe('free logs (#16)', () => {
     const YESTERDAY = addDays(TODAY, -1);
@@ -1197,9 +1200,9 @@ describe('useToday', () => {
       const log: FreeLog = {
         id: 'f1',
         date: TODAY,
-        // An explicit UTC stamp, never `localNoonOn`: free logs have no noon
-        // convention (D3), and borrowing one is how the row's day drifts off the
-        // `date` the assertion is about.
+        // An explicit UTC stamp, never `localNoonOn`: the §6.3 noon pin is
+        // `HabitEntry`-typed, so free logs have no such convention, and borrowing one
+        // is how the row's day drifts off the `date` the assertion is about.
         timestamp: `${TODAY}T08:00:00.000Z`,
         type: 'mood',
         text: '아침 공기가 좋았다',
@@ -1281,16 +1284,14 @@ describe('useToday', () => {
         });
         await seedFree(repository, { id: logId, timestamp: at });
         const result = await screenOn(repository, TODAY);
-        return result.current.feed.map((item) =>
-          item.kind === 'free' ? item.log.id : item.entry.id,
-        );
+        return result.current.feed.map(feedItemId);
       }
 
       expect(await feedIdsWith('a-row', 'z-log')).toEqual(['a-row', 'z-log']);
       expect(await feedIdsWith('z-row', 'a-log')).toEqual(['a-log', 'z-row']);
     });
 
-    it('counts as a log while touching no XP, no quest and no day state (AC 4, D4)', async () => {
+    it('counts as a log while touching no XP, no quest and no day state (AC 4)', async () => {
       const repository = new LocalRepository(await seed([habit()]));
       const result = await todayScreen(repository);
       expect(dayOf(result.current, 'h1')?.state).toBe('pending');
@@ -1299,8 +1300,8 @@ describe('useToday', () => {
         await result.current.logFree('win', '엘리베이터 대신 계단');
       });
 
-      // It landed — without this half the three assertions below pass with the whole
-      // feature deleted (D9).
+      // It landed — without this half the assertions below pass with the whole
+      // feature deleted.
       expect(freeFeed(result.current)).toHaveLength(1);
       // §6.2's tally is "quests done / **logs** / XP earned today", and a free log is
       // a log. The AC-4 exclusion list is XP·연속·하루 상태, none of which a count is.
@@ -1323,7 +1324,8 @@ describe('useToday', () => {
       });
       const result = await screenOn(repository, YESTERDAY);
 
-      // Reading a past day's free logs is unrestricted (D3) — only writing is not.
+      // Reading a past day's free logs is unrestricted — only writing is
+      // (`freeLogAvailable`).
       expect(freeFeed(result.current).map((item) => item.log.id)).toEqual(['past']);
       expect(result.current.logCount).toBe(1);
 
@@ -1336,7 +1338,7 @@ describe('useToday', () => {
       expect(result.current.xpToday).toBe(0);
     });
 
-    it('offers the free path on today only, while still reading a past day (D3)', async () => {
+    it('offers the free path on today only, while still reading a past day', async () => {
       const repository = new LocalRepository(await seed([habit()]));
       await seedFree(repository, { id: 'past', date: YESTERDAY });
 
@@ -1420,6 +1422,102 @@ describe('useToday', () => {
       // No confirm to satisfy and no undo toast to press (AC 6).
       expect(result.current.toast).toBeNull();
       expect(await repository.getFreeLogs(TODAY, TODAY)).toEqual([]);
+    });
+
+    it('puts the user\u2019s text on the row\u2019s one note line, or the no-score note when there is none', async () => {
+      const repository = new LocalRepository(await seed([habit()]));
+      await seedFree(repository, { id: 'said', text: '아침 공기가 좋았다' });
+      await seedFree(repository, {
+        id: 'silent',
+        text: '',
+        timestamp: `${TODAY}T08:30:00.000Z`,
+      });
+      const result = await screenOn(repository, TODAY);
+
+      const notes = new Map(freeFeed(result.current).map((item) => [item.log.id, item.note]));
+      // The canvas's feed row has one such slot (`design/parts/Today.body.html:88`),
+      // filled with the text on one instance (`Today.logic.js:20`) and with the
+      // no-score sentence on the other (`:196`) — alternatives, not two lines.
+      expect(notes.get('said')).toBe('아침 공기가 좋았다');
+      expect(notes.get('silent')).toBe(FREE_LOG_NO_TEXT_NOTE);
+    });
+  });
+
+  /**
+   * The composer's target selector (#16). What the options **are** and whether
+   * a selection resolves to the free path are the hook's; which one is selected is the
+   * screen's own UI state.
+   */
+  describe('the target selector', () => {
+    const YESTERDAY = addDays(TODAY, -1);
+
+    async function optionsOn(repository: HabitRepository, date: string) {
+      const { result } = renderHook(() => useToday({ today: TODAY, date, now: stepClock() }), {
+        wrapper: wrapperFor(repository),
+      });
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      return result;
+    }
+
+    it('offers the free tab first, then the habits, on a one-habit install', async () => {
+      const repository = new LocalRepository(await seed([habit()]));
+      const result = await optionsOn(repository, TODAY);
+
+      // Two options on the commonest screen there is: gating the selector on the
+      // habits alone would hide the free path here (`Today.logic.js:135` puts it
+      // first).
+      expect(result.current.targetOptions).toEqual([
+        { value: FREE_TARGET, label: '오늘 일기' },
+        { value: 'h1', label: '팔굽혀펴기' },
+      ]);
+    });
+
+    it('offers the free tab alone when there are no habits yet', async () => {
+      const repository = new LocalRepository(await seed([]));
+      const result = await optionsOn(repository, TODAY);
+
+      expect(result.current.targetOptions).toEqual([
+        { value: FREE_TARGET, label: '오늘 일기' },
+      ]);
+      // Nothing selected, and the free path is the only one there is.
+      expect(result.current.resolvesToFree(null)).toBe(true);
+    });
+
+    it('withdraws the free tab on a past date, leaving the habits', async () => {
+      const repository = new LocalRepository(await seed([habit(), binary()]));
+      const result = await optionsOn(repository, YESTERDAY);
+
+      expect(result.current.freeLogAvailable).toBe(false);
+      expect(result.current.targetOptions.map((option) => option.value)).toEqual([
+        'h1',
+        'b1',
+      ]);
+    });
+
+    it('refuses to resolve a free selection held across a step back to a past date', async () => {
+      const repository = new LocalRepository(await seed([habit()]));
+
+      const onToday = await optionsOn(repository, TODAY);
+      expect(onToday.current.resolvesToFree(FREE_TARGET)).toBe(true);
+
+      // The same selection the screen is still holding, on the day after the step: it
+      // must not resolve to a composer the date has withdrawn, or the screen would
+      // show no composer at all.
+      const onYesterday = await optionsOn(repository, YESTERDAY);
+      expect(onYesterday.current.resolvesToFree(FREE_TARGET)).toBe(false);
+      // …and a habit that does exist on that date still resolves to its own composer.
+      expect(onYesterday.current.resolvesToFree('h1')).toBe(false);
+      expect(onYesterday.current.targetOptions.map((option) => option.value)).toEqual(['h1']);
+    });
+
+    it('resolves a habit selection to the habit path while free logs are available', async () => {
+      const repository = new LocalRepository(await seed([habit()]));
+      const result = await optionsOn(repository, TODAY);
+
+      // The positive half: `resolvesToFree` returning `false` for everything would
+      // satisfy the two cases above on its own.
+      expect(result.current.resolvesToFree('h1')).toBe(false);
+      expect(result.current.resolvesToFree(FREE_TARGET)).toBe(true);
     });
   });
 });
