@@ -288,7 +288,7 @@ describe('useDashboard', () => {
       // Binary's floor is 1, so one row is the whole day: the control is completed.
       expect(stateOn(result.current.rows[0].cells, TODAY)).toBe('done');
       expect(result.current.rows[0].hasActivityToday).toBe(true);
-      expect(result.current.toast?.detail).toBe('✓ 완료');
+      expect(result.current.toast?.detail).toBe(`✓ 완료 · +${TUNING.xpPerFloorCompletion} XP`);
     });
 
     it('still offers the full floor on a day that holds only a reason-tagged skip', async () => {
@@ -306,7 +306,7 @@ describe('useDashboard', () => {
       const result = await dashboard(new LocalRepository(await seed([habit()])));
 
       await log(result, result.current.rows[0].habit, 5);
-      expect(result.current.toast?.detail).toBe('+5reps');
+      expect(result.current.toast?.detail).toBe(`+5reps · +${TUNING.xpPerFloorCompletion} XP`);
 
       await act(async () => {
         await result.current.undoLast();
@@ -414,6 +414,141 @@ describe('useDashboard', () => {
       await repository.upsertEntry(activity('h1', gap, 5));
 
       expect((await dashboard(repository)).current.rows[0].streak).toBe(4);
+    });
+  });
+  /**
+   * The stat cards (#17 AC 1, AC 5) — `design/parts/Dashboard.body.html:10–26`.
+   *
+   * Every figure the card shows is asserted here rather than in the screen, because
+   * `jest.config.js` matches `src/**` and there are no render tests: a division written
+   * in JSX is arithmetic nothing checks.
+   *
+   * The fixtures reach a threshold through **intensity**, not through hundreds of days:
+   * `TUNING.xpPerAboveFloorUnit` per unit above the floor makes one row worth any
+   * amount, and days are spaced so that `TUNING.xpStreakBonus` never fires and turns an
+   * exact figure into an approximate one.
+   */
+  describe('the stat cards (#17)', () => {
+    /** The amount whose single floor-met day is worth exactly `xp`. */
+    function amountWorth(xp: number): number {
+      return 5 + (xp - TUNING.xpPerFloorCompletion) / TUNING.xpPerAboveFloorUnit;
+    }
+
+    function cardFor(view: DashboardView, statId: string) {
+      const card = view.stats.find((entry) => entry.stat.id === statId);
+      if (card == null) throw new Error(`no stat card for ${statId}`);
+      return card;
+    }
+
+    it('draws one card per configured stat even with no habits at all', async () => {
+      const view = (await dashboard(new LocalRepository(new MemoryKV()))).current;
+
+      expect(view.stats.map((entry) => entry.stat.id)).toEqual(TUNING.stats.map((s) => s.id));
+      expect(view.stats.every((entry) => entry.level === 0 && entry.xp === 0)).toBe(true);
+      expect(view.stats[0].xpToNextLevel).toBe(TUNING.statLevelThresholds[1]);
+      expect(view.stats[0].barFraction).toBe(0);
+      expect(view.characterLevel).toBe(0);
+    });
+
+    it('fills the bar by the current level band, not by the stat\'s whole XP', async () => {
+      const halfway = TUNING.statLevelThresholds[1] / 2;
+      const repository = new LocalRepository(
+        await seed([habit()], [activity('h1', addDays(TODAY, -1), amountWorth(halfway))]),
+      );
+
+      const card = cardFor((await dashboard(repository)).current, 'strength');
+      expect(card.xp).toBe(halfway);
+      expect(card.level).toBe(0);
+      expect(card.xpToNextLevel).toBe(halfway);
+      expect(card.barFraction).toBeCloseTo(0.5);
+    });
+
+    it('levels up exactly at the threshold and restarts the bar on the next band', async () => {
+      const [, first, second] = TUNING.statLevelThresholds;
+      const repository = new LocalRepository(
+        await seed([habit()], [activity('h1', addDays(TODAY, -1), amountWorth(first))]),
+      );
+
+      const card = cardFor((await dashboard(repository)).current, 'strength');
+      expect(card.level).toBe(1);
+      expect(card.barFraction).toBe(0);
+      expect(card.xpToNextLevel).toBe(second - first);
+    });
+
+    it('sums every habit mapped to the stat, neither one reaching the level alone', async () => {
+      const first = TUNING.statLevelThresholds[1];
+      const repository = new LocalRepository(
+        await seed(
+          [habit(), habit({ id: 'h2', name: '스쿼트' })],
+          [
+            activity('h1', addDays(TODAY, -1), amountWorth(first / 2)),
+            activity('h2', addDays(TODAY, -1), amountWorth(first / 2)),
+          ],
+        ),
+      );
+
+      expect(cardFor((await dashboard(repository)).current, 'strength').level).toBe(1);
+    });
+
+    it('keeps an archived habit\'s XP — archiving must not undo a level', async () => {
+      const first = TUNING.statLevelThresholds[1];
+      const repository = new LocalRepository(
+        await seed(
+          [habit({ id: 'h2', name: '스쿼트', lifecycle: 'archived' }), habit()],
+          [
+            activity('h2', addDays(TODAY, -1), amountWorth(first / 2)),
+            activity('h1', addDays(TODAY, -1), amountWorth(first / 2)),
+          ],
+        ),
+      );
+
+      const view = (await dashboard(repository)).current;
+      // The row list still hides it (§3.2); only the stat's cumulative XP counts it.
+      expect(view.rows.map((row) => row.habit.id)).toEqual(['h1']);
+      expect(cardFor(view, 'strength').xp).toBe(first);
+      expect(cardFor(view, 'strength').level).toBe(1);
+    });
+
+    it('names no next level at the top, where there is no further threshold', async () => {
+      const top = TUNING.statLevelThresholds[TUNING.statLevelThresholds.length - 1];
+      const repository = new LocalRepository(
+        await seed([habit()], [activity('h1', addDays(TODAY, -1), amountWorth(top))]),
+      );
+
+      const card = cardFor((await dashboard(repository)).current, 'strength');
+      expect(card.level).toBe(TUNING.statLevelThresholds.length - 1);
+      // Not NaN and not a negative "다음 레벨까지": the band has no width up here.
+      expect(card.xpToNextLevel).toBeNull();
+      expect(card.barFraction).toBe(1);
+    });
+
+    it('reads the character level as the highest stat, not the first and not the sum', async () => {
+      const [, first, second] = TUNING.statLevelThresholds;
+      const repository = new LocalRepository(
+        await seed(
+          [habit(), habit({ id: 'h2', name: '독서', statId: 'intelligence' })],
+          [
+            activity('h1', addDays(TODAY, -1), amountWorth(first)),
+            activity('h2', addDays(TODAY, -1), amountWorth(second)),
+          ],
+        ),
+      );
+
+      const view = (await dashboard(repository)).current;
+      expect(cardFor(view, 'strength').level).toBe(1);
+      expect(cardFor(view, 'intelligence').level).toBe(2);
+      expect(view.characterLevel).toBe(2);
+    });
+
+    it('moves the bar as soon as the log lands (AC 1)', async () => {
+      const repository = new LocalRepository(await seed([habit()]));
+      const result = await dashboard(repository);
+      expect(cardFor(result.current, 'strength').xp).toBe(0);
+
+      await log(result, result.current.rows[0].habit, 5);
+
+      expect(cardFor(result.current, 'strength').xp).toBe(TUNING.xpPerFloorCompletion);
+      expect(cardFor(result.current, 'strength').barFraction).toBeGreaterThan(0);
     });
   });
 });

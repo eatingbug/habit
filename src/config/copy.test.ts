@@ -1,6 +1,12 @@
-import type { LogType, SkipReason } from '@/models';
+import type { Habit, LogType, SkipReason } from '@/models';
 
-import { deleteConfirmLines, LOG_TYPE_LABELS, SKIP_REASON_LABELS } from './copy';
+import {
+  deleteConfirmLines,
+  LOG_TYPE_LABELS,
+  rewardToastLines,
+  type RewardToastFacts,
+  SKIP_REASON_LABELS,
+} from './copy';
 
 /**
  * `SKIP_REASON_LABELS` is a pure module value, so it is assertable in the same seam
@@ -193,5 +199,134 @@ describe('LOG_TYPE_LABELS', () => {
       (Object.values(SKIP_REASON_LABELS) as string[]).includes(label),
     );
     expect(overlap).toEqual([]);
+  });
+});
+
+/**
+ * `rewardToastLines` — the log-time toast's copy (#17 AC 6, AC 7).
+ *
+ * A pure function over a delta the domain has already decided, so it asserts here in
+ * the same seam as the domain: no repository, no render. The facts arrive as plain
+ * primitives — `src/config` sits below `src/domain` (SPEC §2.2), so neither the
+ * function nor this file imports `LogEffect` — and the fixtures below build them
+ * directly. Every branch is covered, because the cascade is a priority order and an
+ * untested branch is one that could be unreachable without anything saying so.
+ */
+const COUNT_HABIT: Habit = {
+  id: 'h1',
+  name: '독서',
+  statId: 'intelligence',
+  kind: 'count',
+  floor: 5,
+  floorUnit: '쪽',
+  lifecycle: 'forming',
+  createdAt: '2026-02-01T09:00:00.000Z',
+};
+
+const BINARY_HABIT: Habit = { ...COUNT_HABIT, id: 'h2', kind: 'binary', floor: 1, floorUnit: 'time' };
+
+type Delta = Pick<
+  RewardToastFacts,
+  'xpGained' | 'floorCrossedToday' | 'pushedToOver' | 'statLevelUp' | 'showedUp' | 'streakMilestoneHit'
+>;
+
+const NOTHING_MOVED: Delta = {
+  xpGained: 0,
+  floorCrossedToday: false,
+  pushedToOver: false,
+  statLevelUp: false,
+  showedUp: false,
+};
+
+function lines(effect: Partial<Delta>, over: Partial<RewardToastFacts> = {}) {
+  return rewardToastLines({
+    habit: COUNT_HABIT,
+    actual: 5,
+    ...NOTHING_MOVED,
+    ...effect,
+    isBackfill: false,
+    statName: '지능',
+    statLevel: 3,
+    ...over,
+  });
+}
+
+describe('rewardToastLines — the mono detail slot', () => {
+  it('appends the XP the log earned', () => {
+    expect(lines({ xpGained: 60, floorCrossedToday: true }).detail).toBe('+5쪽 · +60 XP');
+  });
+
+  it('says nothing about XP when the log earned none — the sub line carries that day', () => {
+    expect(lines({ showedUp: true }).detail).toBe('+5쪽');
+  });
+
+  it('keeps a binary habit off the unit path, which would read `+1time`', () => {
+    expect(lines({ xpGained: 60, floorCrossedToday: true }, { habit: BINARY_HABIT, actual: 1 }).detail).toBe(
+      '✓ 완료 · +60 XP',
+    );
+  });
+});
+
+describe('rewardToastLines — the attributed sub line', () => {
+  it('names the stat and its new level on a level-up', () => {
+    expect(lines({ xpGained: 60, floorCrossedToday: true, statLevelUp: true }).sub).toBe('지능 레벨 3');
+  });
+
+  it('falls through to the next branch when the stat id names no configured stat', () => {
+    expect(lines({ xpGained: 60, floorCrossedToday: true, statLevelUp: true }, { statName: undefined }).sub).toBe(
+      '최소만큼 했어요 💪',
+    );
+  });
+
+  it('names the run length a milestone was reached at', () => {
+    expect(lines({ xpGained: 90, streakMilestoneHit: 5 }).sub).toBe('이어 간 날 5일 보너스');
+  });
+
+  it('reports clearing the target', () => {
+    expect(lines({ xpGained: 120, floorCrossedToday: true, pushedToOver: true }).sub).toBe(
+      '목표까지 넘었어요 🎯',
+    );
+  });
+
+  it('reports crossing the floor', () => {
+    expect(lines({ xpGained: 60, floorCrossedToday: true }).sub).toBe('최소만큼 했어요 💪');
+  });
+
+  it('acknowledges a sub-floor log rather than going silent (AC 7)', () => {
+    expect(lines({ showedUp: true }).sub).toBe('오늘 나타났어요');
+  });
+
+  it('says 그 날, not 오늘, on a backfill — the only sentence here that names a day', () => {
+    expect(lines({ showedUp: true }, { isBackfill: true }).sub).toBe('그 날 나타났어요');
+  });
+
+  it("tells a binary habit's second log of the day why it earned nothing", () => {
+    expect(lines({}, { habit: BINARY_HABIT, actual: 1 }).sub).toBe('XP는 하루 한 번만');
+  });
+
+  it('reports intensity above a floor the day had already met', () => {
+    expect(lines({ xpGained: 12 }).sub).toBe('최소보다 더 했어요');
+  });
+
+  it('does not borrow the binary line for a count habit that earned no XP', () => {
+    expect(lines({}).sub).toBe('최소보다 더 했어요');
+  });
+});
+
+describe('rewardToastLines — one line, so the branches are a priority order', () => {
+  it('puts a level-up ahead of the milestone that caused it', () => {
+    expect(lines({ xpGained: 90, statLevelUp: true, streakMilestoneHit: 5 }).sub).toBe('지능 레벨 3');
+  });
+
+  it('puts a milestone ahead of the floor crossing on the same log', () => {
+    expect(lines({ xpGained: 150, floorCrossedToday: true, streakMilestoneHit: 5 }).sub).toBe(
+      '이어 간 날 5일 보너스',
+    );
+  });
+
+  it('puts clearing the target ahead of crossing the floor, which one log can do at once', () => {
+    expect(lines({ xpGained: 120, floorCrossedToday: true, pushedToOver: true }).sub).toBe(
+      '목표까지 넘었어요 🎯',
+    );
   });
 });

@@ -6,7 +6,7 @@ import { Toast } from './Toast';
 
 export interface ToastOverlayProps {
   /** `null` renders nothing at all — the overlay only exists while a toast is live. */
-  toast: { message: string; detail: string } | null;
+  toast: { message: string; detail: string; sub?: string } | null;
   onUndo: () => void;
 }
 
@@ -36,7 +36,7 @@ export function ToastOverlay({ toast, onUndo }: ToastOverlayProps) {
 
   return (
     <View style={styles.overlay} pointerEvents="box-none">
-      <Toast message={toast.message} detail={toast.detail} onUndo={onUndo} />
+      <Toast message={toast.message} detail={toast.detail} sub={toast.sub} onUndo={onUndo} />
     </View>
   );
 }

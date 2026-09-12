@@ -29,6 +29,7 @@ import {
   type DesignPatch,
   type DetailDeleteEffect,
   type DetailPanel,
+  type DetailPills,
   type GrowthChart,
   type JournalDay,
   type JournalRow,
@@ -57,10 +58,8 @@ import { FONT_FAMILY, FONT_SIZE, RADIUS, SPACE, TAP_TARGET, type Palette } from 
  *   is #20's;
  * - the 흐름 ↓ · 가장 많던 주 · 최소 대비 pills and the 하락 banner — #20 (trend);
  * - the 회고 button beside that banner — #21 (the reflection screen);
- * - the 주간 XP pill and `YesNo`'s milestone bars — #17 owns every XP surface, and this
- *   screen computes no XP;
- * - the 빠짐없이 pill — #18 (engagement streak);
- * - the journal's free-log lines (메모 · 성취 · 기분 · 아이디어) — #16.
+ * - `YesNo`'s milestone bars (`YesNo.body.html:17–27`) — #38;
+ * - the 빠짐없이 pill — #18 (engagement streak).
  *
  * The ribbon's cells are not controls. §6.3 offers backfill entry as an **or** — "tap
  * a past-date in the heatmap (or a '+ add past entry' button)" — and this screen ships
@@ -236,21 +235,26 @@ function HeaderSub({ binary, established }: { binary: boolean; established: bool
 }
 
 /**
- * The two stat pills the canvas keeps (`HabitDetail.body.html:10`/`:12`).
+ * The stat pills the canvas keeps (`HabitDetail.body.html:10`/`:12`/`:13`, and the same
+ * row on `YesNo.body.html:11`/`:13`/`:14`).
  *
  * `성공률` shows `—` when the hook hands back `null`: §4.4's minimum-sample guard means
  * there is not yet enough resolved history to state a rate, and `0%` would read as a
  * score rather than as silence.
+ *
+ * `주간 XP` carries no unit — XP is the single currency and the label already names it,
+ * exactly as the canvas's own pill does.
  */
-function StatPills({ streak, successRate }: { streak: number; successRate: number | null }) {
+function StatPills({ pills }: { pills: DetailPills }) {
   return (
     <View style={styles.pills}>
-      <Pill label="연속" value={`${streak}`} unit="일" />
+      <Pill label="연속" value={`${pills.streak}`} unit="일" />
       <Pill
         label="성공률"
-        value={successRate == null ? '—' : `${Math.round(successRate * 100)}`}
-        unit={successRate == null ? undefined : '%'}
+        value={pills.successRate == null ? '—' : `${Math.round(pills.successRate * 100)}`}
+        unit={pills.successRate == null ? undefined : '%'}
       />
+      <Pill label="주간 XP" value={`${pills.weeklyXP}`} />
     </View>
   );
 }
@@ -1023,7 +1027,7 @@ export default function HabitDetail() {
   function panel(name: DetailPanel) {
     switch (name) {
       case 'pills':
-        return <StatPills key={name} streak={view.pills.streak} successRate={view.pills.successRate} />;
+        return <StatPills key={name} pills={view.pills} />;
       case 'heatmap':
         return (
           <Card key={name}>
