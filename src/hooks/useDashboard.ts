@@ -5,6 +5,7 @@ import { useRepository } from '@/context/RepositoryContext';
 import { dayStates } from '@/domain/classify';
 import { compareDates, dateOf, windowEndingAt } from '@/domain/dates';
 import { heatCells, type HeatCell } from '@/domain/heatLevel';
+import { computeStatXP, levelForXP, type HabitWithEntries } from '@/domain/score';
 import { computeStreak } from '@/domain/streak';
 import { localToday } from '@/lib/device';
 import type { Habit, SkipReason, Stat } from '@/models';
@@ -46,8 +47,49 @@ export interface DashboardRow extends LogAffordances {
   streak: number;
 }
 
+/**
+ * One stat card (§6.1, canvas `design/parts/Dashboard.body.html:11–15`) — #17 AC 1, AC 5.
+ *
+ * Every figure is resolved here and not in the screen: `jest.config.js` matches
+ * `src/**` and there are no render tests, so a division written in JSX is arithmetic
+ * nothing asserts. The screen applies words to these numbers.
+ */
+export interface StatProgress {
+  stat: Stat;
+  /** `levelForXP(computeStatXP(...))` — §4.2's one level definition (`.lv`). */
+  level: number;
+  /** The stat's cumulative XP, summed over every habit mapped to it. */
+  xp: number;
+  /**
+   * XP still owed to the next level, or `null` at the **top** level, where there is no
+   * next threshold — `levelForXP` stops at the last index of
+   * `TUNING.statLevelThresholds`. Naively subtracting there would ship a negative
+   * "다음 레벨까지", so the state is named instead of computed around.
+   */
+  xpToNextLevel: number | null;
+  /**
+   * The bar's fill, 0–1 — the share of the **current level's band** that is done, not
+   * of the stat's whole XP. The canvas measures it the same way
+   * (`design/parts/Dashboard.logic.js:66–68` divides by the band's own `span`). Full at
+   * the top level, where the band has no width.
+   */
+  barFraction: number;
+}
+
 export interface DashboardView {
   rows: DashboardRow[];
+  /**
+   * The stat cards, one per `TUNING.stats` in its declared order — a stat with no
+   * habits at all is still drawn, at level 0, because the canvas draws all three and a
+   * card appearing only once a habit exists would read as a missing stat.
+   */
+  stats: StatProgress[];
+  /**
+   * The character header's `Lv.N` (canvas `design/parts/Dashboard.body.html:5`).
+   * SPEC §4.2 defines the character level as the **highest** stat level; deriving it in
+   * the screen would be a judgment no test can reach.
+   */
+  characterLevel: number;
   loading: boolean;
   /**
    * One-tap logging on the row (§6.1 B1) with its 실행취소 toast (B6) — the same
@@ -70,9 +112,31 @@ function statFor(statId: string): Stat | undefined {
   return TUNING.stats.find((stat) => stat.id === statId);
 }
 
+/** The card's four numbers, from the stat's XP. See `StatProgress` for each. */
+function statProgress(stat: Stat, all: HabitWithEntries[]): StatProgress {
+  const xp = computeStatXP(stat.id, all);
+  const level = levelForXP(xp);
+  const thresholds = TUNING.statLevelThresholds;
+  const next = thresholds[level + 1];
+
+  if (next == null) return { stat, level, xp, xpToNextLevel: null, barFraction: 1 };
+
+  const base = thresholds[level];
+  return {
+    stat,
+    level,
+    xp,
+    xpToNextLevel: next - xp,
+    barFraction: (xp - base) / (next - base),
+  };
+}
+
 export function useDashboard({ today = localToday() }: { today?: string } = {}): DashboardView {
   const repository = useRepository();
   const [rows, setRows] = useState<DashboardRow[]>([]);
+  const [stats, setStats] = useState<StatProgress[]>(() =>
+    TUNING.stats.map((stat) => statProgress(stat, [])),
+  );
   const [loading, setLoading] = useState(true);
   /**
    * Bumped by a write, so the load effect is the single place that reads. `loading` is
@@ -91,12 +155,9 @@ export function useDashboard({ today = localToday() }: { today?: string } = {}):
 
     async function load() {
       const habits = await repository.getHabits();
-      // §3.2 — archived habits are hidden from the Dashboard. Paused ones are not:
-      // pause is "later", not "over" (ADR-0003), and it stays visible to be resumed.
-      const visible = habits.filter((habit) => habit.lifecycle !== 'archived');
 
       const loaded = await Promise.all(
-        visible.map(async (habit) => {
+        habits.map(async (habit) => {
           // `computeStreak` walks back to `createdAt`, so the fetch starts at whichever
           // of the two is earlier; `heatCells` is given its own window either way.
           const start = dateOf(habit.createdAt);
@@ -106,21 +167,43 @@ export function useDashboard({ today = localToday() }: { today?: string } = {}):
             to,
           );
 
+          // The rows and the stat cards read the same fetch, from two angles: the row
+          // is what the habit shows, `entries` is what its stat is owed.
           return {
             habit,
-            stat: statFor(habit.statId),
-            cells: heatCells(habit, entries, from, to, today),
-            streak: computeStreak(entries, habit, today),
-            // The one-tap control reads a classified day, not a heat cell: a cell is a
-            // *rendering* instruction, and deriving an affordance from one is how this
-            // drifted away from Today's identical derivation once already.
-            ...logAffordances(habit, dayStates(habit, entries, today, today, today)[0]),
+            entries,
+            row: {
+              habit,
+              stat: statFor(habit.statId),
+              cells: heatCells(habit, entries, from, to, today),
+              streak: computeStreak(entries, habit, today),
+              // The one-tap control reads a classified day, not a heat cell: a cell is
+              // a *rendering* instruction, and deriving an affordance from one is how
+              // this drifted away from Today's identical derivation once already.
+              ...logAffordances(habit, dayStates(habit, entries, today, today, today)[0]),
+            },
           };
         }),
       );
 
       if (!cancelled) {
-        setRows(loaded);
+        // §3.2 — archived habits are hidden from the Dashboard. Paused ones are not:
+        // pause is "later", not "over" (ADR-0003), and it stays visible to be resumed.
+        setRows(
+          loaded.filter(({ habit }) => habit.lifecycle !== 'archived').map(({ row }) => row),
+        );
+        // The stat cards read **every** habit, archived included. AC 5 calls the figure
+        // cumulative XP, and ADR-0003's rule that a recorded day's earnings are never
+        // clawed back applies here too: filtering the same list the rows use would drop
+        // a user's stat level the moment they tidied a finished habit away.
+        setStats(
+          TUNING.stats.map((stat) =>
+            statProgress(
+              stat,
+              loaded.map(({ habit, entries }) => ({ habit, entries })),
+            ),
+          ),
+        );
         setLoading(false);
       }
     }
@@ -139,6 +222,8 @@ export function useDashboard({ today = localToday() }: { today?: string } = {}):
 
   return {
     rows,
+    stats,
+    characterLevel: stats.reduce((highest, stat) => Math.max(highest, stat.level), 0),
     loading,
     logActivity: quick.logActivity,
     logSkip: quick.logSkip,

@@ -20,7 +20,7 @@ import {
   TOAST_OVERLAY_CLEARANCE,
   ToastOverlay,
 } from '@/components';
-import { useDashboard, type DashboardRow } from '@/hooks/useDashboard';
+import { useDashboard, type DashboardRow, type StatProgress } from '@/hooks/useDashboard';
 import type { SkipReason } from '@/models';
 import { useTheme } from '@/theme/ThemeProvider';
 import { FONT_FAMILY, FONT_SIZE, RADIUS, SPACE } from '@/theme/tokens';
@@ -29,11 +29,13 @@ import { FONT_FAMILY, FONT_SIZE, RADIUS, SPACE } from '@/theme/tokens';
  * Dashboard — SPEC §6.1; layout from `design/parts/Dashboard.body.html`.
  *
  * The artboard is the finished design, so it shows more than this screen renders. The
- * stat cards / XP bars (#17) and the status lights and "손볼 습관 N개" aggregate (#20)
- * each belong to a later ticket and are left out rather than stubbed: a hardcoded
- * number would read as data the user does not have. What ships here is the row itself —
- * name, stat tag, the `TUNING.heatmapDays` heatmap, the 🔥 streak count (#14), the
- * one-tap log with its 실행취소 toast (#11), and the long-press skip chips (#12).
+ * status lights and the "손볼 습관 N개" aggregate belong to #20 and are left out rather
+ * than stubbed: a hardcoded number would read as data the user does not have. The
+ * character header's 칭호 (`· 꾸준함`) is #39's — there is no titles engine to derive one
+ * from, so the header shows the level alone. What ships here is the character header and
+ * the stat cards with their XP bars (#17), and the row itself — name, stat tag, the
+ * `TUNING.heatmapDays` heatmap, the 🔥 streak count (#14), the one-tap log with its
+ * 실행취소 toast (#11), and the long-press skip chips (#12).
  */
 
 /**
@@ -52,6 +54,44 @@ import { FONT_FAMILY, FONT_SIZE, RADIUS, SPACE } from '@/theme/tokens';
 function oneTapLabel(row: DashboardRow): string {
   if (row.habit.kind === 'binary') return row.hasActivityToday ? '✓ 했어요' : '✓ 완료';
   return row.hasActivityToday ? '+1 더' : '+최소';
+}
+
+/**
+ * One stat card — `design/parts/Dashboard.body.html:11–15`, styled from
+ * `design/_tokens.css:68–76`.
+ *
+ * Copy only. `다음 레벨까지 N XP` is the canvas's line
+ * (`design/parts/Dashboard.logic.js:68`); `최고 레벨` replaces it at the top of the
+ * ladder and is **캔버스 출처 없음 — 신규 문구**, because the canvas has no top-level
+ * state to draw. Every number, including the bar's fill, arrives decided from
+ * `useDashboard` — this file computes nothing.
+ */
+function StatCard({ card }: { card: StatProgress }) {
+  const { colors } = useTheme();
+
+  return (
+    <View style={[styles.statcard, { borderColor: colors.border, backgroundColor: colors.surface2 }]}>
+      <View style={styles.statTop}>
+        <Text style={[styles.statName, { color: colors.muted }]} numberOfLines={1}>
+          {card.stat.name}
+        </Text>
+        <Text style={[styles.statLevel, { color: colors.text }]}>{card.level}</Text>
+      </View>
+      {/* `.xpbar` — a plain track and a fill, no label inside it. The width is the
+          hook's `barFraction`, so no arithmetic happens here. */}
+      <View
+        style={[styles.xpbar, { backgroundColor: colors.inset }]}
+        accessibilityLabel={`${card.stat.name} 레벨 ${card.level}, ${Math.round(card.barFraction * 100)}%`}
+      >
+        <View
+          style={[styles.xpfill, { backgroundColor: colors.accent, width: `${card.barFraction * 100}%` }]}
+        />
+      </View>
+      <Text style={[styles.statTo, { color: colors.faint }]} numberOfLines={1}>
+        {card.xpToNextLevel == null ? '최고 레벨' : `다음 레벨까지 ${card.xpToNextLevel} XP`}
+      </Text>
+    </View>
+  );
 }
 
 /**
@@ -204,7 +244,8 @@ function HabitRow({
 export default function Dashboard() {
   const { colors, preference, toggle } = useTheme();
   const router = useRouter();
-  const { rows, loading, logActivity, logSkip, toast, undoLast } = useDashboard();
+  const { rows, stats, characterLevel, loading, logActivity, logSkip, toast, undoLast } =
+    useDashboard();
 
   return (
     <View style={[styles.fill, { backgroundColor: colors.surface }]}>
@@ -219,6 +260,22 @@ export default function Dashboard() {
               {preference === 'system' ? '자동' : preference === 'light' ? '라이트' : '다크'}
             </Text>
           </Pressable>
+        </View>
+
+        {/* `.rowline` — the character block (`design/parts/Dashboard.body.html:3–6`).
+            `Lv.N` is the highest stat level (§4.2), derived in the hook. */}
+        <View>
+          <Eyebrow>캐릭터</Eyebrow>
+          <Text style={[styles.character, { color: colors.text }]}>
+            Lv.<Text style={styles.characterNum}>{characterLevel}</Text>
+          </Text>
+        </View>
+
+        {/* `.stats` — one card per configured stat, in `TUNING.stats` order. */}
+        <View style={styles.stats}>
+          {stats.map((card) => (
+            <StatCard key={card.stat.id} card={card} />
+          ))}
         </View>
 
         <Eyebrow>오늘의 습관</Eyebrow>
@@ -277,6 +334,33 @@ const styles = StyleSheet.create({
   },
   toggleText: { fontSize: FONT_SIZE.sm },
   notice: { fontSize: FONT_SIZE.base },
+  // `.sh` beside the `캐릭터` eyebrow — the level reads in mono, as the canvas's
+  // `<span class="num">` does.
+  character: { fontSize: FONT_SIZE.lg, fontWeight: '600', letterSpacing: -0.16 },
+  characterNum: { fontFamily: FONT_FAMILY.mono, fontVariant: ['tabular-nums'] },
+  // `.stats` (`design/_tokens.css:70–76`) — three equal columns; `flex: 1` with
+  // `minWidth: 0` is RN's equivalent of the canvas's `minmax(0,1fr)`, so a long
+  // 다음 레벨까지 line cannot widen its own card.
+  stats: { flexDirection: 'row', gap: SPACE.md },
+  statcard: {
+    flex: 1,
+    minWidth: 0,
+    gap: 7,
+    borderWidth: 1,
+    borderRadius: RADIUS.md,
+    padding: SPACE.md + 2,
+  },
+  statTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: SPACE.xs },
+  statName: { fontSize: FONT_SIZE.sm + 0.5, flexShrink: 1 },
+  statLevel: {
+    fontFamily: FONT_FAMILY.mono,
+    fontVariant: ['tabular-nums'],
+    fontSize: FONT_SIZE.md + 0.5,
+    fontWeight: '600',
+  },
+  xpbar: { height: 4, borderRadius: 3, overflow: 'hidden' },
+  xpfill: { height: '100%', borderRadius: 3 },
+  statTo: { fontSize: FONT_SIZE.xs, fontFamily: FONT_FAMILY.mono },
   quests: { gap: 9 },
   qtop: { flexDirection: 'row', alignItems: 'center', gap: SPACE.md },
   qname: { fontSize: FONT_SIZE.md, fontWeight: '600', letterSpacing: -0.14, flexShrink: 1 },
