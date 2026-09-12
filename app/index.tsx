@@ -63,8 +63,9 @@ function oneTapLabel(row: DashboardRow): string {
  * Copy only. `다음 레벨까지 N XP` is the canvas's line
  * (`design/parts/Dashboard.logic.js:68`); `최고 레벨` replaces it at the top of the
  * ladder and is **캔버스 출처 없음 — 신규 문구**, because the canvas has no top-level
- * state to draw. Every number, including the bar's fill, arrives decided from
- * `useDashboard` — this file computes nothing.
+ * state to draw. Every *judgment* — the level, the bar's fraction, whether there is a
+ * next level at all — arrives decided from `useDashboard`; the only arithmetic here
+ * turns that 0–1 fraction into a percentage — the bar's width and the label's number.
  */
 function StatCard({ card }: { card: StatProgress }) {
   const { colors } = useTheme();
@@ -78,7 +79,7 @@ function StatCard({ card }: { card: StatProgress }) {
         <Text style={[styles.statLevel, { color: colors.text }]}>{card.level}</Text>
       </View>
       {/* `.xpbar` — a plain track and a fill, no label inside it. The width is the
-          hook's `barFraction`, so no arithmetic happens here. */}
+          hook's `barFraction`, scaled to a percentage — a unit, not a decision. */}
       <View
         style={[styles.xpbar, { backgroundColor: colors.inset }]}
         accessibilityLabel={`${card.stat.name} 레벨 ${card.level}, ${Math.round(card.barFraction * 100)}%`}
@@ -262,21 +263,31 @@ export default function Dashboard() {
           </Pressable>
         </View>
 
-        {/* `.rowline` — the character block (`design/parts/Dashboard.body.html:3–6`).
-            `Lv.N` is the highest stat level (§4.2), derived in the hook. */}
-        <View>
-          <Eyebrow>캐릭터</Eyebrow>
-          <Text style={[styles.character, { color: colors.text }]}>
-            Lv.<Text style={styles.characterNum}>{characterLevel}</Text>
-          </Text>
-        </View>
+        {/* Gated on the same `loading` as the rows below, rather than shown with the
+            hook's seed values: before the load resolves that seed is every stat at
+            Lv.0 with an empty bar and a concrete `다음 레벨까지 420 XP`, and a
+            hardcoded number would read as data the user does not have. Nothing about
+            progression is on screen until the figures are real. */}
+        {!loading && (
+          <>
+            {/* `.rowline` — the character block
+                (`design/parts/Dashboard.body.html:3–6`). `Lv.N` is the highest stat
+                level (§4.2), derived in the hook. */}
+            <View>
+              <Eyebrow>캐릭터</Eyebrow>
+              <Text style={[styles.character, { color: colors.text }]}>
+                Lv.<Text style={styles.characterNum}>{characterLevel}</Text>
+              </Text>
+            </View>
 
-        {/* `.stats` — one card per configured stat, in `TUNING.stats` order. */}
-        <View style={styles.stats}>
-          {stats.map((card) => (
-            <StatCard key={card.stat.id} card={card} />
-          ))}
-        </View>
+            {/* `.stats` — one card per configured stat, in `TUNING.stats` order. */}
+            <View style={styles.stats}>
+              {stats.map((card) => (
+                <StatCard key={card.stat.id} card={card} />
+              ))}
+            </View>
+          </>
+        )}
 
         <Eyebrow>오늘의 습관</Eyebrow>
 

@@ -1,10 +1,10 @@
-import type { LogEffect } from '@/domain/score';
 import type { Habit, LogType, SkipReason } from '@/models';
 
 import {
   deleteConfirmLines,
   LOG_TYPE_LABELS,
   rewardToastLines,
+  type RewardToastFacts,
   SKIP_REASON_LABELS,
 } from './copy';
 
@@ -205,10 +205,12 @@ describe('LOG_TYPE_LABELS', () => {
 /**
  * `rewardToastLines` — the log-time toast's copy (#17 AC 6, AC 7).
  *
- * A pure function over an already-decided `LogEffect`, so it asserts here in the same
- * seam as the domain: no repository, no render. Every branch is covered, because the
- * cascade is a priority order and an untested branch is one that could be unreachable
- * without anything saying so.
+ * A pure function over a delta the domain has already decided, so it asserts here in
+ * the same seam as the domain: no repository, no render. The facts arrive as plain
+ * primitives — `src/config` sits below `src/domain` (SPEC §2.2), so neither the
+ * function nor this file imports `LogEffect` — and the fixtures below build them
+ * directly. Every branch is covered, because the cascade is a priority order and an
+ * untested branch is one that could be unreachable without anything saying so.
  */
 const COUNT_HABIT: Habit = {
   id: 'h1',
@@ -223,20 +225,25 @@ const COUNT_HABIT: Habit = {
 
 const BINARY_HABIT: Habit = { ...COUNT_HABIT, id: 'h2', kind: 'binary', floor: 1, floorUnit: 'time' };
 
-const NOTHING_MOVED: LogEffect = {
+type Delta = Pick<
+  RewardToastFacts,
+  'xpGained' | 'floorCrossedToday' | 'pushedToOver' | 'statLevelUp' | 'showedUp' | 'streakMilestoneHit'
+>;
+
+const NOTHING_MOVED: Delta = {
   xpGained: 0,
   floorCrossedToday: false,
   pushedToOver: false,
   statLevelUp: false,
   showedUp: false,
-  savedAtRiskDay: false,
 };
 
-function lines(effect: Partial<LogEffect>, over: Partial<Parameters<typeof rewardToastLines>[0]> = {}) {
+function lines(effect: Partial<Delta>, over: Partial<RewardToastFacts> = {}) {
   return rewardToastLines({
     habit: COUNT_HABIT,
     actual: 5,
-    effect: { ...NOTHING_MOVED, ...effect },
+    ...NOTHING_MOVED,
+    ...effect,
     isBackfill: false,
     statName: '지능',
     statLevel: 3,

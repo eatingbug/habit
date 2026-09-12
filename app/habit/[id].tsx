@@ -59,8 +59,7 @@ import { FONT_FAMILY, FONT_SIZE, RADIUS, SPACE, TAP_TARGET, type Palette } from 
  * - the 흐름 ↓ · 가장 많던 주 · 최소 대비 pills and the 하락 banner — #20 (trend);
  * - the 회고 button beside that banner — #21 (the reflection screen);
  * - `YesNo`'s milestone bars (`YesNo.body.html:17–27`) — #38;
- * - the 빠짐없이 pill — #18 (engagement streak);
- * - the journal's free-log lines (메모 · 성취 · 기분 · 아이디어) — #16.
+ * - the 빠짐없이 pill — #18 (engagement streak).
  *
  * The ribbon's cells are not controls. §6.3 offers backfill entry as an **or** — "tap
  * a past-date in the heatmap (or a '+ add past entry' button)" — and this screen ships

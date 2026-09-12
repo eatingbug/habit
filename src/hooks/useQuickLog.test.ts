@@ -448,6 +448,38 @@ describe('useQuickLog', () => {
       expect(result.current.toast?.sub).toBe('지능 레벨 1');
     });
 
+    it('counts an archived sibling\'s XP toward the stat, so the level-up still reports', async () => {
+      // ADR-0003: archiving a habit must not claw back XP a recorded day already
+      // earned, so `statSiblings` filters no lifecycle. Same shape as the test above,
+      // with the sibling archived — without that decision the stat would sit one habit
+      // short of the threshold and the toast would report no level-up at all.
+      const statId = 'intelligence';
+      const archived = habit({
+        id: 'h2',
+        statId,
+        lifecycle: 'archived',
+        createdAt: `${addDays(TODAY, -10)}T09:00:00.000Z`,
+      });
+      const archivedDays = [1, 2, 3, 4, 5, 6].map((n) =>
+        seededRow({
+          id: `a${n}`,
+          habitId: 'h2',
+          date: addDays(TODAY, -n),
+          timestamp: `${addDays(TODAY, -n)}T07:00:00.000Z`,
+          actual: 5,
+        }),
+      );
+      const logged = habit({ statId });
+      const { result } = quickLog(await repositoryWith([logged, archived], archivedDays));
+
+      expect(TUNING.xpPerFloorCompletion * 1).toBeLessThan(TUNING.statLevelThresholds[1]);
+      expect(TUNING.xpPerFloorCompletion * 7).toBeGreaterThanOrEqual(TUNING.statLevelThresholds[1]);
+
+      await log(result, logged, 5);
+
+      expect(result.current.toast?.sub).toBe('지능 레벨 1');
+    });
+
     it('leaves the skip toast as it was — a miss has no reward to attribute', async () => {
       const { result } = quickLog(await repositoryWith());
 

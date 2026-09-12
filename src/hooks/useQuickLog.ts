@@ -358,7 +358,15 @@ export function useQuickLog({
       ...rewardToastLines({
         habit,
         actual,
-        effect,
+        // Spread field by field, not `...effect`: `rewardToastLines` takes primitives
+        // because `src/config` is below `src/domain` (§2.2), and this hook is UI, so
+        // it is the one layer allowed to read both.
+        xpGained: effect.xpGained,
+        statLevelUp: effect.statLevelUp,
+        streakMilestoneHit: effect.streakMilestoneHit,
+        pushedToOver: effect.pushedToOver,
+        floorCrossedToday: effect.floorCrossedToday,
+        showedUp: effect.showedUp,
         isBackfill,
         statName: TUNING.stats.find((stat) => stat.id === habit.statId)?.name,
         // The **number** behind `effect.statLevelUp`, which is only a boolean. Over

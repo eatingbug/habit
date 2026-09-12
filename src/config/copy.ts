@@ -1,4 +1,3 @@
-import type { LogEffect } from '@/domain/score';
 import type { Habit, LogType, SkipReason } from '@/models';
 
 /**
@@ -178,8 +177,8 @@ export function deleteConfirmLines(facts: DeleteConfirmFacts): string[] {
  * a binary habit carries `floorUnit: 'time'`, so `+1${floorUnit}` would render
  * `+1time`. Its detail is the fixed `✓ 완료` instead.
  *
- * Moved here from `useQuickLog` with the rest of the toast's copy rather than left
- * behind and its result passed in, so the `+1time` guard has exactly one home.
+ * It sits here with the rest of the toast's copy rather than in the hook, so the
+ * `+1time` guard has exactly one home.
  */
 function detailOf(habit: Habit, actual: number): string {
   return habit.kind === 'binary' ? '✓ 완료' : `+${actual}${habit.floorUnit}`;
@@ -191,8 +190,18 @@ export interface RewardToastFacts {
   habit: Habit;
   /** The amount the row records. */
   actual: number;
-  /** The domain's pure delta for this one log (§4.2 C1). */
-  effect: LogEffect;
+  /**
+   * The log's delta, as the primitives the cascade below reads — the caller takes them
+   * off `describeLogEffect`'s `LogEffect` (§4.2 C1) and passes them one by one. The
+   * type itself is not imported: see `rewardToastLines`. `savedAtRiskDay` is on
+   * `LogEffect` and deliberately absent here — no line of this copy reads it.
+   */
+  xpGained: number;
+  statLevelUp: boolean;
+  streakMilestoneHit?: number;
+  pushedToOver: boolean;
+  floorCrossedToday: boolean;
+  showedUp: boolean;
   /** Is the row on a date other than today? Only the "showed up" line reads this. */
   isBackfill: boolean;
   /**
@@ -209,12 +218,13 @@ export interface RewardToastFacts {
 /**
  * The log-time toast's two derived slots — SPEC §4.2 C1 / §6.2, issue #17.
  *
- * Copy, not judgment about scoring: every fact arrives decided in `LogEffect`. It sits
+ * Copy, not judgment about scoring: every fact arrives already decided by the domain. It sits
  * in `src/config` for the reason `deleteConfirmLines` does — `jest.config.js` matches
  * `src/**` only, so the same cascade written inside `app/` would be copy no test can
- * reach. `LogEffect` is imported directly because it is a **domain** type;
- * `deleteConfirmLines` takes primitives to avoid importing a *hook* type, which would
- * invert the layer direction, and the domain is below this file either way.
+ * reach. And it takes **primitives** for that function's reason too: SPEC §2.2's
+ * dependency rule puts `src/config` *below* `src/domain` ("Domain imports only models
+ * and config"), so importing `LogEffect` here would invert that direction. The caller
+ * is UI, may import both, and passes the fields this cascade reads.
  *
  * `detail` is the mono slot (`Toast`'s `.rx`): the amount, plus ` · +N XP` only when
  * the log actually earned some. A trailing `+0 XP` would be noise on a day whose XP
@@ -233,30 +243,36 @@ export interface RewardToastFacts {
  * `design/parts/YesNo.body.html:18` (`이어 간 날 보너스`), and the level-up line uses
  * the stat name and level the Dashboard's own stat card shows.
  *
+ * **The one declared deviation:** the toast's main verb stays `기록됨` even on a log
+ * that earned no XP, where both canvases swap their main line
+ * (`design/parts/Dashboard.logic.js:35` → `이미 오늘 몫은 끝났어요`;
+ * `design/parts/Today.logic.js:58` → `기록했어요 · XP 없음`). SPEC §6.2 B6 specifies that
+ * literal string for the undo toast (`기록됨 +N {unit} · 실행취소`), the two canvases do
+ * not agree with each other on what replaces it, and one wording serves both screens
+ * here as the skip toast's already does. That day is acknowledged on `sub` instead.
+ *
  * On a backfill the "showed up" line says `그 날` rather than the canvas's `오늘`
  * (`design/parts/Today.logic.js:59`), a mechanical substitution: it is the only
  * sentence here that names a day, and it would be plainly false beside a row filled
  * onto yesterday. The XP itself is not softened — a backfill earns for real (ADR-0001).
  */
 export function rewardToastLines(facts: RewardToastFacts): { detail: string; sub?: string } {
-  const { effect } = facts;
-
   return {
     detail:
       detailOf(facts.habit, facts.actual) +
-      (effect.xpGained > 0 ? ` · +${effect.xpGained} XP` : ''),
+      (facts.xpGained > 0 ? ` · +${facts.xpGained} XP` : ''),
     sub:
-      effect.statLevelUp && facts.statName != null
+      facts.statLevelUp && facts.statName != null
         ? `${facts.statName} 레벨 ${facts.statLevel}`
-        : effect.streakMilestoneHit != null
-          ? `이어 간 날 ${effect.streakMilestoneHit}일 보너스`
-          : effect.pushedToOver
+        : facts.streakMilestoneHit != null
+          ? `이어 간 날 ${facts.streakMilestoneHit}일 보너스`
+          : facts.pushedToOver
             ? '목표까지 넘었어요 🎯'
-            : effect.floorCrossedToday
+            : facts.floorCrossedToday
               ? '최소만큼 했어요 💪'
-              : effect.showedUp
+              : facts.showedUp
                 ? `${facts.isBackfill ? '그 날' : '오늘'} 나타났어요`
-                : facts.habit.kind === 'binary' && effect.xpGained === 0
+                : facts.habit.kind === 'binary' && facts.xpGained === 0
                   ? 'XP는 하루 한 번만'
                   : '최소보다 더 했어요',
   };
