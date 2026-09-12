@@ -1,10 +1,16 @@
 import { useEffect, useState } from 'react';
 
-import { SKIP_REASON_LABELS } from '@/config/copy';
+import { rewardToastLines, SKIP_REASON_LABELS } from '@/config/copy';
 import { TUNING } from '@/config/tuning';
 import { useRepository } from '@/context/RepositoryContext';
 import { buildBackfillActivity, buildBackfillSkip } from '@/domain/backfill';
 import { type ClassifiedDay, isFloorMet } from '@/domain/classify';
+import { dateOf } from '@/domain/dates';
+import {
+  computeStatLevel,
+  describeLogEffect,
+  type HabitWithEntries,
+} from '@/domain/score';
 import { localNoonOn, newId } from '@/lib/device';
 import type { Habit, HabitEntry, SkipReason } from '@/models';
 
@@ -49,7 +55,13 @@ export interface QuickLogToast {
   /** The row 실행취소 will delete — minted before the write (§6.2 B6). */
   entryId: string;
   message: string;
+  /** The mono slot — the amount, and on an activity log the XP it earned. */
   detail: string;
+  /**
+   * The plain-text second half: what this log just unlocked (§4.2 C1). Absent on the
+   * skip toast, which has no reward to attribute.
+   */
+  sub?: string;
 }
 
 export interface QuickLog {
@@ -128,15 +140,6 @@ export interface QuickLogOptions {
   now?: () => Date;
   /** Called after both the append and the undo, so the consumer reloads. */
   onChange: () => void;
-}
-
-/**
- * The toast's detail line (§6.2 B6 copy). It cannot be built from `floorUnit` alone:
- * a binary habit carries `floorUnit: 'time'`, so `+1${floorUnit}` would render
- * `+1time`. Its detail is the fixed `✓ 완료` instead.
- */
-function detailOf(habit: Habit, actual: number): string {
-  return habit.kind === 'binary' ? '✓ 완료' : `+${actual}${habit.floorUnit}`;
 }
 
 /**
@@ -248,6 +251,35 @@ export function useQuickLog({
     return repository.getEntries(habitId, date, date);
   }
 
+  /**
+   * A habit's **whole** history, `createdAt` through today. Not one day's rows: XP is
+   * run-keyed (streak bonuses, milestones), so what a single log is worth can only be
+   * read off the full run, and the upper bound is `today` even on a backfill for the
+   * same reason `useToday` gives its XP delta one.
+   */
+  function fullHistory(habit: Habit): Promise<HabitEntry[]> {
+    return repository.getEntries(habit.id, dateOf(habit.createdAt), today);
+  }
+
+  /**
+   * Every **other** habit mapped to the same stat, with its own full history —
+   * `describeLogEffect`'s required fourth argument. A stat's level is the sum over all
+   * its habits (§4.2), so a log can push the stat over a threshold that this habit's
+   * own XP is nowhere near, and omitting the siblings would silently report this
+   * habit's level instead.
+   *
+   * Lifecycle is not filtered: archiving a habit must not claw back XP a recorded day
+   * already earned (ADR-0003), so the level it contributed to stays where it is.
+   */
+  async function statSiblings(habit: Habit): Promise<HabitWithEntries[]> {
+    const habits = await repository.getHabits();
+    return Promise.all(
+      habits
+        .filter((other) => other.id !== habit.id && other.statId === habit.statId)
+        .map(async (other) => ({ habit: other, entries: await fullHistory(other) })),
+    );
+  }
+
   function dismissToast() {
     setToast(null);
   }
@@ -278,6 +310,10 @@ export function useQuickLog({
     // Minted here, not by the repository: the toast has to name the row before the
     // write so undo can never resolve to a different one.
     const entryId = newId();
+    // Read **before** the write: `describeLogEffect` identifies the new row by the
+    // id-set difference between the two snapshots, so a `before` taken afterwards
+    // would contain the row and report that nothing happened.
+    const before = await fullHistory(habit);
 
     await repository.upsertEntry(
       isBackfill
@@ -306,7 +342,32 @@ export function useQuickLog({
           },
     );
 
-    setToast({ entryId, message: '기록됨', detail: detailOf(habit, actual) });
+    /**
+     * Re-read rather than compose `[...before, row]`: this hook does no optimistic
+     * local mutation (see the module docblock), and `rowsOnDate` above already takes
+     * the repository as the authority on what a date holds.
+     */
+    const after = await fullHistory(habit);
+    const siblings = await statSiblings(habit);
+    const effect = describeLogEffect(before, after, habit, siblings);
+
+    setToast({
+      entryId,
+      // Unchanged (§6.2 B6): the reward is the two slots beside it, not a new verb.
+      message: '기록됨',
+      ...rewardToastLines({
+        habit,
+        actual,
+        effect,
+        isBackfill,
+        statName: TUNING.stats.find((stat) => stat.id === habit.statId)?.name,
+        // The **number** behind `effect.statLevelUp`, which is only a boolean. Over
+        // the same array `describeLogEffect` scored, so the line and the flag can
+        // never disagree; §4.2 requires that anything reporting a level use this
+        // function rather than reading the thresholds itself.
+        statLevel: computeStatLevel(habit.statId, [{ habit, entries: after }, ...siblings]),
+      }),
+    });
     onChange();
   }
 
