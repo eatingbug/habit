@@ -263,10 +263,9 @@ export default function Dashboard() {
           </Pressable>
         </View>
 
-        {/* Gated on the same `loading` as the rows below, rather than shown with the
-            hook's seed values: before the load resolves that seed is every stat at
-            Lv.0 with an empty bar and a concrete `다음 레벨까지 420 XP`, and a
-            hardcoded number would read as data the user does not have. Nothing about
+        {/* Gated on the same `loading` as the rows below: before the load resolves the
+            hook has no stat cards to draw, and `characterLevel` reads `Lv.0` — a level
+            that is the empty list's arithmetic, not the user's. Nothing about
             progression is on screen until the figures are real. */}
         {!loading && (
           <>

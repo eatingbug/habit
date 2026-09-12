@@ -81,7 +81,8 @@ export interface DashboardView {
   /**
    * The stat cards, one per `TUNING.stats` in its declared order — a stat with no
    * habits at all is still drawn, at level 0, because the canvas draws all three and a
-   * card appearing only once a habit exists would read as a missing stat.
+   * card appearing only once a habit exists would read as a missing stat. Empty while
+   * `loading`.
    */
   stats: StatProgress[];
   /**
@@ -134,9 +135,7 @@ function statProgress(stat: Stat, all: HabitWithEntries[]): StatProgress {
 export function useDashboard({ today = localToday() }: { today?: string } = {}): DashboardView {
   const repository = useRepository();
   const [rows, setRows] = useState<DashboardRow[]>([]);
-  const [stats, setStats] = useState<StatProgress[]>(() =>
-    TUNING.stats.map((stat) => statProgress(stat, [])),
-  );
+  const [stats, setStats] = useState<StatProgress[]>([]);
   const [loading, setLoading] = useState(true);
   /**
    * Bumped by a write, so the load effect is the single place that reads. `loading` is
