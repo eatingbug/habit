@@ -56,10 +56,15 @@ import { FONT_FAMILY, FONT_SIZE, RADIUS, SPACE, TAP_TARGET, type Palette } from 
  * Each of these is a later ticket's, and is left out rather than stubbed:
  * - the status-light dot and the 붙는 중 / 몸에 붙음 lifecycle chip — `deriveStatusLight`
  *   is #20's;
- * - the 흐름 ↓ · 가장 많던 주 · 최소 대비 pills and the 하락 banner — #20 (trend);
+ * - the 흐름 ↓ · 가장 많던 주 · 최소 대비 pills and the 하락 banner — #20 (trend).
+ *   That swap is still whole: #18 added the 빠짐없이 pill (`HabitDetail.body.html:11`)
+ *   to **every** count habit rather than to forming ones only, so an established habit
+ *   shows it too until #20 replaces this row wholesale — there is no half-rule here to
+ *   correct;
  * - the 회고 button beside that banner — #21 (the reflection screen);
  * - `YesNo`'s milestone bars (`YesNo.body.html:17–27`) — #38;
- * - the 빠짐없이 pill — #18 (engagement streak).
+ * - `YesNo`'s 최고 연속 pill (`YesNo.body.html:12`) — #41. It is the binary habit's
+ *   counterpart to 빠짐없이, which has no meaning there (see `DetailPills`).
  *
  * The ribbon's cells are not controls. §6.3 offers backfill entry as an **or** — "tap
  * a past-date in the heatmap (or a '+ add past entry' button)" — and this screen ships
@@ -236,7 +241,12 @@ function HeaderSub({ binary, established }: { binary: boolean; established: bool
 
 /**
  * The stat pills the canvas keeps (`HabitDetail.body.html:10`/`:12`/`:13`, and the same
- * row on `YesNo.body.html:11`/`:13`/`:14`).
+ * row on `YesNo.body.html:11`/`:13`/`:14`), plus 빠짐없이 (`HabitDetail.body.html:11`)
+ * — #18.
+ *
+ * Whether 빠짐없이 is shown and whether it comes second are both `useHabitDetail`'s
+ * (`showEngagement`/`engagementLeads`); this row only places it. On the canvas it sits
+ * right after 연속, which is where a forming habit puts it.
  *
  * `성공률` shows `—` when the hook hands back `null`: §4.4's minimum-sample guard means
  * there is not yet enough resolved history to state a rate, and `0%` would read as a
@@ -246,15 +256,21 @@ function HeaderSub({ binary, established }: { binary: boolean; established: bool
  * exactly as the canvas's own pill does.
  */
 function StatPills({ pills }: { pills: DetailPills }) {
+  const engagement = pills.showEngagement ? (
+    <Pill label="빠짐없이" value={`${pills.engagementStreak}`} unit="일" />
+  ) : null;
+
   return (
     <View style={styles.pills}>
       <Pill label="연속" value={`${pills.streak}`} unit="일" />
+      {pills.engagementLeads && engagement}
       <Pill
         label="성공률"
         value={pills.successRate == null ? '—' : `${Math.round(pills.successRate * 100)}`}
         unit={pills.successRate == null ? undefined : '%'}
       />
       <Pill label="주간 XP" value={`${pills.weeklyXP}`} />
+      {!pills.engagementLeads && engagement}
     </View>
   );
 }

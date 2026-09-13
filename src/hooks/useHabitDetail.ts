@@ -9,7 +9,7 @@ import { deleteOutcome, type DeleteOutcome } from '@/domain/deleteEffect';
 import { heatCells, type HeatCell } from '@/domain/heatLevel';
 import { successRate } from '@/domain/rates';
 import { computeXP } from '@/domain/score';
-import { computeStreak, showedUpDays } from '@/domain/streak';
+import { computeStreak, engagementStreak, showedUpDays } from '@/domain/streak';
 import { weeklyActualTotals } from '@/domain/weekly';
 import { localNoonOn, localToday } from '@/lib/device';
 import type { DayState, Habit, HabitEntry, SkipReason, Stat } from '@/models';
@@ -44,6 +44,34 @@ import { logAffordances, useQuickLog, type LogAffordances, type QuickLogToast } 
 export interface DetailPills {
   /** Consecutive floor-met days ending today (§4.2). */
   streak: number;
+  /**
+   * Consecutive days with **any** real engagement — `partial` counts (§4.3 C3) — the
+   * canvas's 빠짐없이 pill (`HabitDetail.body.html:11`). A superset of `streak` by
+   * construction, so on a run of honest sub-floor days the two figures differ and that
+   * difference is the whole point of the pill.
+   */
+  engagementStreak: number;
+  /**
+   * Is the 빠짐없이 pill shown at all? **Count habits only** (#18).
+   *
+   * Not a canvas whim: a binary habit's floor is always 1 (`src/models/index.ts:29`)
+   * and its activity rows always carry `actual: 1` (`src/hooks/useQuickLog.ts:209`), so
+   * `classify.ts`'s `sum < habit.floor` can never hold and `partial` is unreachable —
+   * `engagementStreak` and `streak` are then the same number, and a pill showing 연속
+   * twice under two labels would be a label that lies. `YesNo.body.html:12` fills that
+   * slot with 최고 연속 instead, which is #41's, not this ticket's.
+   */
+  showEngagement: boolean;
+  /**
+   * Does it come **second**, right after 연속? On a `forming` habit, yes (AC 2: the
+   * pill "comes to the front" while a habit is still forming, which is exactly when
+   * showing up matters more than the floor). Otherwise it follows the other pills.
+   *
+   * The order is decided here rather than in the screen for this file's standing
+   * reason: `jest.config.js` matches `src/**` only, so a position chosen in
+   * `app/habit/[id].tsx` is one no test can reach.
+   */
+  engagementLeads: boolean;
   /**
    * The number the **user** sees — `successRate` over `TUNING.windows.floorRate` days
    * (§4.4). `null` is the §4.4 min-sample guard: too few resolved days to say anything,
@@ -641,6 +669,9 @@ export function useHabitDetail(
     stat: habit == null ? undefined : TUNING.stats.find((s) => s.id === habit.statId),
     pills: {
       streak: habit == null ? 0 : computeStreak(entries, habit, today),
+      engagementStreak: habit == null ? 0 : engagementStreak(entries, habit, today),
+      showEngagement: habit?.kind === 'count',
+      engagementLeads: habit?.kind === 'count' && habit.lifecycle === 'forming',
       successRate:
         habit == null ? null : successRate(entries, habit, today, TUNING.windows.floorRate),
       weeklyXP:

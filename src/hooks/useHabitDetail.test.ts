@@ -156,6 +156,57 @@ describe('useHabitDetail — the stat pills (D1)', () => {
     expect(result.current.pills.successRate).toBeNull();
   });
 
+
+  /**
+   * 빠짐없이 (#18 AC 2) — `design/parts/HabitDetail.body.html:11`. The pill's whole
+   * reason to exist is that it is **not** 연속, so the fixture is a run of honest
+   * sub-floor days: `partial` breaks the floor streak and extends this one (§4.3 C3).
+   */
+  describe('빠짐없이', () => {
+    /** Five consecutive days at 2 against a floor of 5 — every one of them `partial`. */
+    const partialRun = [1, 2, 3, 4, 5].map((back) => activity(addDays(TODAY, -back), 2));
+
+    it('counts the days shown up, which a run of partial days keeps apart from 연속', async () => {
+      const result = await detail(await seed(habit(), partialRun));
+
+      expect(result.current.pills.engagementStreak).toBe(5);
+      // Not one of those days met the floor, so the two pills show different numbers.
+      expect(result.current.pills.streak).toBe(0);
+    });
+
+    it('comes second, right after 연속, while the habit is forming (AC 2)', async () => {
+      const result = await detail(await seed(habit({ lifecycle: 'forming' }), partialRun));
+
+      expect(result.current.pills.showEngagement).toBe(true);
+      expect(result.current.pills.engagementLeads).toBe(true);
+    });
+
+    it('stays on an established habit but gives up the second slot', async () => {
+      const result = await detail(await seed(habit({ lifecycle: 'established' }), partialRun));
+
+      expect(result.current.pills.showEngagement).toBe(true);
+      expect(result.current.pills.engagementLeads).toBe(false);
+    });
+
+    /**
+     * A binary habit has no `partial` to count — floor 1 and every activity row
+     * `actual: 1` — so 빠짐없이 would be 연속 under a second label. `YesNo.body.html:12`
+     * puts 최고 연속 there instead (#41).
+     */
+    it('is withheld from a binary habit, whose engagement run is just its streak', async () => {
+      const entries = [1, 2, 3].map((back) =>
+        activity(addDays(TODAY, -back), 1, '09:00:00', { habitId: 'b1' }),
+      );
+      const result = await detail(await seed(binary(), entries), 'b1');
+
+      expect(result.current.pills.showEngagement).toBe(false);
+      expect(result.current.pills.engagementLeads).toBe(false);
+      // The two figures it would have shown, proven identical rather than assumed.
+      expect(result.current.pills.engagementStreak).toBe(result.current.pills.streak);
+      expect(result.current.pills.streak).toBe(3);
+    });
+  });
+
   /**
    * 주간 XP (#17) — the ISO week `mondayOf` defines, which is the week the growth
    * chart's rightmost bar covers, so the pill and the bar can never disagree.
