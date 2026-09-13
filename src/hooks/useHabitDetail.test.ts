@@ -156,7 +156,6 @@ describe('useHabitDetail — the stat pills (D1)', () => {
     expect(result.current.pills.successRate).toBeNull();
   });
 
-
   /**
    * 빠짐없이 (#18 AC 2) — `design/parts/HabitDetail.body.html:11`. The pill's whole
    * reason to exist is that it is **not** 연속, so the fixture is a run of honest

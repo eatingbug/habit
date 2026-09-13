@@ -246,7 +246,9 @@ function HeaderSub({ binary, established }: { binary: boolean; established: bool
  *
  * Whether 빠짐없이 is shown and whether it comes second are both `useHabitDetail`'s
  * (`showEngagement`/`engagementLeads`); this row only places it. On the canvas it sits
- * right after 연속, which is where a forming habit puts it.
+ * right after 연속, which is where a forming habit puts it. An **established** habit
+ * shows it last instead, a placement no artboard covers — `Established.body.html:37–42`
+ * carries no 빠짐없이 pill at all — and the whole row is #20's to replace.
  *
  * `성공률` shows `—` when the hook hands back `null`: §4.4's minimum-sample guard means
  * there is not yet enough resolved history to state a rate, and `0%` would read as a

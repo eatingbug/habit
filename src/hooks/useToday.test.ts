@@ -1439,12 +1439,11 @@ describe('useToday', () => {
     });
   });
 
-
   /**
    * The at-risk save banner (#18 AC 5, SPEC §4.3 C2) — `design/parts/Today.body.html:10–16`.
    *
    * The banner is the whole of this ticket's Today surface, and the condition behind it
-   * is `atRiskToday`'s, already proven in `src/domain/streak.test.ts:194–227`. What is
+   * is `atRiskToday`'s, already proven in `src/domain/streak.test.ts:194–228`. What is
    * asserted here is what the domain cannot say: that **this screen** raises it, names
    * one habit, and drops it again once the day is saved — inside a single `renderHook`,
    * because two independent fixtures would prove only what the domain test already does.
@@ -1575,8 +1574,9 @@ describe('useToday', () => {
     });
 
     /**
-     * D3 — the sentence says `오늘 한 번이면`, so it is not shown on a day that is not
-     * today. One hook instance, stepped: it is the same screen that must drop and
+     * The banner's own sentence promises **today** (`오늘 한 번이면`,
+     * `src/config/copy.ts:311`), so it is withheld on any date that is not today (#18).
+     * One hook instance, stepped: it is the same screen that must drop and
      * recover the banner.
      */
     it('is withheld on a past date and returns on the step back to today', async () => {

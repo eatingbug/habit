@@ -293,8 +293,8 @@ export function rewardToastLines(facts: RewardToastFacts): { detail: string; sub
  * imports `@/config/tuning`, so importing anything from `@/domain` here would close a
  * cycle. Nothing but the name is needed.
  *
- * **Declared deviation.** SPEC §6.1 quotes the banner as `어제 놓쳤어요 — 오늘 최소 한
- * 번이면 이어갈 수 있어요`; this follows the canvas's three-clause version instead,
+ * **Declared deviation.** SPEC §4.3 C2 (`docs/SPEC.md:547–548`) quotes the banner as
+ * `어제 놓쳤어요 — 오늘 최소 한 번이면 이어갈 수 있어요`; this follows the canvas's three-clause version instead,
  * which names the habit and adds the backfill invitation. The invitation is not a false
  * promise: the date stepper that honours it shipped with #14.
  *
