@@ -1439,6 +1439,192 @@ describe('useToday', () => {
     });
   });
 
+
+  /**
+   * The at-risk save banner (#18 AC 5, SPEC §4.3 C2) — `design/parts/Today.body.html:10–16`.
+   *
+   * The banner is the whole of this ticket's Today surface, and the condition behind it
+   * is `atRiskToday`'s, already proven in `src/domain/streak.test.ts:194–227`. What is
+   * asserted here is what the domain cannot say: that **this screen** raises it, names
+   * one habit, and drops it again once the day is saved — inside a single `renderHook`,
+   * because two independent fixtures would prove only what the domain test already does.
+   */
+  describe('the at-risk save banner (#18)', () => {
+    const YESTERDAY = addDays(TODAY, -1);
+
+    /** A screen whose date the test can step, on **one** hook instance. */
+    async function steppableScreen(repository: HabitRepository, now = stepClock()) {
+      const view = renderHook(({ date }: { date: string }) => useToday({ today: TODAY, date, now }), {
+        wrapper: wrapperFor(repository),
+        initialProps: { date: TODAY },
+      });
+      await waitFor(() => expect(view.result.current.loading).toBe(false));
+      return view;
+    }
+
+    /** Steps the date and waits for the reload the new date triggers to settle. */
+    async function stepTo(
+      view: Awaited<ReturnType<typeof steppableScreen>>,
+      date: string,
+    ): Promise<void> {
+      await act(async () => {
+        view.rerender({ date });
+      });
+      await waitFor(() => expect(view.result.current.date).toBe(date));
+    }
+
+    it('raises the banner on a habit missed yesterday and still open today', async () => {
+      const result = await todayScreen(new LocalRepository(await seed([habit()])));
+
+      // Nothing on yesterday, nothing yet today: `missed` behind, `pending` in front.
+      expect(result.current.saveBanner).toMatchObject({
+        habitName: '팔굽혀펴기',
+        lead: '어제 팔굽혀펴기 기록을 놓쳤어요.',
+        rest: '오늘 한 번이면 흐름이 이어져요. 어제도 지금 채워 넣을 수 있어요.',
+      });
+    });
+
+    it('stays down when yesterday was done', async () => {
+      const repository = new LocalRepository(await seed([habit()]));
+      await repository.upsertEntry({
+        id: 'y1',
+        habitId: 'h1',
+        date: YESTERDAY,
+        timestamp: `${YESTERDAY}T09:00:00.000Z`,
+        actual: 5,
+      });
+
+      const result = await todayScreen(repository);
+      expect(result.current.saveBanner).toBeNull();
+    });
+
+    /**
+     * AC 5, and the binding form of it (#18): the banner's **own** button, on the
+     * screen that is already showing it, takes the day to its floor and the banner is
+     * gone — with no second render of the hook. Today starts `partial`, the state
+     * `atRiskToday` admits alongside `pending` (`src/domain/streak.ts:142`) and the one
+     * where `✓ 완료` and the composer's `+1 더` part company.
+     */
+    it('clears itself when its own button finishes a partial today (AC 5)', async () => {
+      const repository = new LocalRepository(await seed([habit()]));
+      await repository.upsertEntry({
+        id: 't1',
+        habitId: 'h1',
+        date: TODAY,
+        timestamp: `${TODAY}T08:00:00.000Z`,
+        actual: 2,
+      });
+
+      const result = await todayScreen(repository);
+      expect(dayOf(result.current, 'h1')?.state).toBe('partial');
+      expect(result.current.saveBanner).not.toBeNull();
+
+      await act(async () => {
+        await result.current.saveBanner?.onSave();
+      });
+
+      expect(dayOf(result.current, 'h1')?.state).toBe('done');
+      expect(result.current.saveBanner).toBeNull();
+      // The floor was finished, not offered again: 2 + 3, not 2 + 5.
+      expect(dayOf(result.current, 'h1')?.sum).toBe(5);
+    });
+
+    it('clears itself on an empty today too, where one tap is the whole floor', async () => {
+      const result = await todayScreen(new LocalRepository(await seed([habit()])));
+
+      await act(async () => {
+        await result.current.saveBanner?.onSave();
+      });
+
+      expect(dayOf(result.current, 'h1')?.state).toBe('done');
+      expect(dayOf(result.current, 'h1')?.sum).toBe(5);
+      expect(result.current.saveBanner).toBeNull();
+    });
+
+    it('clears on a binary habit, whose one tap is a single row', async () => {
+      const result = await todayScreen(new LocalRepository(await seed([binary()])));
+      expect(result.current.saveBanner?.habitName).toBe('명상');
+
+      await act(async () => {
+        await result.current.saveBanner?.onSave();
+      });
+
+      expect(dayOf(result.current, 'b1')?.state).toBe('done');
+      expect(dayOf(result.current, 'b1')?.entries.map((e) => e.actual)).toEqual([1]);
+      expect(result.current.saveBanner).toBeNull();
+    });
+
+    /**
+     * The banner's own third clause — `어제도 지금 채워 넣을 수 있어요`. Repairing
+     * yesterday removes the miss the banner is about, so the banner goes down without
+     * today being touched at all (ADR-0001).
+     */
+    it('goes down when yesterday is backfilled instead (the banner\u2019s own invitation)', async () => {
+      const view = await steppableScreen(new LocalRepository(await seed([habit()])));
+      expect(view.result.current.saveBanner).not.toBeNull();
+
+      await stepTo(view, YESTERDAY);
+      await act(async () => {
+        await view.result.current.logActivity('h1', 5);
+      });
+      await stepTo(view, TODAY);
+
+      expect(view.result.current.saveBanner).toBeNull();
+      // Today is untouched — it was yesterday that stopped being a miss.
+      expect(dayOf(view.result.current, 'h1')?.state).toBe('pending');
+    });
+
+    /**
+     * D3 — the sentence says `오늘 한 번이면`, so it is not shown on a day that is not
+     * today. One hook instance, stepped: it is the same screen that must drop and
+     * recover the banner.
+     */
+    it('is withheld on a past date and returns on the step back to today', async () => {
+      const view = await steppableScreen(new LocalRepository(await seed([habit()])));
+      expect(view.result.current.saveBanner).not.toBeNull();
+
+      await stepTo(view, YESTERDAY);
+      expect(view.result.current.saveBanner).toBeNull();
+
+      await stepTo(view, TODAY);
+      expect(view.result.current.saveBanner?.habitName).toBe('팔굽혀펴기');
+    });
+
+    /**
+     * The canvas's banner names one habit and carries one button, so with two at risk
+     * it has to choose. This pins that choice on `rows` order, so a later reorder
+     * reddens a test instead of silently renaming the banner.
+     */
+    it('names the first at-risk habit in row order when two are at risk', async () => {
+      const result = await todayScreen(new LocalRepository(await seed([habit(), binary()])));
+
+      expect(result.current.rows.map((row) => row.habit.id)).toEqual(['h1', 'b1']);
+      expect(result.current.saveBanner?.habitName).toBe('팔굽혀펴기');
+
+      // Saving the first hands the banner to the second rather than clearing the screen.
+      await act(async () => {
+        await result.current.saveBanner?.onSave();
+      });
+      expect(result.current.saveBanner?.habitName).toBe('명상');
+    });
+
+    /**
+     * ADR-0003 ¶4 — a paused habit raises no banner. It is at risk on paper (nothing
+     * yesterday, nothing today) and the hook adds no lifecycle check of its own:
+     * `atRiskToday` withholds it, because a paused day is out of classification scope.
+     */
+    it('raises nothing for a paused habit that is at risk on paper', async () => {
+      const paused = habit({
+        lifecycle: 'paused',
+        pauses: [{ from: addDays(TODAY, -2) }],
+      });
+      const result = await todayScreen(new LocalRepository(await seed([paused])));
+
+      expect(result.current.rows.map((row) => row.habit.id)).toEqual(['h1']);
+      expect(result.current.saveBanner).toBeNull();
+    });
+  });
+
   /**
    * The composer's target selector (#16). What the options **are** and whether
    * a selection resolves to the free path are the hook's; which one is selected is the

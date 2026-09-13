@@ -13,6 +13,19 @@ export interface BannerProps {
   variant?: BannerVariant;
   /** A small status glyph, sparingly (§6.0). */
   icon?: string;
+  /**
+   * A node before the text, for the one banner whose marker is not a glyph: Today's
+   * at-risk banner opens with a `<span class="dot r">` (`design/parts/Today.body.html:12`),
+   * the same crit dot `StatusDot` draws. A `<Text>` cannot hold a `<View>`, so it
+   * cannot go in `children`.
+   */
+  leading?: React.ReactNode;
+  /**
+   * A node after the text, for the same banner's `✓ 완료` button (`:14`). Buttons are
+   * `Pressable`s and `children` is rendered inside a `<Text>`, so this is where one
+   * goes.
+   */
+  trailing?: React.ReactNode;
   children: React.ReactNode;
 }
 
@@ -21,7 +34,7 @@ export interface BannerProps {
  * overlay of the semantic hue: an absolute fill inside the bordered box. That keeps one
  * hue per variant and stays correct in both themes.
  */
-export function Banner({ variant = 'warn', icon, children }: BannerProps) {
+export function Banner({ variant = 'warn', icon, leading, trailing, children }: BannerProps) {
   const { colors } = useTheme();
   const hue = variant === 'good' ? colors.good : colors.warn;
 
@@ -37,10 +50,12 @@ export function Banner({ variant = 'warn', icon, children }: BannerProps) {
       {variant !== 'neutral' && (
         <View style={[styles.tint, { backgroundColor: hue }]} pointerEvents="none" />
       )}
+      {leading}
       {icon != null && <Text style={styles.icon}>{icon}</Text>}
       <Text style={[styles.text, { color: variant === 'neutral' ? colors.muted : colors.text }]}>
         {children}
       </Text>
+      {trailing}
     </View>
   );
 }

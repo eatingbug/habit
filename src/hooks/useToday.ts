@@ -1,6 +1,11 @@
 import { useEffect, useState } from 'react';
 
-import { FREE_LOG_NO_TEXT_NOTE, FREE_TARGET_LABEL, LOG_TYPE_LABELS } from '@/config/copy';
+import {
+  FREE_LOG_NO_TEXT_NOTE,
+  FREE_TARGET_LABEL,
+  LOG_TYPE_LABELS,
+  saveBannerLines,
+} from '@/config/copy';
 import { useRepository } from '@/context/RepositoryContext';
 import { isBackfilledRow, isBackfillableDate } from '@/domain/backfill';
 import {
@@ -14,6 +19,7 @@ import { addDays, compareDates, dateOf } from '@/domain/dates';
 import { deleteOutcome, type DeleteOutcome } from '@/domain/deleteEffect';
 import { sortByDomainOrder } from '@/domain/feed';
 import { computeXP } from '@/domain/score';
+import { atRiskToday } from '@/domain/streak';
 import { localNoonOn, localToday, newId } from '@/lib/device';
 import type { DayState, FreeLog, Habit, HabitEntry, LogType, SkipReason } from '@/models';
 
@@ -224,6 +230,37 @@ export interface DateControl {
   earliest: string;
 }
 
+/**
+ * The at-risk save banner (SPEC §4.3 C2, #18 AC 5) — `design/parts/Today.body.html:10–16`.
+ *
+ * Ready to render: the habit it names, the two halves of its sentence and the write its
+ * button performs. Every judgment behind it is here rather than in `app/today.tsx` —
+ * whether there is a banner at all, which habit it names, and what `✓ 완료` writes —
+ * because `jest.config.js` matches `src/**` only and there are no component render
+ * tests, so a condition written in the screen is a condition nothing asserts.
+ *
+ * Screen-level, not per-row: the canvas puts it **above** the composer, outside the
+ * target selector, so it does not follow the habit the user happens to have selected.
+ */
+export interface SaveBanner {
+  /** The habit the banner is about — already named inside `lead`, kept for the label. */
+  habitName: string;
+  /** The bold, warn-coloured first sentence (`design/_tokens.css:97`). */
+  lead: string;
+  /** The rest of the sentence, in body colour. */
+  rest: string;
+  /**
+   * `✓ 완료` — one tap that takes today to its floor, which is what clears the banner
+   * (AC 5). The amount is the day's `progress.remaining`, not `oneTapAmount`: the two
+   * agree on an empty day, and differ on a `partial` one, which `atRiskToday` admits
+   * (`src/domain/streak.ts:142`). There `logAffordances` gives 1 — the composer's
+   * `+1 더`, a second helping — and a banner promising 완료 must instead finish the
+   * day. `remaining` is never 0 while the banner shows, since both admitted states
+   * hold `sum < floor`, so §3.3's `actual > 0` invariant cannot be broken.
+   */
+  onSave(): Promise<void>;
+}
+
 export interface TodayView {
   /**
    * The day being recorded — 'YYYY-MM-DD'. Today unless the date control stepped it
@@ -232,6 +269,11 @@ export interface TodayView {
   date: string;
   /** The date control's derived state (§6.2 B4) — see `DateControl`. */
   dateControl: DateControl;
+  /**
+   * The at-risk save banner, or `null` when there is nothing to save (#18 AC 5) — see
+   * `SaveBanner`.
+   */
+  saveBanner: SaveBanner | null;
   loading: boolean;
   /**
    * The habits selectable **on `date`**, in repository order — the target selector's
@@ -697,6 +739,44 @@ export function useToday({
   };
 
   /**
+   * The at-risk habit the banner names, or none (#18 AC 5, SPEC §4.3 C2).
+   *
+   * Derived from the loaded snapshot rather than held as state, so a write re-derives
+   * it for free: `reload()` bumps `version`, the load effect re-reads every habit's
+   * history, and this asks `atRiskToday` again. Nothing patches the banner on a write,
+   * which is what makes "reaching the floor clears it" a property of the screen rather
+   * than of a second rule that could disagree with the domain.
+   *
+   * The **first** at-risk habit in `rows` — repository order, the same order the target
+   * selector offers. The canvas's banner names one habit and carries one button, so
+   * with two at risk it has to choose; taking the first row keeps the banner and the
+   * list in the same order rather than inventing a priority the SPEC does not state.
+   *
+   * Withheld on a past date. The sentence says `오늘 한 번이면`, and the alternative —
+   * showing it on yesterday and writing to today anyway — would run a write against a
+   * day the screen is not showing. Taken off `dateControl.isBackfill` rather than
+   * recomputed, for `freeLogAvailable`'s reason: one encoding of "is the day on screen
+   * today?".
+   *
+   * Paused habits need nothing here: `atRiskToday` returns false for them on its own
+   * (ADR-0003 ¶4, `src/domain/streak.ts:131`).
+   */
+  const atRiskRow = dateControl.isBackfill
+    ? undefined
+    : loaded.rows.find((row) =>
+        atRiskToday(loaded.history.get(row.habit.id) ?? [], row.habit, today),
+      );
+
+  const saveBanner: SaveBanner | null =
+    atRiskRow == null
+      ? null
+      : {
+          habitName: atRiskRow.habit.name,
+          ...saveBannerLines(atRiskRow.habit.name),
+          onSave: () => logActivity(atRiskRow.habit.id, atRiskRow.progress.remaining),
+        };
+
+  /**
    * May a **free log** be written to the day on screen? True only on today (#16).
    *
    * Reading a past day's free logs is unrestricted — they show in that day's feed —
@@ -765,6 +845,7 @@ export function useToday({
   return {
     date,
     dateControl,
+    saveBanner,
     loading,
     rows: loaded.rows,
     feed: loaded.feed,

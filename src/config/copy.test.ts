@@ -5,6 +5,7 @@ import {
   LOG_TYPE_LABELS,
   rewardToastLines,
   type RewardToastFacts,
+  saveBannerLines,
   SKIP_REASON_LABELS,
 } from './copy';
 
@@ -328,5 +329,24 @@ describe('rewardToastLines — one line, so the branches are a priority order', 
     expect(lines({ xpGained: 120, floorCrossedToday: true, pushedToOver: true }).sub).toBe(
       '목표까지 넘었어요 🎯',
     );
+  });
+});
+
+describe('saveBannerLines — the at-risk banner, split where the canvas splits it (#18)', () => {
+  it('names the habit in the bold lead and keeps the invitation in the rest', () => {
+    expect(saveBannerLines('명상')).toEqual({
+      lead: '어제 명상 기록을 놓쳤어요.',
+      rest: '오늘 한 번이면 흐름이 이어져요. 어제도 지금 채워 넣을 수 있어요.',
+    });
+  });
+
+  /**
+   * The reason the canvas's `{이름}을` is not copied literally: the object particle
+   * would have to be 를 after a vowel, and neither form is right for both. Making the
+   * name a modifier of an invariant noun is grammatical for every habit name.
+   */
+  it('reads the same for a vowel-final name, which 을 would have broken', () => {
+    expect(saveBannerLines('요가').lead).toBe('어제 요가 기록을 놓쳤어요.');
+    expect(saveBannerLines('푸시업 30').lead).toBe('어제 푸시업 30 기록을 놓쳤어요.');
   });
 });
