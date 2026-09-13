@@ -65,12 +65,13 @@ function stepClock() {
   };
 }
 
-function quickLog(repository: HabitRepository) {
+function quickLog(repository: HabitRepository, date?: string) {
   let reloads = 0;
   const { result } = renderHook(
     () =>
       useQuickLog({
         today: TODAY,
+        date,
         now: stepClock(),
         onChange: () => {
           reloads += 1;
@@ -141,7 +142,7 @@ describe('useQuickLog', () => {
 
     await log(result, binary, 1);
 
-    expect(result.current.toast?.detail).toBe('✓ 완료');
+    expect(result.current.toast?.detail).toBe(`✓ 완료 · +${TUNING.xpPerFloorCompletion} XP`);
   });
 
   it('appends a second one-tap log instead of overwriting the first (§3.3)', async () => {
@@ -377,6 +378,116 @@ describe('useQuickLog', () => {
       const rows = await rowsIn(repository);
       expect(rows).toHaveLength(2);
       expect(new Set(rows.map((row) => row.id)).size).toBe(2);
+    });
+  });
+
+  /**
+   * The log-time reward (#17 AC 6, AC 7). The wording itself is asserted in
+   * `src/config/copy.test.ts`; what this seam proves is that the hook feeds
+   * `describeLogEffect` the right three snapshots — the habit's whole history before
+   * and after the write, and its stat's other habits — so the attribution on the
+   * toast describes the log that actually landed.
+   */
+  describe('the log-time reward on the toast (#17)', () => {
+    it('attributes the XP and the crossing to the log that earned them', async () => {
+      const { result } = quickLog(await repositoryWith());
+
+      await log(result, habit(), 5);
+
+      expect(result.current.toast?.message).toBe('기록됨');
+      expect(result.current.toast?.detail).toBe(`+5쪽 · +${TUNING.xpPerFloorCompletion} XP`);
+      expect(result.current.toast?.sub).toBe('최소만큼 했어요 💪');
+    });
+
+    it('acknowledges a sub-floor log rather than going silent (AC 7)', async () => {
+      const { result } = quickLog(await repositoryWith());
+
+      await log(result, habit(), 3);
+
+      // No XP tail: a `partial` day earns nothing (§4.2), and the sub line is what
+      // keeps the moment from passing unremarked.
+      expect(result.current.toast?.detail).toBe('+3쪽');
+      expect(result.current.toast?.sub).toBe('오늘 나타났어요');
+    });
+
+    it('does not call yesterday 오늘 when the row is a backfill', async () => {
+      const yesterday = addDays(TODAY, -1);
+      const { result } = quickLog(await repositoryWith(), yesterday);
+
+      await log(result, habit(), 3);
+
+      expect(result.current.toast?.sub).toBe('그 날 나타났어요');
+    });
+
+    it('reads the level off the stat, so a sibling habit\'s XP counts toward it', async () => {
+      const statId = 'intelligence';
+      const sibling = habit({
+        id: 'h2',
+        statId,
+        createdAt: `${addDays(TODAY, -10)}T09:00:00.000Z`,
+      });
+      // Six floor-met days: enough that the sibling alone sits below the level-1
+      // threshold and one more habit's first floor day carries the stat over it.
+      const siblingDays = [1, 2, 3, 4, 5, 6].map((n) =>
+        seededRow({
+          id: `s${n}`,
+          habitId: 'h2',
+          date: addDays(TODAY, -n),
+          timestamp: `${addDays(TODAY, -n)}T07:00:00.000Z`,
+          actual: 5,
+        }),
+      );
+      const logged = habit({ statId });
+      const { result } = quickLog(await repositoryWith([logged, sibling], siblingDays));
+
+      expect(TUNING.xpPerFloorCompletion * 6).toBeLessThan(TUNING.statLevelThresholds[1]);
+      expect(TUNING.xpPerFloorCompletion * 7).toBeGreaterThanOrEqual(TUNING.statLevelThresholds[1]);
+
+      await log(result, logged, 5);
+
+      expect(result.current.toast?.sub).toBe('지능 레벨 1');
+    });
+
+    it('counts an archived sibling\'s XP toward the stat, so the level-up still reports', async () => {
+      // ADR-0003: archiving a habit must not claw back XP a recorded day already
+      // earned, so `statSiblings` filters no lifecycle. Same shape as the test above,
+      // with the sibling archived — without that decision the stat would sit one habit
+      // short of the threshold and the toast would report no level-up at all.
+      const statId = 'intelligence';
+      const archived = habit({
+        id: 'h2',
+        statId,
+        lifecycle: 'archived',
+        createdAt: `${addDays(TODAY, -10)}T09:00:00.000Z`,
+      });
+      const archivedDays = [1, 2, 3, 4, 5, 6].map((n) =>
+        seededRow({
+          id: `a${n}`,
+          habitId: 'h2',
+          date: addDays(TODAY, -n),
+          timestamp: `${addDays(TODAY, -n)}T07:00:00.000Z`,
+          actual: 5,
+        }),
+      );
+      const logged = habit({ statId });
+      const { result } = quickLog(await repositoryWith([logged, archived], archivedDays));
+
+      expect(TUNING.xpPerFloorCompletion * 1).toBeLessThan(TUNING.statLevelThresholds[1]);
+      expect(TUNING.xpPerFloorCompletion * 7).toBeGreaterThanOrEqual(TUNING.statLevelThresholds[1]);
+
+      await log(result, logged, 5);
+
+      expect(result.current.toast?.sub).toBe('지능 레벨 1');
+    });
+
+    it('leaves the skip toast as it was — a miss has no reward to attribute', async () => {
+      const { result } = quickLog(await repositoryWith());
+
+      await skip(result, habit(), 'cue');
+
+      expect(result.current.toast?.message).toBe('못 한 날로 기록했어요');
+      expect(result.current.toast?.detail).toBe(SKIP_REASON_LABELS.cue);
+      expect(result.current.toast?.sub).toBeUndefined();
     });
   });
 

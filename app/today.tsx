@@ -39,10 +39,11 @@ import { FONT_FAMILY, FONT_SIZE, SPACE, TAP_TARGET } from '@/theme/tokens';
  * Today — SPEC §6.2; layout from `design/parts/Today.body.html`, copy from the
  * design canvas.
  *
- * The artboard is the finished design, so it shows more than this screen renders. Free
- * logs (#16), the reward toast (#17) and the at-risk save banner (#18) each belong to a
- * later ticket and are left out rather than stubbed — a hardcoded number would read as
- * data the user does not have.
+ * The artboard is the finished design, so it shows more than this screen renders. The
+ * feed line's standing reward tag (#37) and the at-risk save banner (#18) each belong to
+ * a later ticket and are left out rather than stubbed — a hardcoded number would read as
+ * data the user does not have. The log-time reward itself ships on the toast, which
+ * `ToastOverlay` renders below; it is one wording for both logging surfaces (§6.2).
  *
  * The date control (§6.2 B4, #14) is here, and its own artboard is
  * `design/parts/Backfill.body.html`. Every judgment it makes — where the steps may go,

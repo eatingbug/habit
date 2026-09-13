@@ -4,10 +4,11 @@ import { TUNING } from '@/config/tuning';
 import { useRepository } from '@/context/RepositoryContext';
 import { isBackfillableDate, isBackfilledRow } from '@/domain/backfill';
 import { dayStates, sortDayRows, type ClassifiedDay } from '@/domain/classify';
-import { dateOf, daysBetween, windowEndingAt } from '@/domain/dates';
+import { compareDates, dateOf, daysBetween, mondayOf, windowEndingAt } from '@/domain/dates';
 import { deleteOutcome, type DeleteOutcome } from '@/domain/deleteEffect';
 import { heatCells, type HeatCell } from '@/domain/heatLevel';
 import { successRate } from '@/domain/rates';
+import { computeXP } from '@/domain/score';
 import { computeStreak, showedUpDays } from '@/domain/streak';
 import { weeklyActualTotals } from '@/domain/weekly';
 import { localNoonOn, localToday } from '@/lib/device';
@@ -36,7 +37,10 @@ import { logAffordances, useQuickLog, type LogAffordances, type QuickLogToast } 
  * past date repairs it for free and deleting its last row un-repairs it (ADR-0001).
  */
 
-/** The two stat pills the canvas keeps on this screen (`HabitDetail.body.html:10`/`:12`). */
+/**
+ * The stat pills the canvas keeps on this screen (`HabitDetail.body.html:10`/`:12`/`:13`,
+ * and the same row on `YesNo.body.html:11`/`:13`/`:14`).
+ */
 export interface DetailPills {
   /** Consecutive floor-met days ending today (§4.2). */
   streak: number;
@@ -51,6 +55,21 @@ export interface DetailPills {
    * number would be a label that lies.
    */
   successRate: number | null;
+  /**
+   * What **this week's** rows added to the habit's XP (`HabitDetail.body.html:13`,
+   * `YesNo.body.html:14`) — #17.
+   *
+   * The week is the ISO week the growth chart already uses (`mondayOf`,
+   * `src/domain/dates.ts`), so this pill and the chart's rightmost bar always describe
+   * the same seven days.
+   *
+   * A **before/after delta**, not a second scoring rule: `computeXP` over the whole
+   * history minus `computeXP` over the history with this week's rows removed. XP is
+   * run-keyed — streak bonuses and milestones belong to a run, not to a day — so what
+   * the week is worth is what removing it would cost. `useToday`'s `xpToday` measures
+   * its day exactly this way.
+   */
+  weeklyXP: number;
 }
 
 /** One row of one journal day — a stored `HabitEntry` plus what may be done to it. */
@@ -624,6 +643,14 @@ export function useHabitDetail(
       streak: habit == null ? 0 : computeStreak(entries, habit, today),
       successRate:
         habit == null ? null : successRate(entries, habit, today, TUNING.windows.floorRate),
+      weeklyXP:
+        habit == null
+          ? 0
+          : computeXP(entries, habit) -
+            computeXP(
+              entries.filter((entry) => compareDates(entry.date, mondayOf(today)) < 0),
+              habit,
+            ),
     },
     panelOrder: habit == null ? [] : panelsFor(habit, chart != null, forming != null),
     journal,

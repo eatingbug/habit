@@ -155,6 +155,45 @@ describe('useHabitDetail — the stat pills (D1)', () => {
 
     expect(result.current.pills.successRate).toBeNull();
   });
+
+  /**
+   * 주간 XP (#17) — the ISO week `mondayOf` defines, which is the week the growth
+   * chart's rightmost bar covers, so the pill and the bar can never disagree.
+   */
+  describe('주간 XP', () => {
+    it('is 0 in a week with nothing in it, however much the habit has earned before', async () => {
+      const result = await detail(await seed(habit(), [activity(addDays(THIS_MONDAY, -2), 6)]));
+
+      expect(result.current.pills.weeklyXP).toBe(0);
+    });
+
+    it("counts this week's floor-met day", async () => {
+      const result = await detail(await seed(habit(), [activity(THIS_MONDAY, 5)]));
+
+      expect(result.current.pills.weeklyXP).toBe(TUNING.xpPerFloorCompletion);
+    });
+
+    it('leaves last week out — it is this week the pill names', async () => {
+      const result = await detail(
+        await seed(habit(), [
+          activity(addDays(THIS_MONDAY, -3), 5),
+          activity(addDays(THIS_MONDAY, -1), 5),
+          activity(THIS_MONDAY, 5),
+        ]),
+      );
+
+      expect(result.current.pills.weeklyXP).toBe(TUNING.xpPerFloorCompletion);
+    });
+
+    it('is the whole delta the week added, intensity and target bonus included', async () => {
+      const result = await detail(await seed(habit(), [activity(THIS_MONDAY, 8)]));
+
+      // floor 5, target 8: the base, three units of intensity, and the target bonus.
+      expect(result.current.pills.weeklyXP).toBe(
+        TUNING.xpPerFloorCompletion + 3 * TUNING.xpPerAboveFloorUnit + TUNING.xpBonusTargetExceed,
+      );
+    });
+  });
 });
 
 describe('useHabitDetail — the journal is a date walk (D7)', () => {
