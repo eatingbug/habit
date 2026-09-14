@@ -3,6 +3,7 @@ import type { Habit, HabitEntry } from '@/models';
 import { TUNING } from '@/config/tuning';
 
 import { buildBackfillActivity } from './backfill';
+import { pauseHabit } from './lifecycle';
 import { floorCompletionRate, successRate } from './rates';
 
 /**
@@ -120,5 +121,60 @@ describe('successRate vs floorCompletionRate — deliberately different populati
     expect(successRate(after, habit, AS_OF, window)!).toBeGreaterThan(
       successRate(entries, habit, AS_OF, window)!,
     );
+  });
+});
+
+/**
+ * ADR-0003 — 정지 구간이 두 비율을 **전혀 움직이지 않는다** (AC 3).
+ *
+ * `successRate`·`floorCompletionRate` 는 이미 `dayStates` 를 타므로 동작은 맞지만
+ * (`src/domain/rates.ts:41`), 이 파일에 정지 픽스처가 하나도 없어 회귀를 잡을 것이
+ * 없었다. 기대값은 상수가 아니라 **정지 구간만 다른 같은 입력의 결과**다: 숫자를
+ * 박아 두면 `dayStates` 가 바뀔 때 엉뚱한 이유로 통과할 수 있다.
+ */
+describe('3주 정지는 두 비율을 바꾸지 않는다 (ADR-0003, AC 3)', () => {
+  const window = TUNING.windows.floorRate;
+  const dates = daysEndingAt(AS_OF, window);
+  // 정지 구간 21일을 빼도 §4.4 최소 표본을 넘기려면 기록된 날이 넉넉해야 한다.
+  const active: Habit = { ...COUNT, createdAt: `${dates[0]}T00:00:00.000Z` };
+  // 처음 7일: 5일 성공 + 2일 partial. 나머지 21일은 정지 구간이 될 자리다.
+  const entries = [
+    ...dates.slice(0, 5).map((d) => activity(d, 6)),
+    ...dates.slice(5, 7).map((d) => activity(d, 2)),
+  ];
+  // 8일째부터 오늘까지 21일을 쉬는 중 — 쓰기 경로가 실제로 만드는 그 습관이다.
+  const paused = pauseHabit(active, dates[7]);
+
+  it('빈 21일이 정지 구간이면 성공률이 그대로다', () => {
+    const before = successRate(entries, paused, AS_OF, window);
+    // 정지 없이 계산하면 21일이 전부 미스로 잡혀 훨씬 낮다 — 구간이 실제로 일을 한다.
+    expect(before).not.toBeNull();
+    expect(before!).toBeGreaterThan(successRate(entries, active, AS_OF, window)!);
+    // 정지 구간이 지우는 것은 빈 날의 `missed` 기본값뿐이므로, 기록된 7일만 남는다.
+    expect(before).toBeCloseTo(5 / 7);
+  });
+
+  it('정지 구간을 붙이기 전후로 두 비율이 완전히 같다 — 기록된 날만 세기 때문', () => {
+    // 같은 7일치 기록만 가진, 정지 구간이 아예 없는 짧은 습관.
+    const short: Habit = { ...COUNT, createdAt: `${dates[0]}T00:00:00.000Z` };
+    const sevenDayWindow = 7;
+    const asOfSeventh = dates[6];
+
+    expect(successRate(entries, paused, AS_OF, window)).toBeCloseTo(
+      successRate(entries, short, asOfSeventh, sevenDayWindow)!,
+    );
+    expect(floorCompletionRate(entries, paused, AS_OF, window)).toBeCloseTo(
+      floorCompletionRate(entries, short, asOfSeventh, sevenDayWindow)!,
+    );
+  });
+
+  it('정지 구간 안이어도 행이 있는 날은 분모·분자에 정상으로 들어간다 (비대칭)', () => {
+    const inPause = [...entries, activity(dates[10], 6)];
+    const withRow = successRate(inPause, paused, AS_OF, window);
+    expect(withRow).not.toBeNull();
+    // 성공 6 / 기록된 8 — 구간 전체를 무시했다면 5/7 그대로였을 것이다.
+    expect(withRow).toBeCloseTo(6 / 8);
+    expect(withRow!).toBeGreaterThan(successRate(entries, paused, AS_OF, window)!);
+    expect(floorCompletionRate(inPause, paused, AS_OF, window)).toBeCloseTo(6 / 8);
   });
 });

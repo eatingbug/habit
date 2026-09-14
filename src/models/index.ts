@@ -13,6 +13,21 @@ export interface PauseInterval {
   from: string;
   /** 'YYYY-MM-DD' — first re-active date; absent ⇒ still paused. */
   to?: string;
+  /**
+   * The lifecycle resuming returns to. Absent ⇒ `'forming'`.
+   *
+   * **A declared deviation from the type SPEC §3.2 gives verbatim
+   * (`docs/SPEC.md:203–206`), which has only `from`/`to`.** `docs/SPEC.md:781–782`
+   * says a paused habit resumes to `forming` *or* `established`, but writing
+   * `lifecycle: 'paused'` overwrites the value it had, so resume would have no way to
+   * tell which — and resuming an established habit to `forming` would demote it for
+   * having rested, exactly what ADR-0003's 지켜야 할 성질 says a pause must never do
+   * (`docs/adr/0003-paused-days-are-not-classified.md:94–95`). It rides on the
+   * interval rather than on `Habit` because it is appended with the interval, so it
+   * cannot drift out of step with the habit's lifecycle, and it goes meaningless by
+   * itself once the interval closes.
+   */
+  resumeTo?: 'forming' | 'established';
 }
 
 export type HabitKind = 'count' | 'binary';
