@@ -56,7 +56,7 @@ export interface DetailPills {
   /**
    * Is the 빠짐없이 pill shown at all? **Count habits only** (#18).
    *
-   * Not a canvas whim: a binary habit's floor is always 1 (`src/models/index.ts:29`)
+   * Not a canvas whim: a binary habit's floor is always 1 (`src/models/index.ts:44`)
    * and its activity rows always carry `actual: 1` (`src/hooks/useQuickLog.ts:209`), so
    * `classify.ts`'s `sum < habit.floor` can never hold and `partial` is unreachable —
    * `engagementStreak` and `streak` are then the same number, and a pill showing 연속
