@@ -83,14 +83,32 @@ describe('resumeHabit — 열린 구간을 닫고 오늘을 다시 활성으로 
     expect(resumeHabit(legacy, d(20)).lifecycle).toBe('forming');
   });
 
-  it('보관을 되돌리면 기록이 그대로 남은 채 다시 활성이 된다 (AC 8)', () => {
+  // #19: *"보관된 습관은 … 기록이 보존되고 되돌릴 수 있다"*.
+  it('보관을 되돌리면 기록이 그대로 남은 채 다시 활성이 된다', () => {
     const back = resumeHabit(archiveHabit(ESTABLISHED, d(10)), d(20));
     expect(back.lifecycle).toBe('established');
     expect(back.pauses).toEqual([{ from: d(10), to: d(20), resumeTo: 'established' }]);
   });
+
+  /**
+   * 정지 중인데 구간이 하나도 없는 습관 — ⟺ 불변식이 깨진 모양이고, 이 모듈의 어떤
+   * 함수도 만들어 내지 못한다. 그래도 **만들 수는 있다**: `lifecycle: 'archived'` 만
+   * 적고 `pauses` 를 아예 두지 않은 저장 습관이 그것이고, 실제로
+   * `src/hooks/useDashboard.test.ts:201` 이 정확히 그 픽스처를 만든다.
+   *
+   * 그대로 돌려주면 다시 꺼내기 버튼이 똑같은 습관을 쓰고 끝나 사용자에게 나갈 길이
+   * 없다 — #19 의 *"되돌릴 수 있다"* 가 없애라는 바로 그 막다른 길이다.
+   */
+  it('구간이 없는 보관 습관도 다시 활성이 된다 (막다른 길을 남기지 않는다)', () => {
+    const orphan: Habit = { ...ESTABLISHED, lifecycle: 'archived' };
+    const back = resumeHabit(orphan, d(20));
+    expect(back.lifecycle).toBe('forming');
+    expect(back.pauses).toBeUndefined();
+  });
 });
 
-describe('불변식 — 겹치지 않고 from 오름차순이고 append-only (AC 2)', () => {
+// #19: *"`PauseInterval`이 겹치지 않고 `from` 오름차순으로 append된다"*.
+describe('불변식 — 겹치지 않고 from 오름차순이고 append-only', () => {
   it('정지→재개→정지→재개가 닫힌 구간 둘을 남기고 첫 구간은 그대로다', () => {
     const first = resumeHabit(pauseHabit(FORMING, d(3)), d(7));
     const second = resumeHabit(pauseHabit(first, d(12)), d(15));

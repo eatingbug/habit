@@ -1187,14 +1187,16 @@ export default function HabitDetail() {
 
         {view.panelOrder.map(panel)}
 
-        {/* 잠시 쉬기 · 보관하기 · 다시 시작 · 다시 꺼내기 (SPEC §4.7, #19).
-            **캔버스 권위 없음.** The only artboards drawing this control are
+        {/* 잠깐 쉬기 · 보관하기 · 다시 시작 · 다시 꺼내기 (SPEC §4.7, #19).
+            **The placement is ours; the word 잠깐 쉬기 is the canvas's.** No artboard
+            draws a lifecycle control at this place — the only ones drawing a pause are
             `design/Focus.dc.html` and `design/parts/Focus.body.html`, which #19
-            declares V2 and out of scope, so the placement is ours: the very foot of
-            the screen, under the journal, in `ghost` — a door back rather than a
-            destructive act, and nothing here should compete with 기록하기. Which
-            buttons appear and what they are called is the hook's
-            (`lifecycleActions`); this block only places them. */}
+            declares V2 — so this is where we put it: the very foot of the screen,
+            under the journal, in `ghost` — a door back rather than a destructive act,
+            and nothing here should compete with 기록하기. The label itself is taken
+            from the V1 회고 artboard (`design/parts/Reflection.body.html:53`); see
+            `LIFECYCLE_LABELS`. Which buttons appear and what they are called is the
+            hook's (`lifecycleActions`); this block only places them. */}
         {view.lifecycleActions.length > 0 && (
           <View style={styles.lifecycle}>
             <View style={styles.lifecycleRow}>

@@ -313,14 +313,24 @@ export function saveBannerLines(habitName: string): { lead: string; rest: string
 }
 
 /**
- * The habit detail screen's lifecycle controls — 잠시 쉬기 · 보관하기 · 다시 시작 ·
+ * The habit detail screen's lifecycle controls — 잠깐 쉬기 · 보관하기 · 다시 시작 ·
  * 다시 꺼내기 (SPEC §4.7, issue #19).
  *
- * **캔버스 출처 없음 — 신규 문구.** The only artboards that draw a pause or an archive
- * are `design/Focus.dc.html` and `design/parts/Focus.body.html`, and #19 declares
- * Focus Mode V2 and out of scope; `design/parts/HabitDetail.body.html` and
- * `YesNo.body.html` have no such control at all. So the words are ours, in CONCEPT
- * §8.2's register — a pause is 나중에 하기, not 퀘스트 포기.
+ * **캔버스에 이 자리의 아트보드는 없다. 그러나 이 동작의 말은 있다.** No artboard
+ * draws a lifecycle control *here*: `design/parts/HabitDetail.body.html` and
+ * `YesNo.body.html` have none, and the ones that draw a pause at all
+ * (`design/Focus.dc.html`, `design/parts/Focus.body.html`) are Focus Mode, which #19
+ * declares V2 and out of scope. The **placement** is therefore ours. The **word is
+ * not**: `design/parts/Reflection.body.html:53` (= `design/Reflection.dc.html:316`)
+ * draws 잠깐 쉬기 as one of the 처방 alternatives, and 회고 is V1 — #19 excludes only
+ * `Focus.dc.html` and `Slots.dc.html` — so it is in-scope canvas authority. ADR-0003
+ * (`docs/adr/0003-paused-days-are-not-classified.md:20`) rests its whole V1 case on
+ * precisely that reflection `pause` action. Adopting the label verbatim is what keeps
+ * the one action from being called two things once #21 ships 회고.
+ *
+ * `보관하기`, `다시 시작` and `다시 꺼내기` are ours — grep finds no artboard drawing
+ * an archive control — written in CONCEPT §8.2's register: a pause is 나중에 하기, not
+ * 퀘스트 포기.
  *
  * `LIFECYCLE_NOTE` carries the sense of the one canvas line that does exist for this
  * gesture (`design/parts/Focus.body.html:40`: 쉬어 두는 것뿐이에요. 지우는 게
@@ -336,7 +346,7 @@ export function saveBannerLines(habitName: string): { lead: string; rest: string
  * hook cannot read copy that lives in `app/`.
  */
 export const LIFECYCLE_LABELS = {
-  pause: '잠시 쉬기',
+  pause: '잠깐 쉬기',
   archive: '보관하기',
   resume: '다시 시작',
   unarchive: '다시 꺼내기',

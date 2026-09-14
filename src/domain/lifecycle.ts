@@ -8,7 +8,8 @@ import type { Habit, PauseInterval } from '@/models';
  * and the caller decides when the write happens.
  *
  * The invariant every function here keeps is ADR-0003's
- * (`docs/adr/0003-paused-days-are-not-classified.md:97`): `lifecycle` is `'paused'` or
+ * (`docs/adr/0003-paused-days-are-not-classified.md:97` for `'paused'`, `:42–46` for
+ * `'archived'`, which 같은 기계장치를 탄다): `lifecycle` is `'paused'` or
  * `'archived'` **⟺** the last `PauseInterval` has no `to`. The open interval is what
  * `isDateInScope` reads (`src/domain/classify.ts:48`), so the lifecycle field alone
  * never decides whether a day is classified — which is why these two must be written
@@ -28,6 +29,11 @@ function openInterval(habit: Habit): PauseInterval | undefined {
   return last != null && last.to == null ? last : undefined;
 }
 
+/** Stopped either way — both lifecycles ride the same open interval (ADR-0003). */
+function isStopped(habit: Habit): boolean {
+  return habit.lifecycle === 'paused' || habit.lifecycle === 'archived';
+}
+
 /**
  * The lifecycle a resume returns to, captured at the moment the habit stops being
  * active. Only `forming` and `established` are active values, so the fallback is the
@@ -38,7 +44,7 @@ function resumeTarget(habit: Habit): 'forming' | 'established' {
 }
 
 /**
- * Stop classifying this habit's empty days from `today` on — 잠시 쉬기.
+ * Stop classifying this habit's empty days from `today` on — 잠깐 쉬기.
  *
  * On an already-open habit (paused **or** archived) this **flips the lifecycle and
  * keeps the interval**, rather than appending a second one. Appending would put two
@@ -76,13 +82,22 @@ function stopAt(habit: Habit, today: string, lifecycle: 'paused' | 'archived'): 
  * active again**: the interval is half-open `[from, to)` (ADR-0003).
  *
  * The lifecycle returns to the interval's `resumeTo`, or to `forming` when it carries
- * none — data written before that field existed. Resuming an active habit is a no-op:
- * with no open interval there is nothing to close, and appending or rewriting anything
- * would corrupt a history the user never asked to change.
+ * none — data written before that field existed. Resuming an **active** habit is a
+ * no-op: there is nothing to close, and appending or rewriting anything would corrupt
+ * a history the user never asked to change.
+ *
+ * A stopped habit with no open interval breaks the ⟺ invariant and nothing in this
+ * module can produce one, but the shape is constructible (a habit stored with
+ * `lifecycle: 'archived'` and no `pauses` at all). It is still made active here rather
+ * than returned untouched, because the alternative is a 다시 꺼내기 button that writes
+ * an identical habit and leaves the user with no way out — the one dead end AC 8 asks
+ * us to remove.
  */
 export function resumeHabit(habit: Habit, today: string): Habit {
   const open = openInterval(habit);
-  if (open == null) return habit;
+  if (open == null) {
+    return isStopped(habit) ? { ...habit, lifecycle: 'forming' } : habit;
+  }
 
   const pauses = habit.pauses!;
   return {

@@ -56,7 +56,7 @@ export interface DetailPills {
   /**
    * Is the 빠짐없이 pill shown at all? **Count habits only** (#18).
    *
-   * Not a canvas whim: a binary habit's floor is always 1 (`src/models/index.ts:44`)
+   * Not a canvas whim: a binary habit's floor is always 1 (`src/models/index.ts:43`)
    * and its activity rows always carry `actual: 1` (`src/hooks/useQuickLog.ts:209`), so
    * `classify.ts`'s `sum < habit.floor` can never hold and `partial` is unreachable —
    * `engagementStreak` and `streak` are then the same number, and a pill showing 연속
@@ -274,7 +274,7 @@ export interface DetailDeleteEffect extends DeleteOutcome {
 }
 
 /**
- * One lifecycle control at the foot of the screen — 잠시 쉬기 · 보관하기 · 다시 시작 ·
+ * One lifecycle control at the foot of the screen — 잠깐 쉬기 · 보관하기 · 다시 시작 ·
  * 다시 꺼내기 (SPEC §4.7, issue #19).
  *
  * **Which** controls appear, and with which label, is decided here rather than in
@@ -405,11 +405,14 @@ export interface HabitDetailView {
   saveDesign(patch: DesignPatch): Promise<DesignErrors | null>;
   /**
    * The foot-of-screen lifecycle controls, in the order they are shown (#19). An
-   * active habit offers both 잠시 쉬기 and 보관하기; a stopped one offers the single
+   * active habit offers both 잠깐 쉬기 and 보관하기; a stopped one offers the single
    * way back. Empty until the habit is loaded.
    *
-   * The detail screen is reachable for an archived habit — nothing filters `lifecycle`
-   * on the way in — so 다시 꺼내기 is the reversibility AC 8 asks for. The screen that
+   * #19's eighth acceptance criterion reads *"보관된 습관은 대시보드에서 숨지만
+   * 기록이 보존되고 되돌릴 수 있다"*. The hiding is `useDashboard`'s and the
+   * preservation is the domain's; what this line satisfies is the last clause,
+   * **되돌릴 수 있다** — the detail screen is reachable for an archived habit (nothing
+   * filters `lifecycle` on the way in), so 다시 꺼내기 is the way back. The screen that
    * would *list* archived habits is #43; until it ships, reaching one takes an id the
    * user already has.
    */
@@ -697,44 +700,33 @@ export function useHabitDetail(
   /**
    * The lifecycle writers. Each one is `lifecycle.ts`'s pure transition plus the two
    * things it deliberately leaves out — the write and the reload — exactly as
-   * `saveDesign` above is. A transition that changes nothing (pausing an already
-   * paused habit) still writes; the repository takes the identical habit and the
-   * reload re-reads it, which is cheaper than a second copy of the no-op rule here.
+   * `saveDesign` above is.
    */
-  async function runLifecycle(next: (subject: Habit, day: string) => Habit): Promise<void> {
-    if (habit == null) {
-      throw new Error('useHabitDetail.lifecycleActions: 습관을 아직 불러오지 못했습니다');
-    }
-    await repository.upsertHabit(next(habit, today));
+  async function runLifecycle(
+    subject: Habit,
+    next: (subject: Habit, day: string) => Habit,
+  ): Promise<void> {
+    await repository.upsertHabit(next(subject, today));
     reload();
   }
 
   function lifecycleActions(subject: Habit): LifecycleAction[] {
-    // An open interval is what actually stops the classifier (ADR-0003), and the
-    // lifecycle field is its ⟺ twin, so the two readings agree by construction.
-    switch (subject.lifecycle) {
-      case 'paused':
-        return [
-          { kind: 'resume', label: LIFECYCLE_LABELS.resume, run: () => runLifecycle(resumeHabit) },
-        ];
-      case 'archived':
-        return [
-          {
-            kind: 'unarchive',
-            label: LIFECYCLE_LABELS.unarchive,
-            run: () => runLifecycle(resumeHabit),
-          },
-        ];
-      default:
-        return [
-          { kind: 'pause', label: LIFECYCLE_LABELS.pause, run: () => runLifecycle(pauseHabit) },
-          {
-            kind: 'archive',
-            label: LIFECYCLE_LABELS.archive,
-            run: () => runLifecycle(archiveHabit),
-          },
-        ];
+    function act(
+      kind: LifecycleAction['kind'],
+      next: (habit: Habit, day: string) => Habit,
+    ): LifecycleAction {
+      return { kind, label: LIFECYCLE_LABELS[kind], run: () => runLifecycle(subject, next) };
     }
+
+    // An open interval is what actually stops the classifier (ADR-0003), and the
+    // lifecycle field is its ⟺ twin, so the two readings agree by construction. The
+    // only question is 정지 중인가: a stopped habit gets the single way back — the same
+    // `resumeHabit`, named for how the stop reads — and an active one both ways out.
+    const stopped = subject.lifecycle === 'paused' || subject.lifecycle === 'archived';
+    if (stopped) {
+      return [act(subject.lifecycle === 'paused' ? 'resume' : 'unarchive', resumeHabit)];
+    }
+    return [act('pause', pauseHabit), act('archive', archiveHabit)];
   }
 
   return {

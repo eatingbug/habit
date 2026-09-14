@@ -125,14 +125,15 @@ describe('successRate vs floorCompletionRate — deliberately different populati
 });
 
 /**
- * ADR-0003 — 정지 구간이 두 비율을 **전혀 움직이지 않는다** (AC 3).
+ * ADR-0003 — 정지 구간이 두 비율을 **전혀 움직이지 않는다**. #19: *"3주 정지한 습관이
+ * **미스를 0개** 쌓는다 (성공률·미스 카운트 불변)"*.
  *
  * `successRate`·`floorCompletionRate` 는 이미 `dayStates` 를 타므로 동작은 맞지만
  * (`src/domain/rates.ts:41`), 이 파일에 정지 픽스처가 하나도 없어 회귀를 잡을 것이
  * 없었다. 기대값은 상수가 아니라 **정지 구간만 다른 같은 입력의 결과**다: 숫자를
  * 박아 두면 `dayStates` 가 바뀔 때 엉뚱한 이유로 통과할 수 있다.
  */
-describe('3주 정지는 두 비율을 바꾸지 않는다 (ADR-0003, AC 3)', () => {
+describe('3주 정지는 두 비율을 바꾸지 않는다 (ADR-0003, #19 성공률 불변)', () => {
   const window = TUNING.windows.floorRate;
   const dates = daysEndingAt(AS_OF, window);
   // 정지 구간 21일을 빼도 §4.4 최소 표본을 넘기려면 기록된 날이 넉넉해야 한다.
@@ -146,15 +147,15 @@ describe('3주 정지는 두 비율을 바꾸지 않는다 (ADR-0003, AC 3)', ()
   const paused = pauseHabit(active, dates[7]);
 
   it('빈 21일이 정지 구간이면 성공률이 그대로다', () => {
-    const before = successRate(entries, paused, AS_OF, window);
+    const pausedRate = successRate(entries, paused, AS_OF, window);
     // 정지 없이 계산하면 21일이 전부 미스로 잡혀 훨씬 낮다 — 구간이 실제로 일을 한다.
-    expect(before).not.toBeNull();
-    expect(before!).toBeGreaterThan(successRate(entries, active, AS_OF, window)!);
+    expect(pausedRate).not.toBeNull();
+    expect(pausedRate!).toBeGreaterThan(successRate(entries, active, AS_OF, window)!);
     // 정지 구간이 지우는 것은 빈 날의 `missed` 기본값뿐이므로, 기록된 7일만 남는다.
-    expect(before).toBeCloseTo(5 / 7);
+    expect(pausedRate).toBeCloseTo(5 / 7);
   });
 
-  it('정지 구간을 붙이기 전후로 두 비율이 완전히 같다 — 기록된 날만 세기 때문', () => {
+  it('21일 쉰 습관의 두 비율이, 같은 7일만 기록한 습관의 것과 완전히 같다', () => {
     // 같은 7일치 기록만 가진, 정지 구간이 아예 없는 짧은 습관.
     const short: Habit = { ...COUNT, createdAt: `${dates[0]}T00:00:00.000Z` };
     const sevenDayWindow = 7;

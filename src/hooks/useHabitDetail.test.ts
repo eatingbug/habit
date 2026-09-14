@@ -872,11 +872,11 @@ describe('useHabitDetail — 정지·보관·재개 컨트롤 (#19)', () => {
     return found;
   }
 
-  it('활성 습관은 잠시 쉬기와 보관하기 둘을 낸다', async () => {
+  it('활성 습관은 잠깐 쉬기와 보관하기 둘을 낸다', async () => {
     const result = await detail(await seed(habit()));
 
     expect(result.current.lifecycleActions.map((a) => a.kind)).toEqual(['pause', 'archive']);
-    expect(result.current.lifecycleActions.map((a) => a.label)).toEqual(['잠시 쉬기', '보관하기']);
+    expect(result.current.lifecycleActions.map((a) => a.label)).toEqual(['잠깐 쉬기', '보관하기']);
   });
 
   it('습관을 아직 불러오지 못했으면 아무 컨트롤도 내지 않는다', async () => {
@@ -885,7 +885,7 @@ describe('useHabitDetail — 정지·보관·재개 컨트롤 (#19)', () => {
     expect(result.current.lifecycleActions).toEqual([]);
   });
 
-  it('잠시 쉬기가 오늘부터 열린 구간을 저장하고, 화면은 다시 시작 하나만 받는다', async () => {
+  it('잠깐 쉬기가 오늘부터 열린 구간을 저장하고, 화면은 다시 시작 하나만 받는다', async () => {
     const result = await detail(await seed(habit()));
 
     await act(async () => {
@@ -897,7 +897,9 @@ describe('useHabitDetail — 정지·보관·재개 컨트롤 (#19)', () => {
     expect(result.current.lifecycleActions.map((a) => a.label)).toEqual(['다시 시작']);
   });
 
-  it('보관하기는 다시 꺼내기를 내고, 되돌리면 기록이 그대로 남는다 (AC 8)', async () => {
+  // #19: *"보관된 습관은 대시보드에서 숨지만 기록이 보존되고 되돌릴 수 있다"* — the
+  // 기록 보존 and 되돌릴 수 있다 halves, at the seam that actually writes them.
+  it('보관하기는 다시 꺼내기를 내고, 되돌리면 기록이 그대로 남는다', async () => {
     const past = addDays(TODAY, -3);
     const result = await detail(await seed(habit(), [activity(past, 6)]));
 
