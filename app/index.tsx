@@ -20,6 +20,8 @@ import {
   TOAST_OVERLAY_CLEARANCE,
   ToastOverlay,
 } from '@/components';
+import { SIGN_OUT_LABEL } from '@/config/copy';
+import { useSession } from '@/context/SessionContext';
 import { useDashboard, type DashboardRow, type StatProgress } from '@/hooks/useDashboard';
 import type { SkipReason } from '@/models';
 import { useTheme } from '@/theme/ThemeProvider';
@@ -245,6 +247,7 @@ function HabitRow({
 export default function Dashboard() {
   const { colors, preference, toggle } = useTheme();
   const router = useRouter();
+  const { signOut } = useSession();
   const { rows, stats, characterLevel, loading, logActivity, logSkip, toast, undoLast } =
     useDashboard();
 
@@ -253,14 +256,24 @@ export default function Dashboard() {
       <ScrollView style={styles.fill} contentContainerStyle={styles.screen}>
         <View style={styles.header}>
           <Text style={[styles.title, { color: colors.text }]}>대시보드</Text>
-          <Pressable
-            onPress={toggle}
-            style={[styles.toggle, { borderColor: colors.border, backgroundColor: colors.surface2 }]}
-          >
-            <Text style={[styles.toggleText, { color: colors.muted }]}>
-              {preference === 'system' ? '자동' : preference === 'light' ? '라이트' : '다크'}
-            </Text>
-          </Pressable>
+          <View style={styles.headerControls}>
+            <Pressable
+              onPress={toggle}
+              style={[styles.toggle, { borderColor: colors.border, backgroundColor: colors.surface2 }]}
+            >
+              <Text style={[styles.toggleText, { color: colors.muted }]}>
+                {preference === 'system' ? '자동' : preference === 'light' ? '라이트' : '다크'}
+              </Text>
+            </Pressable>
+            {/* 로그아웃은 게이트를 되돌리는 유일한 손잡이다 — 누르면 `<Stack>` 이 통째로
+                언마운트되고 이전 사용자의 화면은 남지 않는다 (AC 3). */}
+            <Pressable
+              onPress={() => void signOut()}
+              style={[styles.toggle, { borderColor: colors.border, backgroundColor: colors.surface2 }]}
+            >
+              <Text style={[styles.toggleText, { color: colors.muted }]}>{SIGN_OUT_LABEL}</Text>
+            </Pressable>
+          </View>
         </View>
 
         {/* Gated on the same `loading` as the rows below: before the load resolves the
@@ -335,6 +348,7 @@ const styles = StyleSheet.create({
   fill: { flex: 1 },
   screen: { padding: SPACE.xl, paddingBottom: TOAST_OVERLAY_CLEARANCE, gap: SPACE.lg },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  headerControls: { flexDirection: 'row', alignItems: 'center', gap: SPACE.md },
   title: { fontSize: FONT_SIZE.xl, fontWeight: '600', letterSpacing: -0.2 },
   toggle: {
     borderWidth: 1,

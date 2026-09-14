@@ -6,6 +6,7 @@ import {
   rewardToastLines,
   type RewardToastFacts,
   saveBannerLines,
+  signInCopy,
   SKIP_REASON_LABELS,
 } from './copy';
 
@@ -348,5 +349,26 @@ describe('saveBannerLines — the at-risk banner, split where the canvas splits 
   it('reads the same for a vowel-final name, which 을 would have broken', () => {
     expect(saveBannerLines('요가').lead).toBe('어제 요가 기록을 놓쳤어요.');
     expect(saveBannerLines('푸시업 30').lead).toBe('어제 푸시업 30 기록을 놓쳤어요.');
+  });
+});
+
+describe('signInCopy — 로그인 가능한 플랫폼인가 (#51)', () => {
+  /**
+   * 이 파일에 있는 이유가 곧 이 테스트다: 화면에 두면 `jest.config.js` 의 `src/**` 가
+   * 닿지 못해 아무도 확인하지 못한다.
+   */
+  it('웹에서는 누를 버튼을 준다', () => {
+    expect(signInCopy('web').action).toBe('카카오로 로그인');
+  });
+
+  /**
+   * 버튼이 **없어야** 한다. `signInWithOAuth` 는 브라우저가 아니면 URL 만 돌려주고
+   * 이동하지 않으므로, 버튼이 있으면 탭이 조용히 아무 일도 안 한다.
+   */
+  it('웹이 아니면 버튼 대신 못 한다는 말을 준다', () => {
+    for (const platform of ['ios', 'android']) {
+      expect(signInCopy(platform).action).toBeNull();
+      expect(signInCopy(platform).note).toContain('웹 브라우저');
+    }
   });
 });

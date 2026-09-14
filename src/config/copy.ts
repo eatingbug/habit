@@ -355,3 +355,58 @@ export const LIFECYCLE_LABELS = {
 /** The supporting line under those buttons — see `LIFECYCLE_LABELS`. */
 export const LIFECYCLE_NOTE =
   '지우는 게 아니에요. 쉬는 동안은 실패로 세지 않고, 기록도 이어 온 날수도 그대로 남아 있어요.';
+
+/**
+ * 로그인 화면의 문구 — **캔버스 출처 없음, 신규 문구.** 디자인 캔버스는 로그인 화면을
+ * 그린 적이 없다(앱이 로컬 전용이던 때의 캔버스다), 그래서 여기 있는 모든 문장은 이
+ * 티켓이 새로 쓴 것이다. `app/index.tsx` 의 `최고 레벨` 이 같은 표시를 달고 있다.
+ *
+ * 화면이 아니라 이 파일에 있는 이유는 이 파일의 표준 이유 그대로다 — `jest.config.js`
+ * 의 `testMatch` 가 `<rootDir>/src/**` 라 `app/` 아래 어떤 판단에도 테스트가 닿지
+ * 않는다. 그리고 여기 있는 것은 단순한 상수가 아니라 **판단**이다: 이 플랫폼에서
+ * 로그인이 가능한가.
+ */
+export interface SignInCopy {
+  lead: string;
+  /**
+   * 로그인 버튼의 문구. `null` 이면 이 플랫폼에는 누를 것이 없다 — 화면은 버튼을 그리지
+   * 않고 `note` 만 보여준다.
+   */
+  action: string | null;
+  note: string;
+}
+
+/**
+ * 웹이 아니면 **버튼이 없다.** `@supabase/auth-js` 의 provider 로그인은 브라우저가
+ * 아니면 URL 만 돌려주고 아무 데도 이동하지 않으므로, 네이티브에 버튼을 두면 탭이 조용히
+ * 아무 일도 안 한다 — 이 티켓이 "최악의 버그" 라고 부르는 바로 그 모양이다. 네이티브
+ * OAuth 는 이 티켓의 범위가 아니므로, 지을 수 없는 것을 지은 척하는 대신 그 사실을
+ * 말한다.
+ *
+ * `platform` 은 `Platform.OS` 를 받는다 — `src/config` 는 `react-native` 를 직접 읽지
+ * 않고(그 판단은 `src/context` 의 몫이다) 문자열로 받아 테스트가 양쪽을 다 볼 수 있게
+ * 한다.
+ */
+export function signInCopy(platform: string): SignInCopy {
+  if (platform !== 'web') {
+    return {
+      lead: '기록은 계정에 저장돼요.',
+      action: null,
+      note: '앱에서의 카카오 로그인은 아직 준비 중이에요. 지금은 웹 브라우저에서 열어 주세요.',
+    };
+  }
+  return {
+    lead: '기록은 계정에 저장돼요. 로그인하면 어느 기기에서든 같은 기록이 보여요.',
+    action: '카카오로 로그인',
+    note: '닉네임과 프로필 사진만 받아요. 이메일은 받지 않습니다.',
+  };
+}
+
+/** 세션을 확인하는 동안 화면에 남는 한 줄 — 빈 화면이 보이지 않게 하는 것이 목적이다. */
+export const SESSION_CHECKING_NOTE = '로그인 상태를 확인하는 중…';
+
+/** 로그인 자체가 시작되지 못했을 때. 실패한 탭이 아무 말 없이 끝나지 않게 한다. */
+export const SIGN_IN_FAILED_NOTE = '로그인을 시작하지 못했어요. 잠시 뒤 다시 눌러 주세요.';
+
+/** 로그아웃 버튼 — 대시보드 머리말의 테마 토글 옆. */
+export const SIGN_OUT_LABEL = '로그아웃';
