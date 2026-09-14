@@ -6,10 +6,11 @@ import { join } from 'node:path';
  * Data imports React. Asserted mechanically so it survives every later ticket.
  *
  * The ban extends to the storage drivers, which encodes the KV seam: `src/data` holds
- * only the repository interface, `LocalRepository(kv)`, `MemoryKV` and the Supabase
- * stub — all pure and testable without a device. The platform-specific KV adapters
- * (AsyncStorage on native, localforage on web) live in `src/context`, the one layer
- * allowed to know which platform it is running on.
+ * only the repository interface, `LocalRepository(kv)`, `MemoryKV` and
+ * `SupabaseRepository(client, utcOffsetMinutes)` — all pure and testable without a
+ * device, because each takes its driver as an argument. The platform-specific KV
+ * adapters (AsyncStorage on native, localforage on web) live in `src/context`, the
+ * one layer allowed to know which platform it is running on.
  */
 function sourceFilesUnder(dir: string): string[] {
   const out: string[] = [];

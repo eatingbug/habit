@@ -113,3 +113,28 @@ export function newId(): string {
     return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
   });
 }
+
+/**
+ * The device's UTC offset in minutes, **east-positive**: KST is `+540`, the same sign
+ * ISO-8601 writes as `+09:00`.
+ *
+ * `Date#getTimezoneOffset()` has the **opposite** sign (`-540` in KST), so the flip
+ * happens here, once, at the only place that reads it. ADR-0005 and the
+ * `utc_offset_minutes` column comment both pin the convention down because getting
+ * the sign backwards is precisely why #31 is open — and the value is unrecoverable
+ * once the row is written (`docs/SPEC.md:841–845`), so there is no later pass that
+ * could correct it.
+ *
+ * Read at call time rather than cached: a device crossing a timezone (or a DST
+ * boundary) mid-session must stamp the offset the write actually happened in.
+ *
+ * Lives here with the other readings of the device rather than in `SupabaseRepository`
+ * so that class can be constructed without one — the seam
+ * `src/__tests__/architecture.test.ts`'s docblock describes, and what lets the live
+ * round-trip suite inject a fixed offset and stay deterministic. So the repository
+ * takes this value as a constructor argument instead of calling it. The caller that
+ * passes it is #51; until then this function has no consumer in `app/`.
+ */
+export function deviceUtcOffsetMinutes(): number {
+  return -new Date().getTimezoneOffset();
+}
