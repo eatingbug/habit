@@ -1,7 +1,6 @@
 /**
  * The two readings of the device that the pure layers must not make — the local clock
- * (its wall time and its UTC offset) and the id source (SPEC §2.2: `src/domain` and
- * `src/data` stay pure and clock-free).
+ * and the id source (SPEC §2.2: `src/domain` and `src/data` stay pure and clock-free).
  *
  * Both were born inline in a screen and are now shared, so they live here rather than
  * being copied: a second `localToday` would be a second timezone bug waiting to
@@ -129,8 +128,10 @@ export function newId(): string {
  * Read at call time rather than cached: a device crossing a timezone (or a DST
  * boundary) mid-session must stamp the offset the write actually happened in.
  *
- * Lives here with the other readings of the device for the reason this file exists —
- * `src/data` and `src/domain` stay clock-free (SPEC §2.2), so `SupabaseRepository`
+ * Lives here with the other readings of the device rather than in `SupabaseRepository`
+ * so that class can be constructed without one — the seam
+ * `src/__tests__/architecture.test.ts`'s docblock describes, and what lets the live
+ * round-trip suite inject a fixed offset and stay deterministic. So the repository
  * takes this value as a constructor argument instead of calling it. The caller that
  * passes it is #51; until then this function has no consumer in `app/`.
  */

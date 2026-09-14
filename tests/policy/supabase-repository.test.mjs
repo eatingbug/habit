@@ -16,8 +16,9 @@
  * === 이 스위트가 증명하려는 것: 왕복 동등성 ===
  *
  * 12 메서드를 전부 부르되, 값어치는 "쓰고 다시 읽으면 원본 객체와 **같다**" 에 있다.
- * `LocalRepository` 와 어긋나면 #51 의 한 줄 교체가 조용히 동작을 바꾸기 때문에,
- * 특히 네 비대칭을 콕 집어 단언한다:
+ * `LocalRepository` 와 어긋나면 #51 이 구현을 갈아끼울 때 조용히 동작이 바뀌기
+ * 때문에(한 줄 교체 약속은 ADR-0005 의 `"한 줄 교체" 약속이 깨진다` 절이 이미
+ * 거둬들였다), 특히 네 비대칭을 콕 집어 단언한다:
  *   (a) 없는 optional 을 지운 수정이 예전 값을 남기지 않는다 (모든 컬럼 명시 쓰기)
  *   (b) 없는 optional 은 `null` 이 아니라 **키 자체가 없는 채로** 돌아온다
  *   (c) `pauses` 의 `[]` 는 부재로 되돌아온다
@@ -29,6 +30,10 @@
  * **표식은 rls.test.mjs 와 겹치지 않게 따로 둔다** — `node --test` 는 파일을 병렬로
  * 돌리고 두 스위트의 쓸어내기가 서로의 행을 지워 버리면 간헐적으로 빨개진다.
  * 사용자가 곧 이 DB 를 실제로 쓰므로 남은 행은 위생 문제가 아니라 실사용 오염이다.
+ */
+/*
+ * 아래에서 말하는 "착수 전 결정 N" 은 이슈 본문이 아니라 #50 에 달린 티켓 관리자
+ * 코멘트의 번호다: https://github.com/eatingbug/habit/issues/50#issuecomment-5664356446
  */
 import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
@@ -44,6 +49,8 @@ const SENTINEL_NAME = 'repo-roundtrip-test';
 const SENTINEL_DATE = '1970-02-01';
 const SENTINEL_DATE_NEXT = '1970-02-02';
 const SENTINEL_DATE_AFTER = '1970-02-03';
+/** 서버 캡을 넘기는 대량 왕복 전용. 위 셋과도, rls.test.mjs 의 표식과도 겹치지 않는다. */
+const BULK_DATE = '1970-04-01';
 
 /** 동쪽이 양수 — KST. 주입값이므로 이 스위트는 기기 시간대와 무관하게 결정적이다. */
 const OFFSET = 540;
@@ -64,11 +71,11 @@ async function sweep() {
   await client
     .from('habit_entries')
     .delete()
-    .in('local_date', [SENTINEL_DATE, SENTINEL_DATE_NEXT, SENTINEL_DATE_AFTER]);
+    .in('local_date', [SENTINEL_DATE, SENTINEL_DATE_NEXT, SENTINEL_DATE_AFTER, BULK_DATE]);
   await client
     .from('free_logs')
     .delete()
-    .in('local_date', [SENTINEL_DATE, SENTINEL_DATE_NEXT, SENTINEL_DATE_AFTER]);
+    .in('local_date', [SENTINEL_DATE, SENTINEL_DATE_NEXT, SENTINEL_DATE_AFTER, BULK_DATE]);
   await client.from('reflection_sessions').delete().eq('week_of', SENTINEL_DATE);
 }
 
@@ -362,7 +369,7 @@ describe('free_logs — upsertFreeLog · getFreeLogs · deleteLog', () => {
     assert.deepStrictEqual(rows[0], edited);
   });
 
-  it('deleteLog', async () => {
+  it('deleteLog 는 id 하나로 그 행만 지운다', async () => {
     const entry = log();
     await repo.upsertFreeLog(entry);
     await repo.deleteLog(entry.id);
@@ -443,7 +450,74 @@ describe('reflection_sessions — upsertReflectionSession · getReflectionSessio
   });
 });
 
-describe('실패는 던진다 (#50 결정 7)', () => {
+
+/**
+ * 서버 캡을 넘는 왕복 — 이 스위트에서 가장 비싼 테스트이고, 가장 비싼 버그를 막는다.
+ *
+ * PostgREST 의 `db-max-rows` 는 요청한 만큼이 아니라 **캡만큼만** 돌려주고, 나머지에
+ * 대해서는 아무 말도 하지 않는다. `.limit()` 으로도 못 넘는다 (직접 확인했다:
+ * `limit=5000` 을 붙여도 1000 행만 온다). `LocalRepository` 는 전부 돌려주므로,
+ * 페이지네이션이 없으면 행이 캡을 넘긴 사용자는 #51 이후 조용히 기록을 잃고 그 위에서
+ * 계산되는 연속·비율·히트맵이 전부 틀린다. 에러도 경고도 없다. 습관 몇 개를 1년만 써도
+ * 넘는 수다.
+ *
+ * **이 테스트는 스스로가 헛돌지 않는지도 확인한다.** 캡은 코드 상수가 아니라 프로젝트
+ * 설정이라 나중에 올라갈 수 있는데, 그러면 "전부 돌아왔다"는 단언은 통과하면서 아무것도
+ * 증명하지 않게 된다. 그래서 페이지네이션 없는 raw 읽기가 **실제로 잘렸는지**를 먼저
+ * 단언한다 — 그게 거짓이면 이 테스트가 빨개져서 TOTAL 을 올리라고 말한다.
+ */
+describe('free_logs — 서버 캡을 넘는 왕복 (페이지네이션)', () => {
+  /** 관측된 캡(1000)보다 넉넉히 크되, 몇 초 안에 끝나는 수. */
+  const TOTAL = 1100;
+  /** 마지막 행은 **id 로 콕 집어** 확인한다 — 개수만 보면 중복으로도 통과한다. */
+  const lastId = uuid();
+
+  before(async () => {
+    // 저장소를 통해 쓴다: 매퍼까지 포함한 실제 경로여야 한다. 1100번의 왕복이라
+    // 동시성을 준다 — 직렬이면 분 단위, 이러면 초 단위다.
+    const logs = [];
+    for (let i = 0; i < TOTAL; i += 1) {
+      logs.push({
+        id: i === TOTAL - 1 ? lastId : uuid(),
+        date: BULK_DATE,
+        // 스탬프를 일부러 흩는다. 전부 같은 초면 (logged_at, id) 정렬의 타이브레이크만
+        // 일하게 되는데, 페이지 경계에서 검증하고 싶은 것은 양쪽 다이다.
+        timestamp: new Date(Date.UTC(1970, 3, 1, 0, Math.floor(i / 60), i % 60)).toISOString(),
+        type: 'note',
+        text: i === TOTAL - 1 ? '캡 너머 마지막 행' : `대량 ${i}`,
+      });
+    }
+
+    const CONCURRENCY = 40;
+    for (let i = 0; i < logs.length; i += CONCURRENCY) {
+      await Promise.all(logs.slice(i, i + CONCURRENCY).map((log) => repo.upsertFreeLog(log)));
+    }
+  });
+
+  it('페이지네이션 없는 raw 읽기는 **실제로 잘린다** (전제 확인 — 아니면 아래가 헛돈다)', async () => {
+    const raw = await client.from('free_logs').select('id').eq('local_date', BULK_DATE);
+    assert.equal(raw.error, null);
+    assert.ok(
+      raw.data.length < TOTAL,
+      `서버 캡이 ${TOTAL} 이상으로 올라갔다 (raw 로 ${raw.data.length} 행). ` +
+        `캡을 넘지 못하면 아래 단언은 아무것도 증명하지 않는다 — TOTAL 을 올릴 것.`,
+    );
+  });
+
+  it('getFreeLogs 는 캡과 무관하게 **전부** 돌려준다 (개수 · 중복 없음 · 마지막 행)', async () => {
+    const loaded = await repo.getFreeLogs(BULK_DATE, BULK_DATE);
+
+    assert.equal(loaded.length, TOTAL, '행이 잘렸다 — 페이지네이션이 동작하지 않는다');
+    // 페이지 경계에서 같은 행이 두 번 오면 개수만으로는 통과할 수 있다.
+    assert.equal(new Set(loaded.map((l) => l.id)).size, TOTAL, '중복된 행이 있다');
+
+    const last = loaded.find((l) => l.id === lastId);
+    assert.ok(last != null, '마지막 행이 오지 않았다 — 캡 너머가 통째로 잘렸다');
+    assert.equal(last.text, '캡 너머 마지막 행');
+  });
+});
+
+describe('실패는 던진다 (착수 전 결정 7 — #50 의 티켓 관리자 코멘트)', () => {
   it('서버가 거부하면 조용한 void 가 아니라 throw 다', async () => {
     // 존재하지 않는 habit_id — FK 위반. 매퍼는 통과하고 서버가 거부한다.
     await assert.rejects(

@@ -29,9 +29,18 @@ import type { HabitRepository } from './HabitRepository';
  *
  * **Both collaborators are injected**, exactly as `LocalRepository(kv)` takes its
  * driver: the client, and the device's UTC offset. That is what keeps every import
- * here `import type` and keeps `src/data` pure and clock-free (SPEC §2.2) — the
- * layer that knows which platform it is running on, and what time it is, is
- * `src/context` (see `src/__tests__/architecture.test.ts`).
+ * here `import type` and lets the class be constructed without a device — the
+ * rationale `src/__tests__/architecture.test.ts`'s docblock writes down, where the
+ * layer allowed to know which platform it is running on is `src/context`.
+ *
+ * **A knowing deviation from §2.2's dependency rule** (`docs/SPEC.md:100–101`): "Data
+ * imports only models", and line 1 of this file imports `@supabase/supabase-js`. It is
+ * `import type`, so nothing survives to runtime, but it is still an import and the rule
+ * says none. It is not worth restructuring to dodge: §2.2's own diagram
+ * (`docs/SPEC.md:95`) puts `LocalRepository  →  SupabaseRepository` in the Data layer,
+ * so the SPEC plainly anticipates this class — the dependency rule's letter simply
+ * predates it. The purity sentence people reach for is §4 (`docs/SPEC.md:343–344`) and
+ * it governs `src/domain`, not `src/data`; §2.2 says nothing about clocks at all.
  *
  * **No user argument, anywhere.** `getHabits()` returns *my* habits because of the
  * RLS policies in `supabase/migrations/20260914120000_core_schema_and_rls.sql`, not
@@ -114,11 +123,64 @@ function raiseIfFailed(method: string, error: { message: string } | null): void 
 }
 
 /**
- * PostgREST renders `timestamptz` as `+00:00`; the models store `Z`. Normalising on
- * read is not cosmetic: `restampedAtLocalTime` (`src/lib/device.ts`) decides whether a
- * row was edited by **comparing the two stamps as strings**, so an un-normalised read
- * would make every reopened time reveal rewrite a row the user never touched — the
- * exact behaviour #13 closed.
+ * The number of rows one page asks for. **Correctness does not depend on this value**
+ * — see `readAllPages` — so it is purely a trade between round trips and payload size,
+ * and 1000 puts a realistic user's whole history in the first page.
+ *
+ * That it currently equals the project's cap is a **coincidence, and nothing reads it
+ * that way**: the cap (`db-max-rows`) is a dashboard setting, not a constant of the
+ * code, and a page size that assumed a particular value would start truncating again
+ * the day someone changed it. `readAllPages` never compares against this number.
+ */
+const PAGE_SIZE = 1000;
+
+type Page = { data: unknown[] | null; error: { message: string } | null };
+
+/**
+ * Reads **every** matching row, a page at a time.
+ *
+ * Without this, a list read returns whatever PostgREST's `db-max-rows` lets through and
+ * says nothing about the rest. On this project that cap is **1000, live today**, and an
+ * explicit `.limit()` does not lift it — only `Range` paging does. `LocalRepository`
+ * returns every row, so an un-paged read is exactly the kind of silent divergence that
+ * would survive #51's swap: no error, no warning, just a streak, rate or heatmap
+ * computed above this layer from a truncated history. A year of daily logging across a
+ * few habits passes 1000 without trying.
+ *
+ * **Termination is derived from what the server actually returned, never from
+ * `PAGE_SIZE`.** The loop advances by the page's own length and stops only on an empty
+ * page. That is what makes the cap irrelevant: if the server hands back fewer rows than
+ * asked for — because the cap is lower than `PAGE_SIZE`, or because someone lowers it
+ * later — the next window simply starts where the last one really ended. Treating a
+ * short page as "done" would re-introduce the bug in a subtler form, so the cost of
+ * being right is one extra request that comes back empty.
+ *
+ * The caller's `order` is **load-bearing here, not cosmetic**: paging an unordered
+ * relation lets Postgres choose a different row order per request, which duplicates
+ * some rows across page boundaries and drops others entirely.
+ */
+async function readAllPages<Row>(
+  method: string,
+  page: (from: number, to: number) => PromiseLike<Page>,
+): Promise<Row[]> {
+  const rows: Row[] = [];
+  for (;;) {
+    const { data, error } = await page(rows.length, rows.length + PAGE_SIZE - 1);
+    raiseIfFailed(method, error);
+    const batch = (data ?? []) as Row[];
+    if (batch.length === 0) return rows;
+    rows.push(...batch);
+  }
+}
+
+/**
+ * PostgREST renders `timestamptz` as `+00:00`; the models store `Z`.
+ *
+ * Normalising on read is what makes the round trip *equal* rather than merely
+ * equivalent: without it a stamp written as `…:00.000Z` reads back as `…:00+00:00`,
+ * which is the same instant and a different string, and `LocalRepository` returns the
+ * string it was given. Measured by mutation rather than asserted: making this function
+ * the identity turns **ten** tests in `tests/policy/supabase-repository.test.mjs` red.
  */
 function isoUtc(stamp: string): string {
   return new Date(stamp).toISOString();
@@ -126,8 +188,8 @@ function isoUtc(stamp: string): string {
 
 /**
  * An absent optional must come back **absent**, never `null`: `LocalRepository`'s
- * `JSON.parse` never invents keys, and a `cue: null` would compare unequal, render as
- * the string "null" and defeat every `x != null` guard above this layer.
+ * `JSON.parse` never invents keys, so a `cue: null` would compare unequal to the habit
+ * that was written and render as the string "null".
  */
 function present<K extends string, V>(key: K, value: V | null): { [P in K]?: V } {
   return (value == null ? {} : { [key]: value }) as { [P in K]?: V };
@@ -143,7 +205,7 @@ function present<K extends string, V>(key: K, value: V | null): { [P in K]?: V }
  * `user_id` is deliberately not among them — see the class docblock.
  *
  * No `kind` backfill on read, unlike `LocalRepository.normaliseHabit`: the column is
- * `kind text not null check (kind in ('count','binary'))`, so a row without a `kind`
+ * `kind text not null check (kind in ('count', 'binary'))`, so a row without a `kind`
  * cannot exist. Defending against an impossible row is what CLAUDE.md §2 forbids.
  */
 function toHabitRow(habit: Habit): HabitRow {
@@ -167,7 +229,9 @@ function toHabitRow(habit: Habit): HabitRow {
  * `pauses` is the one optional that cannot round-trip through `null`: the column is
  * `not null default '[]'`, so an absent `pauses` is stored as `[]` and would read back
  * as `[]` where `LocalRepository` gives `undefined`. Stripping the empty array back to
- * an absent key is what keeps #51's one-line swap from changing behaviour.
+ * an absent key is what keeps #51 from changing behaviour when it switches the
+ * implementation over. (Not a one-line switch: ADR-0005's section headed
+ * `"한 줄 교체" 약속이 깨진다` retired that promise.)
  */
 function fromHabitRow(row: HabitRow): Habit {
   return {
@@ -247,22 +311,17 @@ export class SupabaseRepository implements HabitRepository {
   // --- Habits ---------------------------------------------------------------
 
   /**
-   * Reads are ordered explicitly. Postgres returns rows in whatever order it likes
-   * without an `order by`, and `LocalRepository` returns insertion order, which in
-   * practice is creation order — so `created_at ASC, id ASC` is the closest stable
-   * stand-in. Nothing depends on it: persisted order is explicitly not part of the
-   * contract (`LocalRepository.test.ts`) and everything that cares re-sorts
-   * (`sortByDomainOrder`, §7.3). But "arbitrary" is not a contract worth shipping,
-   * and the round-trip suite needs reads to be repeatable.
+   * Ordered explicitly, and the order is **required** rather than decorative: it is
+   * what makes `readAllPages` safe. Postgres is free to return an unordered relation
+   * differently on each request, which across page boundaries duplicates some rows and
+   * loses others. `created_at ASC, id ASC` is also the closest stable stand-in for
+   * `LocalRepository`'s insertion order, which in practice is creation order.
    */
   async getHabits(): Promise<Habit[]> {
-    const { data, error } = await this.client
-      .from('habits')
-      .select('*')
-      .order('created_at')
-      .order('id');
-    raiseIfFailed('getHabits', error);
-    return ((data ?? []) as HabitRow[]).map(fromHabitRow);
+    const rows = await readAllPages<HabitRow>('getHabits', (offset, last) =>
+      this.client.from('habits').select('*').order('created_at').order('id').range(offset, last),
+    );
+    return rows.map(fromHabitRow);
   }
 
   /** `maybeSingle`, not `single`: "no such habit" is `null` here, not an error (§5.1). */
@@ -296,16 +355,18 @@ export class SupabaseRepository implements HabitRepository {
    * `logged_at`, which can land on the neighbouring UTC day.
    */
   async getEntries(habitId: string, from: string, to: string): Promise<HabitEntry[]> {
-    const { data, error } = await this.client
-      .from('habit_entries')
-      .select('*')
-      .eq('habit_id', habitId)
-      .gte('local_date', from)
-      .lte('local_date', to)
-      .order('logged_at')
-      .order('id');
-    raiseIfFailed('getEntries', error);
-    return ((data ?? []) as HabitEntryRow[]).map(fromHabitEntryRow);
+    const rows = await readAllPages<HabitEntryRow>('getEntries', (offset, last) =>
+      this.client
+        .from('habit_entries')
+        .select('*')
+        .eq('habit_id', habitId)
+        .gte('local_date', from)
+        .lte('local_date', to)
+        .order('logged_at')
+        .order('id')
+        .range(offset, last),
+    );
+    return rows.map(fromHabitEntryRow);
   }
 
   /**
@@ -343,15 +404,17 @@ export class SupabaseRepository implements HabitRepository {
   // --- Free logs ------------------------------------------------------------
 
   async getFreeLogs(from: string, to: string): Promise<FreeLog[]> {
-    const { data, error } = await this.client
-      .from('free_logs')
-      .select('*')
-      .gte('local_date', from)
-      .lte('local_date', to)
-      .order('logged_at')
-      .order('id');
-    raiseIfFailed('getFreeLogs', error);
-    return ((data ?? []) as FreeLogRow[]).map(fromFreeLogRow);
+    const rows = await readAllPages<FreeLogRow>('getFreeLogs', (offset, last) =>
+      this.client
+        .from('free_logs')
+        .select('*')
+        .gte('local_date', from)
+        .lte('local_date', to)
+        .order('logged_at')
+        .order('id')
+        .range(offset, last),
+    );
+    return rows.map(fromFreeLogRow);
   }
 
   async upsertFreeLog(log: FreeLog): Promise<void> {
@@ -375,14 +438,16 @@ export class SupabaseRepository implements HabitRepository {
   // --- Reflection sessions --------------------------------------------------
 
   async getReflectionSessions(habitId: string): Promise<ReflectionSession[]> {
-    const { data, error } = await this.client
-      .from('reflection_sessions')
-      .select('*')
-      .eq('habit_id', habitId)
-      .order('week_of')
-      .order('id');
-    raiseIfFailed('getReflectionSessions', error);
-    return ((data ?? []) as ReflectionSessionRow[]).map(fromReflectionSessionRow);
+    const rows = await readAllPages<ReflectionSessionRow>('getReflectionSessions', (offset, last) =>
+      this.client
+        .from('reflection_sessions')
+        .select('*')
+        .eq('habit_id', habitId)
+        .order('week_of')
+        .order('id')
+        .range(offset, last),
+    );
+    return rows.map(fromReflectionSessionRow);
   }
 
   /**
