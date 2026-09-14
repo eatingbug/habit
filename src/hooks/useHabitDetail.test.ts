@@ -863,3 +863,114 @@ describe('useHabitDetail — the design box (D13, AC 8)', () => {
     expect(dayOf(result.current, past).state).toBe('partial');
   });
 });
+
+describe('useHabitDetail — 정지·보관·재개 컨트롤 (#19)', () => {
+  /** The action the screen would press, by its key. */
+  function action(view: HabitDetailView, kind: string) {
+    const found = view.lifecycleActions.find((a) => a.kind === kind);
+    if (found == null) throw new Error(`no lifecycle action for ${kind}`);
+    return found;
+  }
+
+  it('활성 습관은 잠깐 쉬기와 보관하기 둘을 낸다', async () => {
+    const result = await detail(await seed(habit()));
+
+    expect(result.current.lifecycleActions.map((a) => a.kind)).toEqual(['pause', 'archive']);
+    expect(result.current.lifecycleActions.map((a) => a.label)).toEqual(['잠깐 쉬기', '보관하기']);
+  });
+
+  it('습관을 아직 불러오지 못했으면 아무 컨트롤도 내지 않는다', async () => {
+    const result = await detail(await seed(habit()), 'nobody');
+
+    expect(result.current.lifecycleActions).toEqual([]);
+  });
+
+  it('잠깐 쉬기가 오늘부터 열린 구간을 저장하고, 화면은 다시 시작 하나만 받는다', async () => {
+    const result = await detail(await seed(habit()));
+
+    await act(async () => {
+      await action(result.current, 'pause').run();
+    });
+
+    expect(result.current.habit?.lifecycle).toBe('paused');
+    expect(result.current.habit?.pauses).toEqual([{ from: TODAY, resumeTo: 'forming' }]);
+    expect(result.current.lifecycleActions.map((a) => a.label)).toEqual(['다시 시작']);
+  });
+
+  // #19: *"보관된 습관은 대시보드에서 숨지만 기록이 보존되고 되돌릴 수 있다"* — the
+  // 기록 보존 and 되돌릴 수 있다 halves, at the seam that actually writes them.
+  it('보관하기는 다시 꺼내기를 내고, 되돌리면 기록이 그대로 남는다', async () => {
+    const past = addDays(TODAY, -3);
+    const result = await detail(await seed(habit(), [activity(past, 6)]));
+
+    await act(async () => {
+      await action(result.current, 'archive').run();
+    });
+
+    expect(result.current.habit?.lifecycle).toBe('archived');
+    expect(result.current.lifecycleActions.map((a) => a.label)).toEqual(['다시 꺼내기']);
+
+    await act(async () => {
+      await action(result.current, 'unarchive').run();
+    });
+
+    expect(result.current.habit?.lifecycle).toBe('forming');
+    // 보관 전에 남긴 날은 한 줄도 사라지지 않았다.
+    expect(dayOf(result.current, past).state).toBe('done');
+  });
+
+  /**
+   * The round trip at the hook seam: each action writes through `upsertHabit` and the
+   * reload re-reads it, so the next render's figures come off the stored habit. The
+   * pause a user can actually take from this screen always starts **today** — `run()`
+   * has no other date — so a same-day pause/resume is the shortest whole trip.
+   *
+   * 정지 구간이 연속을 끊지 않는다는 것 자체는 도메인이 이미 핀했다
+   * (`src/domain/streak.test.ts:105`, `:112`, `:117`, `:122`).
+   */
+  it('재개일은 다시 활성이라 그 날을 채우면 연속이 선다 (반열림 [from, to))', async () => {
+    const start = addDays(TODAY, -24);
+    const entries = [0, 1, 2].map((n) => activity(addDays(start, n), 6));
+    const result = await detail(await seed(habit({ createdAt: `${start}T00:00:00.000Z` }), entries));
+
+    // 사흘 뒤부터 오늘까지 기록이 없으므로 지금은 끊겨 있다.
+    expect(result.current.pills.streak).toBe(0);
+
+    await act(async () => {
+      await action(result.current, 'pause').run();
+    });
+    await act(async () => {
+      await action(result.current, 'resume').run();
+    });
+    await act(async () => {
+      await result.current.fillDay();
+    });
+
+    expect(result.current.habit?.pauses).toEqual([{ from: TODAY, to: TODAY, resumeTo: 'forming' }]);
+    // 재개일은 다시 활성이고, 오늘을 채우면 연속이 오늘부터 다시 선다.
+    expect(result.current.pills.streak).toBe(1);
+  });
+
+  /**
+   * The fourth reader of `lifecycle` on this screen, and the one interaction between
+   * #19 and #18: 빠짐없이 leads only while a habit is `forming`
+   * (`src/hooks/useHabitDetail.ts:76`). Because a pause remembers what to resume to,
+   * an established habit comes back established — and the pill stays out of the second
+   * slot, exactly as if the habit had never rested.
+   */
+  it('established 습관은 쉬었다 돌아와도 강등되지 않아 빠짐없이 pill이 앞으로 오지 않는다', async () => {
+    const result = await detail(await seed(habit({ lifecycle: 'established' })));
+
+    expect(result.current.pills.engagementLeads).toBe(false);
+
+    await act(async () => {
+      await action(result.current, 'pause').run();
+    });
+    await act(async () => {
+      await action(result.current, 'resume').run();
+    });
+
+    expect(result.current.habit?.lifecycle).toBe('established');
+    expect(result.current.pills.engagementLeads).toBe(false);
+  });
+});

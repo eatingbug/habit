@@ -21,7 +21,7 @@ import {
   TOAST_OVERLAY_CLEARANCE,
   ToastOverlay,
 } from '@/components';
-import { deleteConfirmLines, SKIP_REASON_LABELS } from '@/config/copy';
+import { deleteConfirmLines, LIFECYCLE_NOTE, SKIP_REASON_LABELS } from '@/config/copy';
 import {
   useHabitDetail,
   type DesignBox,
@@ -1186,6 +1186,33 @@ export default function HabitDetail() {
         <HeaderSub binary={habit.kind === 'binary'} established={leadsWithChart} />
 
         {view.panelOrder.map(panel)}
+
+        {/* 잠깐 쉬기 · 보관하기 · 다시 시작 · 다시 꺼내기 (SPEC §4.7, #19).
+            **The placement is ours; the word 잠깐 쉬기 is the canvas's.** No artboard
+            draws a lifecycle control at this place — the only ones drawing a pause are
+            `design/Focus.dc.html` and `design/parts/Focus.body.html`, which #19
+            declares V2 — so this is where we put it: the very foot of the screen,
+            under the journal, in `ghost` — a door back rather than a destructive act,
+            and nothing here should compete with 기록하기. The label itself is taken
+            from the V1 회고 artboard (`design/parts/Reflection.body.html:53`); see
+            `LIFECYCLE_LABELS`. Which buttons appear and what they are called is the
+            hook's (`lifecycleActions`); this block only places them. */}
+        {view.lifecycleActions.length > 0 && (
+          <View style={styles.lifecycle}>
+            <View style={styles.lifecycleRow}>
+              {view.lifecycleActions.map((lifecycleAction) => (
+                <Button
+                  key={lifecycleAction.kind}
+                  label={lifecycleAction.label}
+                  variant="ghost"
+                  tap
+                  onPress={() => void lifecycleAction.run()}
+                />
+              ))}
+            </View>
+            <Footnote>{LIFECYCLE_NOTE}</Footnote>
+          </View>
+        )}
       </ScrollView>
 
       <ToastOverlay toast={view.toast} onUndo={() => void view.undoLast()} />
@@ -1268,6 +1295,10 @@ const styles = StyleSheet.create({
   dv: { flex: 1, fontSize: FONT_SIZE.base },
   dvEmpty: { fontStyle: 'italic' },
   journalGroup: { gap: SPACE.md },
+  // The foot of the screen: the two low-emphasis controls centred over their one
+  // supporting line, set apart from the journal above them.
+  lifecycle: { alignItems: 'center', gap: SPACE.md, marginTop: SPACE.lg },
+  lifecycleRow: { flexDirection: 'row', gap: SPACE.md },
   // `.jday` — the date column, then the chip and rows stacked beside it.
   jday: { flexDirection: 'row', gap: SPACE.lg - 2, paddingVertical: SPACE.md + 1, borderBottomWidth: 1 },
   jd: { width: 52, fontFamily: FONT_FAMILY.mono, fontSize: FONT_SIZE.sm, paddingTop: 2 },

@@ -13,6 +13,20 @@ export interface PauseInterval {
   from: string;
   /** 'YYYY-MM-DD' — first re-active date; absent ⇒ still paused. */
   to?: string;
+  /**
+   * The lifecycle resuming returns to. Absent ⇒ `'forming'`.
+   *
+   * **A declared deviation from the two-field type the documents give verbatim** —
+   * SPEC §3.2 (`docs/SPEC.md:203–206`) *and*
+   * `docs/adr/0003-paused-days-are-not-classified.md:28–31`, which per #19's 문서 권위
+   * outranks the SPEC, so this deviates from the top authority and not merely from the
+   * spec. Without it a resume cannot tell whether to restore `forming` or
+   * `established` — writing `lifecycle: 'paused'` overwrote that value — and demoting
+   * an established habit for having rested is exactly what ADR-0003's 지켜야 할 성질
+   * forbids (`:94–95`). The full decision, and the alternatives weighed against it,
+   * are in `docs/adr/0004-resume-restores-the-pre-pause-lifecycle.md`.
+   */
+  resumeTo?: 'forming' | 'established';
 }
 
 export type HabitKind = 'count' | 'binary';

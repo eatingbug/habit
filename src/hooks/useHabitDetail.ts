@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 
+import { LIFECYCLE_LABELS } from '@/config/copy';
 import { TUNING } from '@/config/tuning';
 import { useRepository } from '@/context/RepositoryContext';
 import { isBackfillableDate, isBackfilledRow } from '@/domain/backfill';
@@ -7,6 +8,7 @@ import { dayStates, sortDayRows, type ClassifiedDay } from '@/domain/classify';
 import { compareDates, dateOf, daysBetween, mondayOf, windowEndingAt } from '@/domain/dates';
 import { deleteOutcome, type DeleteOutcome } from '@/domain/deleteEffect';
 import { heatCells, type HeatCell } from '@/domain/heatLevel';
+import { archiveHabit, pauseHabit, resumeHabit } from '@/domain/lifecycle';
 import { successRate } from '@/domain/rates';
 import { computeXP } from '@/domain/score';
 import { computeStreak, engagementStreak, showedUpDays } from '@/domain/streak';
@@ -54,7 +56,7 @@ export interface DetailPills {
   /**
    * Is the 빠짐없이 pill shown at all? **Count habits only** (#18).
    *
-   * Not a canvas whim: a binary habit's floor is always 1 (`src/models/index.ts:29`)
+   * Not a canvas whim: a binary habit's floor is always 1 (`src/models/index.ts:43`)
    * and its activity rows always carry `actual: 1` (`src/hooks/useQuickLog.ts:209`), so
    * `classify.ts`'s `sum < habit.floor` can never hold and `partial` is unreachable —
    * `engagementStreak` and `streak` are then the same number, and a pill showing 연속
@@ -272,6 +274,24 @@ export interface DetailDeleteEffect extends DeleteOutcome {
 }
 
 /**
+ * One lifecycle control at the foot of the screen — 잠깐 쉬기 · 보관하기 · 다시 시작 ·
+ * 다시 꺼내기 (SPEC §4.7, issue #19).
+ *
+ * **Which** controls appear, and with which label, is decided here rather than in
+ * `app/habit/[id].tsx` for this file's standing reason: `jest.config.js` matches
+ * `src/**` only, so a branch on `lifecycle` written in JSX is a branch no test can
+ * reach. An array and not a set of booleans, so "활성이면 둘, 정지 중이면 하나" is one
+ * assertion and the screen genuinely decides nothing — it places what it is handed.
+ */
+export interface LifecycleAction {
+  /** A stable key for the screen's `key` prop and for tests to name the action by. */
+  kind: 'pause' | 'archive' | 'resume' | 'unarchive';
+  label: string;
+  /** Writes through `upsertHabit` and reloads. */
+  run(): Promise<void>;
+}
+
+/**
  * Which panels the screen stacks, in order (D6).
  *
  * `established` puts the growth chart **above** the pills (`Established.body.html`):
@@ -383,6 +403,20 @@ export interface HabitDetailView {
    * illegal and **nothing is written**, or to `null` when it is stored.
    */
   saveDesign(patch: DesignPatch): Promise<DesignErrors | null>;
+  /**
+   * The foot-of-screen lifecycle controls, in the order they are shown (#19). An
+   * active habit offers both 잠깐 쉬기 and 보관하기; a stopped one offers the single
+   * way back. Empty until the habit is loaded.
+   *
+   * #19's eighth acceptance criterion reads *"보관된 습관은 대시보드에서 숨지만
+   * 기록이 보존되고 되돌릴 수 있다"*. The hiding is `useDashboard`'s and the
+   * preservation is the domain's; what this line satisfies is the last clause,
+   * **되돌릴 수 있다** — the detail screen is reachable for an archived habit (nothing
+   * filters `lifecycle` on the way in), so 다시 꺼내기 is the way back. The screen that
+   * would *list* archived habits is #43; until it ships, reaching one takes an id the
+   * user already has.
+   */
+  lifecycleActions: LifecycleAction[];
   toast: QuickLogToast | null;
   undoLast(): Promise<void>;
 }
@@ -663,6 +697,38 @@ export function useHabitDetail(
     return null;
   }
 
+  /**
+   * The lifecycle writers. Each one is `lifecycle.ts`'s pure transition plus the two
+   * things it deliberately leaves out — the write and the reload — exactly as
+   * `saveDesign` above is.
+   */
+  async function runLifecycle(
+    subject: Habit,
+    next: (subject: Habit, day: string) => Habit,
+  ): Promise<void> {
+    await repository.upsertHabit(next(subject, today));
+    reload();
+  }
+
+  function lifecycleActions(subject: Habit): LifecycleAction[] {
+    function act(
+      kind: LifecycleAction['kind'],
+      next: (habit: Habit, day: string) => Habit,
+    ): LifecycleAction {
+      return { kind, label: LIFECYCLE_LABELS[kind], run: () => runLifecycle(subject, next) };
+    }
+
+    // An open interval is what actually stops the classifier (ADR-0003), and the
+    // lifecycle field is its ⟺ twin, so the two readings agree by construction. The
+    // only question is 정지 중인가: a stopped habit gets the single way back — the same
+    // `resumeHabit`, named for how the stop reads — and an active one both ways out.
+    const stopped = subject.lifecycle === 'paused' || subject.lifecycle === 'archived';
+    if (stopped) {
+      return [act(subject.lifecycle === 'paused' ? 'resume' : 'unarchive', resumeHabit)];
+    }
+    return [act('pause', pauseHabit), act('archive', archiveHabit)];
+  }
+
   return {
     loading,
     habit,
@@ -716,6 +782,7 @@ export function useHabitDetail(
     removeEntry: quick.removeEntry,
     deletePreview,
     saveDesign,
+    lifecycleActions: habit == null ? [] : lifecycleActions(habit),
     toast: quick.toast,
     undoLast: quick.undoLast,
   };
