@@ -1,6 +1,7 @@
 /**
  * The two readings of the device that the pure layers must not make — the local clock
- * and the id source (SPEC §2.2: `src/domain` and `src/data` stay pure and clock-free).
+ * (its wall time and its UTC offset) and the id source (SPEC §2.2: `src/domain` and
+ * `src/data` stay pure and clock-free).
  *
  * Both were born inline in a screen and are now shared, so they live here rather than
  * being copied: a second `localToday` would be a second timezone bug waiting to
@@ -112,4 +113,27 @@ export function newId(): string {
     const r = Math.floor(Math.random() * 16);
     return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
   });
+}
+
+/**
+ * The device's UTC offset in minutes, **east-positive**: KST is `+540`, the same sign
+ * ISO-8601 writes as `+09:00`.
+ *
+ * `Date#getTimezoneOffset()` has the **opposite** sign (`-540` in KST), so the flip
+ * happens here, once, at the only place that reads it. ADR-0005 and the
+ * `utc_offset_minutes` column comment both pin the convention down because getting
+ * the sign backwards is precisely why #31 is open — and the value is unrecoverable
+ * once the row is written (`docs/SPEC.md:841–845`), so there is no later pass that
+ * could correct it.
+ *
+ * Read at call time rather than cached: a device crossing a timezone (or a DST
+ * boundary) mid-session must stamp the offset the write actually happened in.
+ *
+ * Lives here with the other readings of the device for the reason this file exists —
+ * `src/data` and `src/domain` stay clock-free (SPEC §2.2), so `SupabaseRepository`
+ * takes this value as a constructor argument instead of calling it. The caller that
+ * passes it is #51; until then this function has no consumer in `app/`.
+ */
+export function deviceUtcOffsetMinutes(): number {
+  return -new Date().getTimezoneOffset();
 }

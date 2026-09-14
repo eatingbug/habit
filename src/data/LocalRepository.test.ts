@@ -2,7 +2,6 @@ import type { FreeLog, Habit, HabitEntry, ReflectionSession } from '@/models';
 
 import { MemoryKV } from './KVStore';
 import { LocalRepository } from './LocalRepository';
-import { SupabaseRepository } from './SupabaseRepository';
 
 /**
  * Repository behaviour, exercised through `LocalRepository` + `MemoryKV` — no device,
@@ -316,38 +315,6 @@ describe('LocalRepository — reflection sessions', () => {
     const loaded = await repo.getReflectionSessions('h1');
     expect(loaded).toHaveLength(1);
     expect(loaded[0].chosenAction).toBe('pause');
-  });
-});
-
-describe('SupabaseRepository', () => {
-  const repo = new SupabaseRepository();
-  const calls: Array<[string, () => unknown]> = [
-    ['getHabits', () => repo.getHabits()],
-    ['getHabit', () => repo.getHabit('h1')],
-    ['upsertHabit', () => repo.upsertHabit(habit)],
-    ['deleteHabit', () => repo.deleteHabit('h1')],
-    ['getEntries', () => repo.getEntries('h1', '2026-01-01', '2026-01-02')],
-    ['upsertEntry', () => repo.upsertEntry(entry({ id: 'e1', date: '2026-01-02' }))],
-    ['deleteEntry', () => repo.deleteEntry('e1')],
-    ['getFreeLogs', () => repo.getFreeLogs('2026-01-01', '2026-01-02')],
-    [
-      'upsertFreeLog',
-      () =>
-        repo.upsertFreeLog({
-          id: 'l1',
-          date: '2026-01-02',
-          timestamp: '2026-01-02T00:00:00.000Z',
-          type: 'note',
-          text: 'x',
-        }),
-    ],
-    ['deleteLog', () => repo.deleteLog('l1')],
-    ['getReflectionSessions', () => repo.getReflectionSessions('h1')],
-    ['upsertReflectionSession', () => repo.upsertReflectionSession(session)],
-  ];
-
-  it.each(calls)('%s throws until configured', (_name, call) => {
-    expect(call).toThrow('SupabaseRepository not yet configured');
   });
 });
 
