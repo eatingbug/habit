@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 
+import { LOAD_FAILED_NOTE, WRITE_FAILED_NOTE } from '@/config/copy';
 import { TUNING } from '@/config/tuning';
 import { useRepository } from '@/context/RepositoryContext';
 import { dayStates } from '@/domain/classify';
@@ -10,6 +11,7 @@ import { computeStreak } from '@/domain/streak';
 import { localToday } from '@/lib/device';
 import type { Habit, SkipReason, Stat } from '@/models';
 
+import { useFailure, type Failure } from './failure';
 import {
   logAffordances,
   useQuickLog,
@@ -93,6 +95,20 @@ export interface DashboardView {
   characterLevel: number;
   loading: boolean;
   /**
+   * 실패한 읽기나 실패한 한 번 누르기, 또는 `null`.
+   *
+   * **`loading` 이 거짓이라고 화면이 빈 것은 아니다.** 읽기가 실패해도 `loading` 은
+   * 내려가야 하지만(안 그러면 "불러오는 중…" 이 영원히 남는다), 그렇다고 `rows` 가
+   * 비었으니 "아직 습관이 없습니다" 라고 말하면 앱이 사용자 기록이 없다고 **주장하는**
+   * 것이라 멈춘 것보다 나쁘다. 이 값이 있으면 화면은 빈 상태 대신 실패를 말한다.
+   *
+   * 한 번 누르기가 여기 있는 이유는 이 화면에만 받을 곳이 없기 때문이다. `app/today.tsx`
+   * 와 `app/habit/[id].tsx` 의 작성기는 자기 `try/catch` 로 카드 안에서 실패를 말하지만,
+   * 대시보드의 행 버튼은 `void logActivity(...)` 라 실패가 어디에도 닿지 않는다 — 이
+   * 티켓이 "최악의 버그" 라고 부르는 바로 그 모양이다.
+   */
+  failure: Failure | null;
+  /**
    * One-tap logging on the row (§6.1 B1) with its 실행취소 toast (B6) — the same
    * primitive Today's composer uses, so there is only one append/undo implementation.
    *
@@ -134,6 +150,7 @@ function statProgress(stat: Stat, all: HabitWithEntries[]): StatProgress {
 
 export function useDashboard({ today = localToday() }: { today?: string } = {}): DashboardView {
   const repository = useRepository();
+  const { failure, report, clear, attempt } = useFailure();
   const [rows, setRows] = useState<DashboardRow[]>([]);
   const [stats, setStats] = useState<StatProgress[]>([]);
   const [loading, setLoading] = useState(true);
@@ -144,6 +161,10 @@ export function useDashboard({ today = localToday() }: { today?: string } = {}):
    * row that is already on screen (§6.1: the row updates in place).
    */
   const [version, setVersion] = useState(0);
+
+  function reload() {
+    setVersion((current) => current + 1);
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -203,29 +224,39 @@ export function useDashboard({ today = localToday() }: { today?: string } = {}):
             ),
           ),
         );
+        clear();
         setLoading(false);
       }
     }
 
-    void load();
+    load().catch(() => {
+      if (cancelled) return;
+      // `setLoading(false)` 를 **실패 기록과 같이** 한다. 이것만 붙이면 무한 스피너가
+      // "아직 습관이 없습니다" 로 바뀔 뿐이라 함정이다 (`DashboardView.failure`).
+      setLoading(false);
+      // 다시 시도는 이 훅이 이미 가진 `version` 카운터다 — 읽기는 이 효과 하나뿐이므로
+      // 그것을 올리면 같은 읽기가 그대로 다시 돈다.
+      report(LOAD_FAILED_NOTE, reload);
+    });
 
     return () => {
       cancelled = true;
     };
   }, [repository, today, version]);
 
-  const quick = useQuickLog({
-    today,
-    onChange: () => setVersion((current) => current + 1),
-  });
+  const quick = useQuickLog({ today, onChange: reload });
 
   return {
     rows,
     stats,
     characterLevel: stats.reduce((highest, stat) => Math.max(highest, stat.level), 0),
     loading,
-    logActivity: quick.logActivity,
-    logSkip: quick.logSkip,
+    // 실행취소의 실패는 `useQuickLog` 가 들고 있다 — 한 배너 자리를 둘이 나눠 쓴다.
+    failure: failure ?? quick.failure,
+    logActivity: (habit, actual, opts) =>
+      attempt(WRITE_FAILED_NOTE, () => quick.logActivity(habit, actual, opts)),
+    logSkip: (habit, reason, opts) =>
+      attempt(WRITE_FAILED_NOTE, () => quick.logSkip(habit, reason, opts)),
     toast: quick.toast,
     undoLast: quick.undoLast,
   };

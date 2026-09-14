@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 
 import {
+  Banner,
   Button,
   Card,
   Chip,
@@ -20,7 +21,7 @@ import {
   TOAST_OVERLAY_CLEARANCE,
   ToastOverlay,
 } from '@/components';
-import { SIGN_OUT_LABEL } from '@/config/copy';
+import { RETRY_LABEL, SIGN_OUT_LABEL } from '@/config/copy';
 import { useSession } from '@/context/SessionContext';
 import { useDashboard, type DashboardRow, type StatProgress } from '@/hooks/useDashboard';
 import type { SkipReason } from '@/models';
@@ -248,7 +249,7 @@ export default function Dashboard() {
   const { colors, preference, toggle } = useTheme();
   const router = useRouter();
   const { signOut } = useSession();
-  const { rows, stats, characterLevel, loading, logActivity, logSkip, toast, undoLast } =
+  const { rows, stats, characterLevel, loading, failure, logActivity, logSkip, toast, undoLast } =
     useDashboard();
 
   return (
@@ -303,9 +304,20 @@ export default function Dashboard() {
 
         <Eyebrow>오늘의 습관</Eyebrow>
 
+        {/* 실패는 실패로 보여야 하고, 다시 시도할 수단이 같이 있어야 한다 — 문구도 다시
+            시도가 무엇인지도 훅의 `failure` 가 정한다 (#51). 읽기 실패와 한 번 누르기의
+            실패가 같은 자리를 쓴다: 둘 다 "이 화면이 지금 진실이 아니다" 는 같은 말이다. */}
+        {failure != null && (
+          <Banner trailing={<Button label={RETRY_LABEL} onPress={failure.retry} />}>
+            {failure.message}
+          </Banner>
+        )}
+
         {loading ? (
           <Text style={[styles.notice, { color: colors.muted }]}>불러오는 중…</Text>
-        ) : rows.length === 0 ? (
+        ) : rows.length === 0 && failure == null ? (
+          /* `failure` 가 있으면 이 문장을 쓰지 않는다. 불러오지 못한 것을 "아직 습관이
+             없습니다" 라고 말하면 앱이 사용자 기록이 없다고 주장하는 셈이다. */
           <Text style={[styles.notice, { color: colors.muted }]}>아직 습관이 없습니다.</Text>
         ) : (
           <View style={styles.quests}>
