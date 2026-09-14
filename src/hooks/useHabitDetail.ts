@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 
+import { LIFECYCLE_LABELS } from '@/config/copy';
 import { TUNING } from '@/config/tuning';
 import { useRepository } from '@/context/RepositoryContext';
 import { isBackfillableDate, isBackfilledRow } from '@/domain/backfill';
@@ -7,6 +8,7 @@ import { dayStates, sortDayRows, type ClassifiedDay } from '@/domain/classify';
 import { compareDates, dateOf, daysBetween, mondayOf, windowEndingAt } from '@/domain/dates';
 import { deleteOutcome, type DeleteOutcome } from '@/domain/deleteEffect';
 import { heatCells, type HeatCell } from '@/domain/heatLevel';
+import { archiveHabit, pauseHabit, resumeHabit } from '@/domain/lifecycle';
 import { successRate } from '@/domain/rates';
 import { computeXP } from '@/domain/score';
 import { computeStreak, engagementStreak, showedUpDays } from '@/domain/streak';
@@ -272,6 +274,24 @@ export interface DetailDeleteEffect extends DeleteOutcome {
 }
 
 /**
+ * One lifecycle control at the foot of the screen — 잠시 쉬기 · 보관하기 · 다시 시작 ·
+ * 다시 꺼내기 (SPEC §4.7, issue #19).
+ *
+ * **Which** controls appear, and with which label, is decided here rather than in
+ * `app/habit/[id].tsx` for this file's standing reason: `jest.config.js` matches
+ * `src/**` only, so a branch on `lifecycle` written in JSX is a branch no test can
+ * reach. An array and not a set of booleans, so "활성이면 둘, 정지 중이면 하나" is one
+ * assertion and the screen genuinely decides nothing — it places what it is handed.
+ */
+export interface LifecycleAction {
+  /** A stable key for the screen's `key` prop and for tests to name the action by. */
+  kind: 'pause' | 'archive' | 'resume' | 'unarchive';
+  label: string;
+  /** Writes through `upsertHabit` and reloads. */
+  run(): Promise<void>;
+}
+
+/**
  * Which panels the screen stacks, in order (D6).
  *
  * `established` puts the growth chart **above** the pills (`Established.body.html`):
@@ -383,6 +403,17 @@ export interface HabitDetailView {
    * illegal and **nothing is written**, or to `null` when it is stored.
    */
   saveDesign(patch: DesignPatch): Promise<DesignErrors | null>;
+  /**
+   * The foot-of-screen lifecycle controls, in the order they are shown (#19). An
+   * active habit offers both 잠시 쉬기 and 보관하기; a stopped one offers the single
+   * way back. Empty until the habit is loaded.
+   *
+   * The detail screen is reachable for an archived habit — nothing filters `lifecycle`
+   * on the way in — so 다시 꺼내기 is the reversibility AC 8 asks for. The screen that
+   * would *list* archived habits is #43; until it ships, reaching one takes an id the
+   * user already has.
+   */
+  lifecycleActions: LifecycleAction[];
   toast: QuickLogToast | null;
   undoLast(): Promise<void>;
 }
@@ -663,6 +694,49 @@ export function useHabitDetail(
     return null;
   }
 
+  /**
+   * The lifecycle writers. Each one is `lifecycle.ts`'s pure transition plus the two
+   * things it deliberately leaves out — the write and the reload — exactly as
+   * `saveDesign` above is. A transition that changes nothing (pausing an already
+   * paused habit) still writes; the repository takes the identical habit and the
+   * reload re-reads it, which is cheaper than a second copy of the no-op rule here.
+   */
+  async function runLifecycle(next: (subject: Habit, day: string) => Habit): Promise<void> {
+    if (habit == null) {
+      throw new Error('useHabitDetail.lifecycleActions: 습관을 아직 불러오지 못했습니다');
+    }
+    await repository.upsertHabit(next(habit, today));
+    reload();
+  }
+
+  function lifecycleActions(subject: Habit): LifecycleAction[] {
+    // An open interval is what actually stops the classifier (ADR-0003), and the
+    // lifecycle field is its ⟺ twin, so the two readings agree by construction.
+    switch (subject.lifecycle) {
+      case 'paused':
+        return [
+          { kind: 'resume', label: LIFECYCLE_LABELS.resume, run: () => runLifecycle(resumeHabit) },
+        ];
+      case 'archived':
+        return [
+          {
+            kind: 'unarchive',
+            label: LIFECYCLE_LABELS.unarchive,
+            run: () => runLifecycle(resumeHabit),
+          },
+        ];
+      default:
+        return [
+          { kind: 'pause', label: LIFECYCLE_LABELS.pause, run: () => runLifecycle(pauseHabit) },
+          {
+            kind: 'archive',
+            label: LIFECYCLE_LABELS.archive,
+            run: () => runLifecycle(archiveHabit),
+          },
+        ];
+    }
+  }
+
   return {
     loading,
     habit,
@@ -716,6 +790,7 @@ export function useHabitDetail(
     removeEntry: quick.removeEntry,
     deletePreview,
     saveDesign,
+    lifecycleActions: habit == null ? [] : lifecycleActions(habit),
     toast: quick.toast,
     undoLast: quick.undoLast,
   };

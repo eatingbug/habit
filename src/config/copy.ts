@@ -311,3 +311,37 @@ export function saveBannerLines(habitName: string): { lead: string; rest: string
     rest: '오늘 한 번이면 흐름이 이어져요. 어제도 지금 채워 넣을 수 있어요.',
   };
 }
+
+/**
+ * The habit detail screen's lifecycle controls — 잠시 쉬기 · 보관하기 · 다시 시작 ·
+ * 다시 꺼내기 (SPEC §4.7, issue #19).
+ *
+ * **캔버스 출처 없음 — 신규 문구.** The only artboards that draw a pause or an archive
+ * are `design/Focus.dc.html` and `design/parts/Focus.body.html`, and #19 declares
+ * Focus Mode V2 and out of scope; `design/parts/HabitDetail.body.html` and
+ * `YesNo.body.html` have no such control at all. So the words are ours, in CONCEPT
+ * §8.2's register — a pause is 나중에 하기, not 퀘스트 포기.
+ *
+ * `LIFECYCLE_NOTE` carries the sense of the one canvas line that does exist for this
+ * gesture (`design/parts/Focus.body.html:40`: 쉬어 두는 것뿐이에요. 지우는 게
+ * 아닙니다. …기록도 이어 온 날수도 그대로 남아 있다가…), shortened to one sentence
+ * because it sits under two low-emphasis buttons at the foot of a long screen rather
+ * than inside a full-screen decision. It is the honest promise ADR-0003 actually
+ * keeps: an empty day inside the interval is never classified, so no 미스 accrues and
+ * the pre-pause streak re-joins on resume.
+ *
+ * Here rather than in `app/habit/[id].tsx` for this file's standing reason —
+ * `jest.config.js` matches `src/**` only — and, more to the point, because
+ * `useHabitDetail` is what decides *which* of these labels the screen is given, and a
+ * hook cannot read copy that lives in `app/`.
+ */
+export const LIFECYCLE_LABELS = {
+  pause: '잠시 쉬기',
+  archive: '보관하기',
+  resume: '다시 시작',
+  unarchive: '다시 꺼내기',
+} as const;
+
+/** The supporting line under those buttons — see `LIFECYCLE_LABELS`. */
+export const LIFECYCLE_NOTE =
+  '지우는 게 아니에요. 쉬는 동안은 실패로 세지 않고, 기록도 이어 온 날수도 그대로 남아 있어요.';
