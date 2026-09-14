@@ -8,11 +8,24 @@
  * 없고 앞으로도 없다(#47). `getHabits()` 가 "내 습관"이 되는 유일한 이유는 SQL 안의
  * 정책이다. TypeScript 에는 그것을 틀리게 만들 자리도, 잡아낼 자리도 없다.
  *
+ * === 의존: 이메일 비밀번호 로그인이 켜져 있어야 한다 ===
+ *
+ * 이 스위트는 미리 만들어 둔 계정 두 개를 `POST /auth/v1/token?grant_type=password` 로
+ * 로그인시킨다. 브라우저가 타는 것과 같은 publishable key 경로다. **비밀 키(구
+ * service_role)는 쓰지 않는다** — 그 키는 RLS 를 통째로 우회하므로 정책을 검증하는
+ * 스위트가 들고 있을 물건이 아니고, 카카오 로그인(#51)만으로는 자동화가 세션을 얻을
+ * 방법이 없다.
+ *
+ * 따라서 이 스위트는 **Auth 의 email provider 가 켜져 있는 데 의존한다.** #55 가
+ * 열린 가입을 닫을 때 **`disable_signup` 만 닫아야 하고, email provider 자체를 끄면
+ * 안 된다** — 끄는 순간 이 스위트는 로그인하지 못하고, 저장소의 유일한 RLS 검증이
+ * 사라진다. 가입을 막는 것과 로그인을 막는 것은 다른 스위치다.
+ *
  * === 이 파일이 조심하는 두 가지 거짓 green ===
  *
  * 1. **RLS 는 테이블 소유자에게 적용되지 않는다.** 그래서 여기서는 오직 사용자
- *    access token(= authenticated 역할)으로만 붙는다. 비밀 키는 사용자 생성·삭제에만
- *    쓰고 데이터 경로에는 절대 쓰지 않는다.
+ *    access token(= authenticated 역할)으로만 붙는다. 권한을 올려 주는 키는 이 파일
+ *    어디에도 없다.
  * 2. **교차 UPDATE·DELETE 는 에러를 내지 않는다 — 0 행에 적용될 뿐이다.** SELECT 도
  *    빈 배열이지 에러가 아니다. 에러가 나는 것은 남의 user_id 로 INSERT 할 때뿐이다.
  *    그래서 "0 행"을 확인하고, **거기서 멈추지 않고 B 로 다시 읽어** 행이 그대로
@@ -20,15 +33,27 @@
  *    삭제"가 똑같이 생겼다.
  *
  * 또 하나: 막는 것만 확인하면 **전부 거부하는 정책도 통과한다.** 그래서 네 테이블
- *  모두에서 A 가 자기 행에 대해 읽기·쓰기·수정·삭제를 할 수 있다는 쪽도 함께 본다.
+ * 모두에서 A 가 자기 행에 대해 읽기·쓰기·수정·삭제를 할 수 있다는 쪽도 함께 본다.
+ *
+ * === 뒷정리 ===
+ *
+ * 계정은 사람 소유이고 오래 산다. 지우지 않는다. 대신 **행은 이 스위트가 직접
+ * 치운다.** 시작할 때와 끝날 때 두 번 쓸어 내므로, 이전 실행이 중간에 죽어 행을 남겨
+ * 두었어도 다음 실행이 깨끗한 상태에서 시작한다. 표식은 아래 SENTINEL 둘이고,
+ * 실제 사용자 데이터와 겹칠 수 없는 값이다. 그와 별개로 모든 단언은 그 실행에서 갓
+ * 만든 UUID 를 `id=eq.` 로 콕 집어 보므로, 남은 행이 통과나 실패를 만들어 낼 수 없다.
  */
 import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
 
-import { createUser, deleteUser, rest, sweepOrphans } from './client.mjs';
+import { ACCOUNTS } from './env.mjs';
+import { rest, signIn } from './client.mjs';
 
-const DAY = '2026-09-14';
-const AT = '2026-09-14T12:00:00.000Z';
+/** 이 이름의 습관은 전부 이 스위트의 것이다. 삭제하면 entries·reflections 가 FK 로 딸려 온다. */
+const SENTINEL_NAME = 'rls-policy-test';
+/** 이 날짜의 행도 전부 이 스위트의 것이다. 습관에 딸리지 않는 free_logs 를 위한 표식. */
+const SENTINEL_DATE = '1970-01-01';
+const AT = '1970-01-01T12:00:00.000Z';
 /** 동쪽이 양수 — KST. getTimezoneOffset() 의 반대 부호다 (마이그레이션 컬럼 주석 참조). */
 const KST = 540;
 
@@ -44,7 +69,7 @@ function habitRow(userId) {
   return {
     id: uuid(),
     user_id: userId,
-    name: '앵커 습관',
+    name: SENTINEL_NAME,
     stat_id: 'strength',
     kind: 'count',
     floor: 10,
@@ -57,15 +82,15 @@ function habitRow(userId) {
 
 /**
  * 테이블마다: 행을 만드는 법, 무엇을 고쳐 보는지, 그 값을 어떻게 읽는지.
- * `anchorFor` 가 있는 테이블은 습관 FK 를 쓴다.
+ * `patch` 가 SENTINEL 을 건드리지 않아야 뒷정리가 그 행도 알아본다.
  */
 const TABLES = [
   {
     table: 'habits',
     row: (userId) => habitRow(userId),
-    patch: { name: '바뀐 이름' },
-    read: (r) => r.name,
-    original: '앵커 습관',
+    patch: { floor_unit: 'pages' },
+    read: (r) => r.floor_unit,
+    original: 'reps',
   },
   {
     table: 'habit_entries',
@@ -73,7 +98,7 @@ const TABLES = [
       id: uuid(),
       user_id: userId,
       habit_id: habitId,
-      local_date: DAY,
+      local_date: SENTINEL_DATE,
       logged_at: AT,
       actual: 12,
       utc_offset_minutes: KST,
@@ -87,7 +112,7 @@ const TABLES = [
     row: (userId) => ({
       id: uuid(),
       user_id: userId,
-      local_date: DAY,
+      local_date: SENTINEL_DATE,
       logged_at: AT,
       type: 'note',
       body: '원래 본문',
@@ -103,7 +128,7 @@ const TABLES = [
       id: uuid(),
       user_id: userId,
       habit_id: habitId,
-      week_of: DAY,
+      week_of: SENTINEL_DATE,
       flags: [],
       suggested_action: 'keep',
       chosen_action: 'keep',
@@ -122,11 +147,25 @@ function selectById(token, table, id) {
   return rest(`${table}?id=eq.${id}&select=*`, { token });
 }
 
-before(async () => {
-  // 이전 실행이 중간에 죽어 남긴 사용자부터 치운다.
-  await sweepOrphans();
+/**
+ * 한 사용자의 시야에서 이 스위트가 남긴 행을 전부 지운다. RLS 가 자기 행만 보여 주므로
+ * 남의 데이터에는 닿을 수 없고, SENTINEL 이 실제 사용자 데이터와 겹칠 수 없다.
+ */
+async function sweepRows(token) {
+  // 습관을 먼저 — on delete cascade 가 그 습관의 entries·reflections 를 데려간다.
+  await rest(`habits?name=eq.${SENTINEL_NAME}`, { method: 'DELETE', token });
+  // 앵커에 딸리지 않은 나머지.
+  await rest(`habit_entries?local_date=eq.${SENTINEL_DATE}`, { method: 'DELETE', token });
+  await rest(`free_logs?local_date=eq.${SENTINEL_DATE}`, { method: 'DELETE', token });
+  await rest(`reflection_sessions?week_of=eq.${SENTINEL_DATE}`, { method: 'DELETE', token });
+}
 
-  [A, B] = await Promise.all([createUser(), createUser()]);
+before(async () => {
+  [A, B] = await Promise.all([signIn(ACCOUNTS.A), signIn(ACCOUNTS.B)]);
+  assert.notEqual(A.id, B.id, 'A 와 B 가 같은 계정이다 — 교차 접근 테스트가 성립하지 않는다');
+
+  // 이전 실행이 중간에 죽어 남긴 행부터 치운다.
+  await Promise.all([sweepRows(A.token), sweepRows(B.token)]);
 
   anchorA = habitRow(A.id);
   anchorB = habitRow(B.id);
@@ -140,8 +179,8 @@ before(async () => {
 });
 
 after(async () => {
-  // 사용자를 지우면 네 테이블의 on delete cascade 가 그 사람 행을 전부 데려간다.
-  await Promise.all([A && deleteUser(A.id), B && deleteUser(B.id)].filter(Boolean));
+  if (!A || !B) return;
+  await Promise.all([sweepRows(A.token), sweepRows(B.token)]);
 });
 
 for (const spec of TABLES) {
@@ -218,7 +257,8 @@ for (const spec of TABLES) {
 
       it('update 로 소유권을 넘겨받을 수도 없다 (using 만으로는 못 막는 구멍)', async () => {
         const aRow = spec.row(A.id, anchorA.id);
-        await rest(spec.table, { method: 'POST', token: A.token, body: aRow });
+        const seeded = await rest(spec.table, { method: 'POST', token: A.token, body: aRow });
+        assert.equal(seeded.status, 201, `전제 준비 실패: ${JSON.stringify(seeded.body)}`);
 
         const res = await rest(`${spec.table}?id=eq.${aRow.id}`, {
           method: 'PATCH',
