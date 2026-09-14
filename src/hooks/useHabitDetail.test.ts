@@ -917,7 +917,16 @@ describe('useHabitDetail — 정지·보관·재개 컨트롤 (#19)', () => {
     expect(dayOf(result.current, past).state).toBe('done');
   });
 
-  it('쉬는 동안 미스가 쌓이지 않고 재개하면 이전 연속에 다시 붙는다 (AC 3·4)', async () => {
+  /**
+   * The round trip at the hook seam: each action writes through `upsertHabit` and the
+   * reload re-reads it, so the next render's figures come off the stored habit. The
+   * pause a user can actually take from this screen always starts **today** — `run()`
+   * has no other date — so a same-day pause/resume is the shortest whole trip.
+   *
+   * 정지 구간이 연속을 끊지 않는다는 것 자체는 도메인이 이미 핀했다
+   * (`src/domain/streak.test.ts:105`, `:112`, `:117`, `:122`).
+   */
+  it('재개일은 다시 활성이라 그 날을 채우면 연속이 선다 (반열림 [from, to))', async () => {
     const start = addDays(TODAY, -24);
     const entries = [0, 1, 2].map((n) => activity(addDays(start, n), 6));
     const result = await detail(await seed(habit({ createdAt: `${start}T00:00:00.000Z` }), entries));
