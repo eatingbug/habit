@@ -11,6 +11,11 @@ import { join } from 'node:path';
  * device, because each takes its driver as an argument. The platform-specific KV
  * adapters (AsyncStorage on native, localforage on web) live in `src/context`, the
  * one layer allowed to know which platform it is running on.
+ *
+ * Read that last sentence as "where they live", not "what the app runs": since #51 the
+ * provider builds a `SupabaseRepository`, so `createKVStore` and both adapters have no
+ * caller left — orphaned, not deleted, tracked in #57. `src/context` is still the
+ * platform-aware layer, because `createSupabaseClient` now lives there too.
  */
 function sourceFilesUnder(dir: string): string[] {
   const out: string[] = [];
