@@ -90,8 +90,9 @@ function stopAt(habit: Habit, today: string, lifecycle: 'paused' | 'archived'): 
  * module can produce one, but the shape is constructible (a habit stored with
  * `lifecycle: 'archived'` and no `pauses` at all). It is still made active here rather
  * than returned untouched, because the alternative is a 다시 꺼내기 button that writes
- * an identical habit and leaves the user with no way out — the one dead end AC 8 asks
- * us to remove.
+ * an identical habit and leaves the user with no way out — the dead end #19's
+ * *"보관된 습관은 대시보드에서 숨지만 기록이 보존되고 되돌릴 수 있다"* asks us to
+ * remove.
  */
 export function resumeHabit(habit: Habit, today: string): Habit {
   const open = openInterval(habit);
