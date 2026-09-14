@@ -12,6 +12,7 @@ import {
   NumberField,
   SegmentedControl,
   SkipReasonChips,
+  StatusDot,
   TextField,
   TOAST_OVERLAY_CLEARANCE,
   ToastOverlay,
@@ -25,6 +26,7 @@ import {
   useToday,
   type DateControl,
   type DeleteEffect,
+  type SaveBanner,
   type TodayFeedItem,
   type TodayFreeFeedItem,
   type TodayHabitFeedItem,
@@ -40,10 +42,14 @@ import { FONT_FAMILY, FONT_SIZE, SPACE, TAP_TARGET } from '@/theme/tokens';
  * design canvas.
  *
  * The artboard is the finished design, so it shows more than this screen renders. The
- * feed line's standing reward tag (#37) and the at-risk save banner (#18) each belong to
- * a later ticket and are left out rather than stubbed — a hardcoded number would read as
- * data the user does not have. The log-time reward itself ships on the toast, which
- * `ToastOverlay` renders below; it is one wording for both logging surfaces (§6.2).
+ * feed line's standing reward tag (`Today.body.html:88`) is #37's and is left out rather
+ * than stubbed — a hardcoded number would read as data the user does not have. The
+ * log-time reward itself ships on the toast, which `ToastOverlay` renders below; it is
+ * one wording for both logging surfaces (§6.2).
+ *
+ * The at-risk save banner (`:10–16`) **is** here, as `SaveBannerCard` — #18. Whether
+ * there is one, which habit it names and what its button writes are all
+ * `useToday.saveBanner`'s.
  *
  * The date control (§6.2 B4, #14) is here, and its own artboard is
  * `design/parts/Backfill.body.html`. Every judgment it makes — where the steps may go,
@@ -1229,6 +1235,42 @@ function FreeLogEditor({
   );
 }
 
+/**
+ * The at-risk save banner (#18 AC 5) — `design/parts/Today.body.html:10–16`.
+ *
+ * Amber, with one crit-red dot: the `.banner` surface and border are `--warn`
+ * (`design/_tokens.css:93–94`) and so is the bold lead (`:97`), while the
+ * `<span class="dot r">` beside them is the only red thing in the box. So the shared
+ * `Banner`'s default `warn` variant carries it, and `StatusDot` draws the dot at its
+ * `intervention` level — the same crit hue the status light uses.
+ *
+ * The two halves of the sentence arrive already split (`SaveBanner.lead`/`.rest`),
+ * because which half is bold is a fact about the copy and `config/copy.ts` is where
+ * that copy is asserted. This file only colours them.
+ */
+function SaveBannerCard({ banner }: { banner: SaveBanner }) {
+  const { colors } = useTheme();
+
+  return (
+    <Banner
+      leading={<StatusDot level="intervention" />}
+      trailing={
+        <Button
+          label="✓ 완료"
+          variant="pri"
+          onPress={() => void banner.onSave()}
+          // The label is the same two characters on every such button; out of context
+          // it has to say which habit it finishes.
+          accessibilityLabel={`${banner.habitName} 완료로 기록`}
+        />
+      }
+    >
+      <Text style={[styles.saveBannerLead, { color: colors.warn }]}>{banner.lead}</Text>{' '}
+      {banner.rest}
+    </Banner>
+  );
+}
+
 export default function Today() {
   const { colors } = useTheme();
   /**
@@ -1243,6 +1285,7 @@ export default function Today() {
     feed,
     questsDone,
     dateControl,
+    saveBanner,
     logCount,
     xpToday,
     loading,
@@ -1324,6 +1367,10 @@ export default function Today() {
           <Text style={[styles.notice, { color: colors.muted }]}>불러오는 중…</Text>
         ) : (
           <>
+            {/* Above the composer and outside the target selector, as on the artboard
+                (`Today.body.html:10–16`): it is about one habit, but it is not part of
+                the composer's tab. */}
+            {saveBanner != null && <SaveBannerCard banner={saveBanner} />}
             {/* Still shown with no habits — the recording path this screen is for is
                 the habit one. It is no longer the *whole* screen, though: a free log
                 links to no habit at all (§3.4), so needing one first would be a
@@ -1460,6 +1507,7 @@ const styles = StyleSheet.create({
   dateCtl: { flexDirection: 'row', alignItems: 'center', gap: SPACE.md - 2, flexWrap: 'wrap' },
   dateLabel: { fontSize: FONT_SIZE.base, fontWeight: '600', flexShrink: 1 },
   rangeNote: { fontSize: FONT_SIZE.sm },
+  saveBannerLead: { fontWeight: '600' },
   composerHead: { flexDirection: 'row', alignItems: 'center', gap: SPACE.md },
   composerName: { fontSize: FONT_SIZE.md, fontWeight: '600', letterSpacing: -0.14, flexShrink: 1 },
   amountRow: { flexDirection: 'row', alignItems: 'center', gap: SPACE.md - 2 },

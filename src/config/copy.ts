@@ -277,3 +277,37 @@ export function rewardToastLines(facts: RewardToastFacts): { detail: string; sub
                   : '최소보다 더 했어요',
   };
 }
+
+/**
+ * The at-risk save banner's two halves (SPEC §4.3 C2, issue #18 AC 5) — copy from
+ * `design/parts/Today.body.html:13`.
+ *
+ * Two strings and not one, because the canvas splits them typographically: the banner's
+ * surface and border are `--warn` (`design/_tokens.css:93–94`) and so is the **bold**
+ * first sentence (`:97`), while the single `<span class="dot r">` beside it is the only
+ * crit-red thing in the box. Returning one joined sentence would lose which half is
+ * bold and warn-coloured, and the screen would have to re-split it.
+ *
+ * Takes the habit's **name** rather than a `Habit` for `deleteConfirmLines`' reason:
+ * §2.2 puts `src/config` below `src/domain`, and `src/domain/score.ts:1` already
+ * imports `@/config/tuning`, so importing anything from `@/domain` here would close a
+ * cycle. Nothing but the name is needed.
+ *
+ * **Declared deviation.** SPEC §4.3 C2 (`docs/SPEC.md:547–548`) quotes the banner as
+ * `어제 놓쳤어요 — 오늘 최소 한 번이면 이어갈 수 있어요`; this follows the canvas's three-clause version instead,
+ * which names the habit and adds the backfill invitation. The invitation is not a false
+ * promise: the date stepper that honours it shipped with #14.
+ *
+ * **One word is ours: `기록을`.** The canvas writes `어제 명상을 놓쳤어요`, whose object
+ * particle is `을` only because 명상 ends in a consonant; a habit named 요가 or 달리기
+ * would need `를`, and half of all names would read as broken Korean. Rather than
+ * inflecting the particle from the name's last syllable — a rule with its own edge
+ * cases on a name ending in a digit or a Latin letter — the name is made a modifier of
+ * an invariant noun. The register is the canvas's, unchanged.
+ */
+export function saveBannerLines(habitName: string): { lead: string; rest: string } {
+  return {
+    lead: `어제 ${habitName} 기록을 놓쳤어요.`,
+    rest: '오늘 한 번이면 흐름이 이어져요. 어제도 지금 채워 넣을 수 있어요.',
+  };
+}
