@@ -62,11 +62,24 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         const { error } = await createSupabaseClient().auth.signInWithOAuth({
           provider: 'kakao',
           options: {
-            // 명시한다. 티켓이 `account_email` 을 쓰지 않기로 했고(비즈앱 심사가 필요하며
-            // RLS 는 `auth.uid()` 만 쓴다), Supabase 서버가 kakao 에 붙이는 기본 scope 가
-            // 무엇인지는 클라이언트에서 확인할 수 없다. 확인 불가능한 기본값에 기대는
-            // 것보다 적는 편이 싸다.
-            scopes: 'profile_nickname profile_image',
+            // **`scopes` 를 넘기지 않는다 — 넘겨도 소용이 없다는 것을 실측했다.**
+            //
+            // 티켓은 `account_email` 을 쓰지 않기로 했지만 그 결정은 클라이언트에서
+            // 집행할 수 없다. Supabase 의 kakao provider 가 scope 를 **고정으로 박아
+            // 넣고**, 우리가 보낸 값은 교체가 아니라 뒤에 **덧붙는다**:
+            //
+            //   scopes 없이:  `account_email profile_image profile_nickname`
+            //   'profile_nickname profile_image' 를 넘기면:
+            //                 `account_email profile_image profile_nickname
+            //                  profile_nickname profile_image`
+            //
+            // (`GET /auth/v1/authorize?provider=kakao` 의 302 Location 에서 읽었다.)
+            // 즉 넘기는 쪽은 `account_email` 을 지우지 못하고 중복만 만든다. 아무것도
+            // 하지 않는 설정을 "명시했다" 는 주석과 함께 두는 것이 더 나쁘므로 지운다.
+            //
+            // 이메일을 실제로 안 받으려면 카카오 동의항목에서 `account_email` 을 선택
+            // 동의로 두고 Supabase 의 "Allow users without an email" 을 켜 두면 된다 —
+            // 둘 다 콘솔 쪽이다. #55 가 이 근처를 다시 본다.
             // 지금 열려 있는 주소로 돌아온다. Supabase 프로젝트에 고정된 Site URL 로만
             // 돌아가면 Vercel preview 배포에서 로그인이 끝나지 않는다 (AC 4). 이 주소는
             // Supabase 의 Redirect URLs 허용목록에도 들어가 있어야 한다.
