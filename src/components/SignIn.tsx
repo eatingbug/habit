@@ -39,6 +39,23 @@ export function SessionChecking() {
   );
 }
 
+/**
+ * 서버 설정이 없어 앱이 열리지 못했을 때. **로그인 화면이 아니다** — 여기서는 누를 것이
+ * 없고, 고칠 사람은 배포한 사람이다.
+ *
+ * 이 화면의 존재 이유가 곧 이 티켓의 AC 2 다: 이 자리에 아무것도 없으면 사용자는 흰
+ * 화면을 본다. 실제로 그렇게 됐었다.
+ */
+export function Misconfigured({ message }: { message: string }) {
+  const { colors } = useTheme();
+  return (
+    <View style={[styles.screen, { backgroundColor: colors.surface }]}>
+      <Text style={[styles.title, { color: colors.text }]}>habiquest</Text>
+      <Banner>{message}</Banner>
+    </View>
+  );
+}
+
 export function SignIn() {
   const { colors } = useTheme();
   const { signIn } = useSession();

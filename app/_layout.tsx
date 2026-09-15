@@ -1,7 +1,7 @@
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 
-import { SessionChecking, SignIn } from '@/components/SignIn';
+import { Misconfigured, SessionChecking, SignIn } from '@/components/SignIn';
 import { RepositoryProvider } from '@/context/RepositoryContext';
 import { SessionProvider, useSession } from '@/context/SessionContext';
 import { ThemeProvider, useTheme } from '@/theme/ThemeProvider';
@@ -41,6 +41,8 @@ function Gate() {
   const { session } = useSession();
 
   if (session.status === 'checking') return <SessionChecking />;
+  // 로그인 이전의 실패다. 로그인 화면을 보여 주면 누를 때마다 같은 자리에서 다시 죽는다.
+  if (session.status === 'misconfigured') return <Misconfigured message={session.message} />;
   if (session.status === 'signedOut') return <SignIn />;
 
   // 로그인된 뒤에만 세운다 — `RepositoryProvider` 는 세션이 있어야 저장소를 만들 수 있고,

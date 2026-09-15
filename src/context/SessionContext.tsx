@@ -1,6 +1,8 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Platform } from 'react-native';
 
+import { CONFIG_MISSING_NOTE } from '@/config/copy';
+
 import { createSupabaseClient } from './createSupabaseClient';
 
 /**
@@ -12,7 +14,12 @@ import { createSupabaseClient } from './createSupabaseClient';
 export type Session =
   | { status: 'checking' }
   | { status: 'signedOut' }
-  | { status: 'signedIn'; userId: string };
+  | { status: 'signedIn'; userId: string }
+  /**
+   * 서버 주소나 키가 없어 클라이언트를 만들지 못했다. 로그인 이전의 문제라 `signedOut`
+   * 과 섞으면 안 된다 — 로그인 버튼을 눌러 봐야 같은 자리에서 다시 실패한다.
+   */
+  | { status: 'misconfigured'; message: string };
 
 export interface SessionValue {
   session: Session;
@@ -45,7 +52,23 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     // 실패하면 `INITIAL_SESSION` 을 `null` 로 쏜다 — 즉 아래 콜백은 어느 쪽이든 반드시
     // 불리고, `checking` 은 영원히 남지 않는다. AC 2 가 요구하는 "빈 화면 없음" 은
     // 타이머가 아니라 이 성질이 지킨다.
-    const { data } = createSupabaseClient().auth.onAuthStateChange((_event, next) => {
+    //
+    // `createSupabaseClient()` 는 환경변수가 없으면 **던진다.** 그것을 여기서 잡지 않으면
+    // 효과 밖으로 나가 트리 전체가 언마운트되고 사용자는 **흰 화면**을 본다 (AC 2). 실제로
+    // 배포본에서 그렇게 됐다: 번들의 `createSupabaseClient` 가 무조건 throw 로 상수 접힘
+    // 돼 있었다.
+    let client;
+    try {
+      client = createSupabaseClient();
+    } catch (cause) {
+      setSession({
+        status: 'misconfigured',
+        message: cause instanceof Error ? cause.message : CONFIG_MISSING_NOTE,
+      });
+      return;
+    }
+
+    const { data } = client.auth.onAuthStateChange((_event, next) => {
       setSession(
         next?.user == null
           ? { status: 'signedOut' }

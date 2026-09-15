@@ -1,5 +1,7 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
+import { CONFIG_MISSING_NOTE } from '@/config/copy';
+
 /**
  * 환경변수를 Supabase 클라이언트로 바꾸는 유일한 곳 — ADR-0005 의 서버 전용 전환이
  * 실제로 시작되는 지점이다.
@@ -31,10 +33,9 @@ export function createSupabaseClient(): SupabaseClient {
   const url = process.env.EXPO_PUBLIC_SUPABASE_URL;
   const publishableKey = process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
   if (!url || !publishableKey) {
-    throw new Error(
-      'EXPO_PUBLIC_SUPABASE_URL 과 EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY 가 필요합니다. ' +
-        '.env.local (커밋되지 않음) 또는 배포 환경변수에 넣어 주세요.',
-    );
+    // 문구가 `copy.ts` 에 있는 이유: 이 에러는 로그로 끝나지 않고 `SessionProvider` 가
+    // 받아 **화면에 그대로 그린다**. 흰 화면 대신 보여 줄 것이 있어야 하기 때문이다.
+    throw new Error(CONFIG_MISSING_NOTE);
   }
 
   // **auth 옵션을 하나도 넘기지 않는 것이 결정이다.** 기본값이 웹 전용 로그인에 그대로
