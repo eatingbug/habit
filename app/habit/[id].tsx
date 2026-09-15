@@ -21,7 +21,12 @@ import {
   TOAST_OVERLAY_CLEARANCE,
   ToastOverlay,
 } from '@/components';
-import { deleteConfirmLines, LIFECYCLE_NOTE, SKIP_REASON_LABELS } from '@/config/copy';
+import {
+  deleteConfirmLines,
+  LIFECYCLE_NOTE,
+  RETRY_LABEL,
+  SKIP_REASON_LABELS,
+} from '@/config/copy';
 import {
   useHabitDetail,
   type DesignBox,
@@ -1024,6 +1029,18 @@ export default function HabitDetail() {
     );
   }
 
+  // `failure` 가 먼저다. 읽기가 실패하면 `habit` 도 `null` 인데, 그때 "습관을 찾을 수
+  // 없습니다" 는 앱이 없는 습관을 없다고 **단언하는** 것이라 실패를 숨긴 거짓말이 된다 (#51).
+  if (habit == null && view.failure != null) {
+    return (
+      <View style={styles.screen}>
+        <Banner trailing={<Button label={RETRY_LABEL} onPress={view.failure.retry} />}>
+          {view.failure.message}
+        </Banner>
+      </View>
+    );
+  }
+
   if (habit == null) {
     return (
       <View style={styles.screen}>
@@ -1183,6 +1200,14 @@ export default function HabitDetail() {
           </Text>
           {view.stat != null && <Chip label={view.stat.name} variant="stat" />}
         </View>
+
+        {/* 습관을 불러온 뒤에 난 실패 — 생애주기 전환(잠깐 쉬기·보관하기)이나 다시 읽기.
+            다시 시도가 무엇인지는 훅이 정한다 (#51). */}
+        {view.failure != null && (
+          <Banner trailing={<Button label={RETRY_LABEL} onPress={view.failure.retry} />}>
+            {view.failure.message}
+          </Banner>
+        )}
         <HeaderSub binary={habit.kind === 'binary'} established={leadsWithChart} />
 
         {view.panelOrder.map(panel)}

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 
-import { rewardToastLines, SKIP_REASON_LABELS } from '@/config/copy';
+import { rewardToastLines, SKIP_REASON_LABELS, WRITE_FAILED_NOTE } from '@/config/copy';
 import { TUNING } from '@/config/tuning';
 import { useRepository } from '@/context/RepositoryContext';
 import { buildBackfillActivity, buildBackfillSkip } from '@/domain/backfill';
@@ -13,6 +13,8 @@ import {
 } from '@/domain/score';
 import { localNoonOn, newId } from '@/lib/device';
 import type { Habit, HabitEntry, SkipReason } from '@/models';
+
+import { useFailure, type Failure } from './failure';
 
 /**
  * The entry-write primitive — SPEC §6.1 / §6.2 (B1, B5, B6) and #13's row edit/delete.
@@ -70,6 +72,17 @@ export interface QuickLog {
    * `TUNING.undoToastMs` elapsing.
    */
   toast: QuickLogToast | null;
+  /**
+   * 실패한 **실행취소**, 또는 `null` — 이 훅에서 실패가 사용자에게 닿을 길이 없는 유일한
+   * 쓰기다. 나머지 넷(`logActivity`·`logSkip`·`editEntry`·`removeEntry`)은 계속 reject
+   * 하고, `app/today.tsx` 와 `app/habit/[id].tsx` 의 작성기·편집기가 이미 그것을 받아
+   * 카드 안에서 말한다. 여기서 또 잡으면 한 실패에 배너가 둘이 뜬다.
+   *
+   * 실행취소만 다른 이유는 `ToastOverlay` 의 호출부가 세 화면 모두 `void undoLast()` 이기
+   * 때문이다 — 토스트에는 실패를 담을 자리가 없고, 실패하면 사용자는 지웠다고 믿은 기록이
+   * 그대로 남은 것을 보게 된다.
+   */
+  failure: Failure | null;
   /**
    * Append one activity row. `opts.timestamp` overrides the default "now" — the B3
    * time reveal. `date` is always the day being recorded; `timestamp` only orders
@@ -220,6 +233,7 @@ export function useQuickLog({
   onChange,
 }: QuickLogOptions): QuickLog {
   const repository = useRepository();
+  const { failure, attempt } = useFailure();
   const [toast, setToast] = useState<QuickLogToast | null>(null);
 
   /**
@@ -470,14 +484,18 @@ export function useQuickLog({
   async function undoLast(): Promise<void> {
     if (toast == null) return;
 
-    await repository.deleteEntry(toast.entryId);
-    // Cleared before the reload: a second press must not try to delete a gone row.
-    dismissToast();
-    onChange();
+    const { entryId } = toast;
+    await attempt(WRITE_FAILED_NOTE, async () => {
+      await repository.deleteEntry(entryId);
+      // Cleared before the reload: a second press must not try to delete a gone row.
+      dismissToast();
+      onChange();
+    });
   }
 
   return {
     toast,
+    failure,
     logActivity,
     logSkip,
     editEntry,

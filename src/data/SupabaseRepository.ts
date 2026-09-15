@@ -21,11 +21,11 @@ import type { HabitRepository } from './HabitRepository';
  * The server-backed `HabitRepository` — ADR-0005, which makes Supabase Postgres the
  * single source of truth and retires §5.3's "V1 is single-device, local-only".
  *
- * **Nothing constructs this yet.** `RepositoryContext` still builds a
- * `LocalRepository`; wiring the session, the client and the auth-driven rebuild is
- * #51. Until then the only caller is the live round-trip suite in
- * `tests/policy/supabase-repository.test.mjs`, which is where every claim below is
- * actually checked — none of the jest suites execute this file.
+ * **`RepositoryContext` builds this** (#51): 로그인된 세션 아래에서만, 주입받은
+ * 클라이언트와 기기의 UTC 오프셋으로. 아래의 주장들이 실제로 확인되는 곳은 여전히
+ * `tests/policy/supabase-repository.test.mjs` 의 실서버 왕복 스위트뿐이다 — jest 스위트는
+ * 어느 것도 이 파일을 실행하지 않는다 (`jest.config.js` 의 훅 시험대는 `LocalRepository`
+ * over `MemoryKV` 로 돈다).
  *
  * **Both collaborators are injected**, exactly as `LocalRepository(kv)` takes its
  * driver: the client, and the device's UTC offset. That is what keeps every import
@@ -50,9 +50,9 @@ import type { HabitRepository } from './HabitRepository';
  * boundary; the default only decides what happens when the client stays silent.
  *
  * **Failures throw.** A non-2xx must never become an empty array or a silent `void`:
- * a swallowed write is a tap the user believes was recorded. Presenting that failure
- * is #51's job — `src/hooks/` currently has no `catch` at all — and this file's job
- * ends at raising it.
+ * a swallowed write is a tap the user believes was recorded. 그 실패를 사용자에게 보여
+ * 주는 것은 `src/hooks/` 의 일이고(#51 이 그 `catch` 들을 넣었다), 이 파일의 일은
+ * 실패를 **일으키는** 데서 끝난다.
  */
 
 /**
