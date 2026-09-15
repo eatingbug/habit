@@ -3,6 +3,7 @@ import { Platform, StyleSheet, Text, View } from 'react-native';
 
 import { SESSION_CHECKING_NOTE, SIGN_IN_FAILED_NOTE, signInCopy } from '@/config/copy';
 import { useSession } from '@/context/SessionContext';
+import { signInErrorFromUrl } from '@/lib/signInRedirect';
 import { useTheme } from '@/theme/ThemeProvider';
 import { FONT_SIZE, SPACE } from '@/theme/tokens';
 
@@ -60,7 +61,14 @@ export function SignIn() {
   const { colors } = useTheme();
   const { signIn } = useSession();
   const copy = signInCopy(Platform.OS);
-  const [error, setError] = useState<string | null>(null);
+  /**
+   * 초기값이 **돌아온 주소에 실린 실패**다. 카카오까지 다녀와 동의까지 눌렀는데 로그인
+   * 화면이 다시 뜨면, 그것만으로는 아무 일도 안 일어난 것과 구분되지 않는다 — 왕복 층에서
+   * 재현된 "조용히 삼켜진 탭" 이다. `useState` 의 초기화 함수라 렌더마다 다시 읽지 않는다.
+   */
+  const [error, setError] = useState<string | null>(() =>
+    Platform.OS === 'web' ? signInErrorFromUrl(window.location.href) : null,
+  );
   const [starting, setStarting] = useState(false);
 
   /**
