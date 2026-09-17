@@ -1,11 +1,11 @@
 /**
  * The KV seam. `src/data` is pure TS (§2.2): it must not import a storage driver, so
- * `LocalRepository` talks to this three-method interface and the platform adapters
- * (AsyncStorage on native, localforage on web) live in `src/context` — the one layer
- * allowed to know which platform it is running on.
+ * `LocalRepository` talks to this three-method interface and takes its driver as an
+ * argument. The platform adapters that implemented it are gone (#57); `MemoryKV` below
+ * is the only implementation left.
  *
- * Values are **strings**, matching what AsyncStorage and localforage-as-used give us;
- * serialisation is the repository's job, so a driver swap cannot change what is stored.
+ * Values are **strings**, which is what a key-value driver stores; serialisation is the
+ * repository's job, so a driver swap cannot change what is stored.
  */
 export interface KVStore {
   /** `null` — not just `undefined` — when the key was never written. */
@@ -16,7 +16,7 @@ export interface KVStore {
 
 /**
  * In-memory `KVStore`. This is what makes the repository testable with no device and
- * no driver; it is also a usable fallback if a platform adapter cannot initialise.
+ * no driver.
  */
 export class MemoryKV implements KVStore {
   private readonly map = new Map<string, string>();
