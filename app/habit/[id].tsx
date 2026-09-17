@@ -68,8 +68,6 @@ import { FONT_FAMILY, FONT_SIZE, RADIUS, SPACE, TAP_TARGET, type Palette } from 
  *   correct;
  * - the 회고 button beside that banner — #21 (the reflection screen);
  * - `YesNo`'s milestone bars (`YesNo.body.html:17–27`) — #38;
- * - `YesNo`'s 최고 연속 pill (`YesNo.body.html:12`) — #41. It is the binary habit's
- *   counterpart to 빠짐없이, which has no meaning there (see `DetailPills`).
  *
  * The ribbon's cells are not controls. §6.3 offers backfill entry as an **or** — "tap
  * a past-date in the heatmap (or a '+ add past entry' button)" — and this screen ships
@@ -247,13 +245,17 @@ function HeaderSub({ binary, established }: { binary: boolean; established: bool
 /**
  * The stat pills the canvas keeps (`HabitDetail.body.html:10`/`:12`/`:13`, and the same
  * row on `YesNo.body.html:11`/`:13`/`:14`), plus 빠짐없이 (`HabitDetail.body.html:11`)
- * — #18.
+ * — #18 — and 최고 연속 (`YesNo.body.html:12`) — #41.
  *
  * Whether 빠짐없이 is shown and whether it comes second are both `useHabitDetail`'s
  * (`showEngagement`/`engagementLeads`); this row only places it. On the canvas it sits
  * right after 연속, which is where a forming habit puts it. An **established** habit
  * shows it last instead, a placement no artboard covers — `Established.body.html:37–42`
  * carries no 빠짐없이 pill at all — and the whole row is #20's to replace.
+ *
+ * 최고 연속 takes the second slot on a binary habit, exactly as the canvas draws it.
+ * It cannot collide with 빠짐없이 for that slot: `showLongestStreak` requires a binary
+ * habit and `engagementLeads` a count one.
  *
  * `성공률` shows `—` when the hook hands back `null`: §4.4's minimum-sample guard means
  * there is not yet enough resolved history to state a rate, and `0%` would read as a
@@ -270,6 +272,9 @@ function StatPills({ pills }: { pills: DetailPills }) {
   return (
     <View style={styles.pills}>
       <Pill label="연속" value={`${pills.streak}`} unit="일" />
+      {pills.showLongestStreak && (
+        <Pill label="최고 연속" value={`${pills.longestStreak}`} unit="일" />
+      )}
       {pills.engagementLeads && engagement}
       <Pill
         label="성공률"

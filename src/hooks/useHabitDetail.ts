@@ -11,7 +11,7 @@ import { heatCells, type HeatCell } from '@/domain/heatLevel';
 import { archiveHabit, pauseHabit, resumeHabit } from '@/domain/lifecycle';
 import { successRate } from '@/domain/rates';
 import { computeXP } from '@/domain/score';
-import { computeStreak, engagementStreak, showedUpDays } from '@/domain/streak';
+import { computeStreak, engagementStreak, longestStreak, showedUpDays } from '@/domain/streak';
 import { weeklyActualTotals } from '@/domain/weekly';
 import { localNoonOn, localToday } from '@/lib/device';
 import type { DayState, Habit, HabitEntry, SkipReason, Stat } from '@/models';
@@ -62,7 +62,7 @@ export interface DetailPills {
    * `classify.ts`'s `sum < habit.floor` can never hold and `partial` is unreachable —
    * `engagementStreak` and `streak` are then the same number, and a pill showing 연속
    * twice under two labels would be a label that lies. `YesNo.body.html:12` fills that
-   * slot with 최고 연속 instead, which is #41's, not this ticket's.
+   * slot with 최고 연속 instead — `showLongestStreak`.
    */
   showEngagement: boolean;
   /**
@@ -75,6 +75,26 @@ export interface DetailPills {
    * `app/habit/[id].tsx` is one no test can reach.
    */
   engagementLeads: boolean;
+  /**
+   * The longest floor run in the whole history — the 최고 연속 pill
+   * (`design/parts/YesNo.body.html:12`), #41. Derived on every read like everything
+   * else here, so a backfill that joins two past runs raises it (ADR-0001).
+   */
+  longestStreak: number;
+  /**
+   * Is the 최고 연속 pill shown at all? **Binary habits only** — it is the counterpart
+   * to 빠짐없이, which has nothing to say there (see `showEngagement`). The two can
+   * therefore never contend for the second slot.
+   *
+   * The gate is the kind alone, not the lifecycle: no artboard draws an established
+   * binary habit, and #18 set this screen's precedent by giving 빠짐없이 to **every**
+   * count habit rather than to forming ones only.
+   *
+   * `docs/SPEC.md` §6.3's pill list (`docs/SPEC.md:964–965`) does not name this pill.
+   * The canvas is this screen's layout authority and the SPEC list is silent rather
+   * than opposed, so the canvas decides — and the SPEC was left untouched.
+   */
+  showLongestStreak: boolean;
   /**
    * The number the **user** sees — `successRate` over `TUNING.windows.floorRate` days
    * (§4.4). `null` is the §4.4 min-sample guard: too few resolved days to say anything,
@@ -765,6 +785,8 @@ export function useHabitDetail(
       engagementStreak: habit == null ? 0 : engagementStreak(entries, habit, today),
       showEngagement: habit?.kind === 'count',
       engagementLeads: habit?.kind === 'count' && habit.lifecycle === 'forming',
+      longestStreak: habit == null ? 0 : longestStreak(entries, habit),
+      showLongestStreak: habit?.kind === 'binary',
       successRate:
         habit == null ? null : successRate(entries, habit, today, TUNING.windows.floorRate),
       weeklyXP:

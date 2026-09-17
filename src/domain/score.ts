@@ -1,9 +1,8 @@
 import { TUNING } from '@/config/tuning';
 import type { Habit, HabitEntry } from '@/models';
 
-import { type ClassifiedDay, classifyDay, dayStates, isFloorMet, sortDayRows } from './classify';
-import { compareDates, dateOf } from './dates';
-import { atRiskToday, computeStreak } from './streak';
+import { classifyDay, isFloorMet, sortDayRows } from './classify';
+import { atRiskToday, computeStreak, floorRuns, historyDays } from './streak';
 
 /**
  * XP, levels and the log-time reward delta — SPEC §4.2.
@@ -35,50 +34,6 @@ export interface LogEffect {
   /** A `partial` log — engagement, not floor XP (C3). */
   showedUp: boolean;
   savedAtRiskDay: boolean;
-}
-
-/**
- * The habit's whole classified history, ending on its last recorded date.
- *
- * Scoring needs no `today` because of that end date. XP only ever reads `done`/`over`
- * days, and the one place the `pending`/`missed` distinction would matter — a run
- * reset — cannot arise inside the range: the last date holds rows by construction, so
- * every empty date strictly inside the range is genuinely past, hence `missed`. Any
- * empty date at or beyond the end has no later `done` day to cut off. Keeping `today`
- * out is what lets `computeStatXP(statId, all)` keep its SPEC signature.
- */
-function historyDays(habit: Habit, entries: HabitEntry[]): ClassifiedDay[] {
-  if (entries.length === 0) return [];
-
-  // A real max, not the last element — scoring must survive any row permutation.
-  const last = entries.reduce(
-    (latest, entry) => (compareDates(entry.date, latest) > 0 ? entry.date : latest),
-    entries[0].date,
-  );
-  return dayStates(habit, entries, dateOf(habit.createdAt), last, last);
-}
-
-/**
- * Lengths of the maximal runs of floor-met days, oldest first.
- *
- * One walker serves both run-keyed bonuses (`milestoneBonusXP` and the count habit's
- * longest-run bonus, which SPEC §4.2 spells out only for the former). A miss resets
- * the run — a `missed` day or a reasoned `skip` (ADR-0001); `pending`, `partial` and
- * exception skips are transparent, as are out-of-scope dates by never appearing.
- */
-function floorRuns(days: ClassifiedDay[]): number[] {
-  const runs: number[] = [];
-  let current = 0;
-
-  for (const day of days) {
-    if (isFloorMet(day.state)) current += 1;
-    else if (day.isMiss) {
-      if (current > 0) runs.push(current);
-      current = 0;
-    }
-  }
-  if (current > 0) runs.push(current);
-  return runs;
 }
 
 function milestoneKeys(table: Record<number, number>): number[] {

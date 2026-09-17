@@ -7,6 +7,7 @@ import {
   computeStreak,
   consecutiveMissCount,
   engagementStreak,
+  longestStreak,
   needsNeverMissTwiceIntervention,
   showedUpDays,
 } from './streak';
@@ -23,6 +24,16 @@ const COUNT: Habit = {
   target: 8,
   lifecycle: 'forming',
   createdAt: `${START}T00:00:00.000Z`,
+};
+
+const BINARY: Habit = {
+  ...COUNT,
+  id: 'b1',
+  name: '명상',
+  kind: 'binary',
+  floor: 1,
+  floorUnit: 'time',
+  target: undefined,
 };
 
 /** Day `n` of the fixture calendar (day 0 = the habit's creation date). */
@@ -295,5 +306,44 @@ describe('showedUpDays — cumulative engagement in a window (§4.3 C3)', () => 
 
   it('is 0 for a habit with no entries', () => {
     expect(showedUpDays([], COUNT, d(6), 7)).toBe(0);
+  });
+});
+
+/**
+ * 최고 연속 — the canvas's second pill on `design/parts/YesNo.body.html:12`. The whole
+ * history, not a window, so an older run can beat the current one.
+ */
+describe('longestStreak — the longest floor run in the whole history', () => {
+  it('is 0 for a habit with no entries', () => {
+    expect(longestStreak([], COUNT)).toBe(0);
+  });
+
+  it('equals the current streak when the current run is the best one', () => {
+    const entries = doneRun(4);
+
+    expect(longestStreak(entries, COUNT)).toBe(4);
+    expect(computeStreak(entries, COUNT, d(3))).toBe(4);
+  });
+
+  it('keeps an older run that the current one has not caught up to', () => {
+    const entries = [...doneRun(5, 0), skip(d(5), 'cue'), ...doneRun(2, 6)];
+
+    expect(longestStreak(entries, COUNT)).toBe(5);
+    expect(computeStreak(entries, COUNT, d(7))).toBe(2);
+  });
+
+  it('rises when a backfill joins two past runs (ADR-0001)', () => {
+    // Days 0–2 and 4–6 are done; day 3 is empty and strictly inside the range, so it
+    // is a miss and cuts the history into two runs of three.
+    const before = [...doneRun(3, 0), ...doneRun(3, 4)];
+    expect(longestStreak(before, COUNT)).toBe(3);
+
+    expect(longestStreak([...before, activity(d(3), 6)], COUNT)).toBe(7);
+  });
+
+  it('measures a binary habit the same way — its floor of 1 needs no second walker', () => {
+    const entries = [d(0), d(1), d(2), d(4)].map((date) => activity(date, 1));
+
+    expect(longestStreak(entries, BINARY)).toBe(3);
   });
 });
