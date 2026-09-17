@@ -6,9 +6,9 @@ import { CONFIG_MISSING_NOTE } from '@/config/copy';
  * 환경변수를 Supabase 클라이언트로 바꾸는 유일한 곳 — ADR-0005 의 서버 전용 전환이
  * 실제로 시작되는 지점이다.
  *
- * `src/context` 에 사는 이유는 `createKVStore` 와 같다: 이 층이 "자기가 어느 플랫폼
- * 위에서 도는지 알아도 되는 유일한 층" 이라고 `src/__tests__/architecture.test.ts` 의
- * docblock 이 적어 뒀고, env 를 읽는 것도 같은 종류의 바깥 세상 읽기다.
+ * `src/context` 에 사는 이유: 이 층이 "자기가 어느 플랫폼 위에서 도는지 알아도 되는
+ * 유일한 층" 이라고 `src/__tests__/architecture.test.ts` 의 docblock 이 적어 뒀고,
+ * env 를 읽는 것도 같은 종류의 바깥 세상 읽기다.
  * `SupabaseRepository` 는 클라이언트를 **주입받으므로** `src/data` 는 env 도 플랫폼도
  * 모른 채 남는다.
  *

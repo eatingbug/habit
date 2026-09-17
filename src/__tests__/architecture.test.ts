@@ -8,14 +8,13 @@ import { join } from 'node:path';
  * The ban extends to the storage drivers, which encodes the KV seam: `src/data` holds
  * only the repository interface, `LocalRepository(kv)`, `MemoryKV` and
  * `SupabaseRepository(client, utcOffsetMinutes)` — all pure and testable without a
- * device, because each takes its driver as an argument. The platform-specific KV
- * adapters (AsyncStorage on native, localforage on web) live in `src/context`, the
- * one layer allowed to know which platform it is running on.
+ * device, because each takes its driver as an argument.
  *
- * Read that last sentence as "where they live", not "what the app runs": since #51 the
- * provider builds a `SupabaseRepository`, so `createKVStore` and both adapters have no
- * caller left — orphaned, not deleted, tracked in #57. `src/context` is still the
- * platform-aware layer, because `createSupabaseClient` now lives there too.
+ * The platform-specific KV adapters that used to live in `src/context` are gone (#57):
+ * since #51 the provider builds a `SupabaseRepository` and nothing called them. The ban
+ * on their modules stays, because it is about what `src/data` may import, not about what
+ * is installed. `src/context` is still the platform-aware layer — `createSupabaseClient`
+ * lives there, the one layer allowed to know which platform it is running on.
  */
 function sourceFilesUnder(dir: string): string[] {
   const out: string[] = [];
