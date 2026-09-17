@@ -174,6 +174,19 @@ function HabitFeedRow({ item, onPress }: { item: TodayHabitFeedItem; onPress: ()
           {amount}
         </Text>
       </View>
+      {/* #37 — the canvas's `rewardtag` slot (`design/parts/Today.body.html:88`), the
+          line that says what this row contributed and keeps saying it. `null` on a
+          skip row, whose reason takes the same slot in the canvas too
+          (`design/parts/Today.logic.js:99`), so the two never collide. The hue is the
+          canvas's own condition (`:79`): `--good` above the floor, `--partial` below.
+          Every word and every number is `useToday`'s — nothing is judged here. */}
+      {item.reward.line != null && (
+        <Text
+          style={[styles.feedNote, { color: item.reward.floorMet ? colors.good : colors.partial }]}
+        >
+          {item.reward.line}
+        </Text>
+      )}
       {reason != null && (
         <Text style={[styles.feedNote, { color: colors.faint }]}>
           {SKIP_REASON_LABELS[reason]}

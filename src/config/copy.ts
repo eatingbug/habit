@@ -278,6 +278,60 @@ export function rewardToastLines(facts: RewardToastFacts): { detail: string; sub
   };
 }
 
+/** What the feed row's reward line needs to know — see `rowRewardLine`. */
+export interface RowRewardFacts {
+  /** The XP this row caused (`attributeDayXP`). Never a literal from the canvas. */
+  xp: number;
+  /** The day's activity sum through this row. */
+  sum: number;
+  floor: number;
+  floorMet: boolean;
+  crossedFloor: boolean;
+  /** The target this row crossed, absent when it crossed none. */
+  crossedTarget?: number;
+}
+
+/**
+ * The line a habit **activity** row keeps in the feed (issue #37) — the canvas's
+ * `rewardtag` slot (`design/parts/Today.body.html:88`,
+ * `<span class="{{ f.rcls }}">{{ f.reward }}</span>`).
+ *
+ * Four branches, all four the canvas's own `logAmount`: the sub-floor one
+ * (`design/parts/Today.logic.js:60`) and the three above it (`:65–68`) — target
+ * crossed, floor crossed, neither.
+ *
+ * **Every number here is computed, never transcribed.** The canvas's own figures (60 /
+ * 60 / 12 at `design/parts/Today.logic.js:54–56`) disagree with `TUNING`
+ * (`xpPerFloorCompletion` 60, `xpBonusTargetExceed` 60, `xpPerAboveFloorUnit` 6), so the
+ * canvas is authority for the sentence and for nothing inside it. `sum` is the day's
+ * running total through the row — the canvas's `after` — not the row's own amount.
+ *
+ * `+0 XP` **is** printed, unlike `rewardToastLines`, which drops it as noise. This line
+ * persists next to the other rows of the same day, where the whole question it has to
+ * answer is why one of them earned and the next did not: the floor XP goes to the row
+ * that crossed the floor (`attributeDayXP`). A row that stayed silent about its zero
+ * would be the one asked about.
+ *
+ * A binary habit takes the `crossedFloor` branch and reads `→ 1/1 오늘 몫 완료 · +N XP`:
+ * its floor is 1 by §3.2, it has no target to cross, and a second row on the same day
+ * earns nothing and falls to the last branch. The template needs no binary arm.
+ *
+ * Here rather than in `app/today.tsx` for this file's standing reason: `jest.config.js`
+ * matches `src/**` only.
+ */
+export function rowRewardLine(facts: RowRewardFacts): string {
+  if (!facts.floorMet) {
+    return `→ ${facts.sum}/${facts.floor} · 최소엔 못 미쳤지만 “나타남” 하루 추가`;
+  }
+  if (facts.crossedTarget != null) {
+    return `→ 합 ${facts.sum} · 목표 ${facts.crossedTarget} 넘음 · +${facts.xp} XP`;
+  }
+  if (facts.crossedFloor) {
+    return `→ ${facts.sum}/${facts.floor} 오늘 몫 완료 · +${facts.xp} XP`;
+  }
+  return `→ 합 ${facts.sum} · +${facts.xp} XP`;
+}
+
 /**
  * The at-risk save banner's two halves (SPEC §4.3 C2, issue #18 AC 5) — copy from
  * `design/parts/Today.body.html:13`.
