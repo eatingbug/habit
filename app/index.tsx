@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 
 import {
+  Banner,
   Button,
   Card,
   Chip,
@@ -20,6 +21,8 @@ import {
   TOAST_OVERLAY_CLEARANCE,
   ToastOverlay,
 } from '@/components';
+import { RETRY_LABEL, SIGN_OUT_LABEL } from '@/config/copy';
+import { useSession } from '@/context/SessionContext';
 import { useDashboard, type DashboardRow, type StatProgress } from '@/hooks/useDashboard';
 import type { SkipReason } from '@/models';
 import { useTheme } from '@/theme/ThemeProvider';
@@ -245,7 +248,8 @@ function HabitRow({
 export default function Dashboard() {
   const { colors, preference, toggle } = useTheme();
   const router = useRouter();
-  const { rows, stats, characterLevel, loading, logActivity, logSkip, toast, undoLast } =
+  const { signOut } = useSession();
+  const { rows, stats, characterLevel, loading, failure, logActivity, logSkip, toast, undoLast } =
     useDashboard();
 
   return (
@@ -253,14 +257,24 @@ export default function Dashboard() {
       <ScrollView style={styles.fill} contentContainerStyle={styles.screen}>
         <View style={styles.header}>
           <Text style={[styles.title, { color: colors.text }]}>대시보드</Text>
-          <Pressable
-            onPress={toggle}
-            style={[styles.toggle, { borderColor: colors.border, backgroundColor: colors.surface2 }]}
-          >
-            <Text style={[styles.toggleText, { color: colors.muted }]}>
-              {preference === 'system' ? '자동' : preference === 'light' ? '라이트' : '다크'}
-            </Text>
-          </Pressable>
+          <View style={styles.headerControls}>
+            <Pressable
+              onPress={toggle}
+              style={[styles.toggle, { borderColor: colors.border, backgroundColor: colors.surface2 }]}
+            >
+              <Text style={[styles.toggleText, { color: colors.muted }]}>
+                {preference === 'system' ? '자동' : preference === 'light' ? '라이트' : '다크'}
+              </Text>
+            </Pressable>
+            {/* 로그아웃은 게이트를 되돌리는 유일한 손잡이다 — 누르면 `<Stack>` 이 통째로
+                언마운트되고 이전 사용자의 화면은 남지 않는다 (AC 3). */}
+            <Pressable
+              onPress={() => void signOut()}
+              style={[styles.toggle, { borderColor: colors.border, backgroundColor: colors.surface2 }]}
+            >
+              <Text style={[styles.toggleText, { color: colors.muted }]}>{SIGN_OUT_LABEL}</Text>
+            </Pressable>
+          </View>
         </View>
 
         {/* Gated on the same `loading` as the rows below: before the load resolves the
@@ -290,9 +304,20 @@ export default function Dashboard() {
 
         <Eyebrow>오늘의 습관</Eyebrow>
 
+        {/* 실패는 실패로 보여야 하고, 다시 시도할 수단이 같이 있어야 한다 — 문구도 다시
+            시도가 무엇인지도 훅의 `failure` 가 정한다 (#51). 읽기 실패와 한 번 누르기의
+            실패가 같은 자리를 쓴다: 둘 다 "이 화면이 지금 진실이 아니다" 는 같은 말이다. */}
+        {failure != null && (
+          <Banner trailing={<Button label={RETRY_LABEL} onPress={failure.retry} />}>
+            {failure.message}
+          </Banner>
+        )}
+
         {loading ? (
           <Text style={[styles.notice, { color: colors.muted }]}>불러오는 중…</Text>
-        ) : rows.length === 0 ? (
+        ) : rows.length === 0 && failure == null ? (
+          /* `failure` 가 있으면 이 문장을 쓰지 않는다. 불러오지 못한 것을 "아직 습관이
+             없습니다" 라고 말하면 앱이 사용자 기록이 없다고 주장하는 셈이다. */
           <Text style={[styles.notice, { color: colors.muted }]}>아직 습관이 없습니다.</Text>
         ) : (
           <View style={styles.quests}>
@@ -335,6 +360,7 @@ const styles = StyleSheet.create({
   fill: { flex: 1 },
   screen: { padding: SPACE.xl, paddingBottom: TOAST_OVERLAY_CLEARANCE, gap: SPACE.lg },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  headerControls: { flexDirection: 'row', alignItems: 'center', gap: SPACE.md },
   title: { fontSize: FONT_SIZE.xl, fontWeight: '600', letterSpacing: -0.2 },
   toggle: {
     borderWidth: 1,

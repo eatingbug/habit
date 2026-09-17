@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import {
   FREE_LOG_NO_TEXT_NOTE,
   FREE_TARGET_LABEL,
+  LOAD_FAILED_NOTE,
   LOG_TYPE_LABELS,
   saveBannerLines,
 } from '@/config/copy';
@@ -23,6 +24,7 @@ import { atRiskToday } from '@/domain/streak';
 import { localNoonOn, localToday, newId } from '@/lib/device';
 import type { DayState, FreeLog, Habit, HabitEntry, LogType, SkipReason } from '@/models';
 
+import { useFailure, type Failure } from './failure';
 import {
   logAffordances,
   useQuickLog,
@@ -276,6 +278,14 @@ export interface TodayView {
   saveBanner: SaveBanner | null;
   loading: boolean;
   /**
+   * 실패한 **읽기**, 또는 `null`. 쓰기는 여기 오지 않는다 — 이 화면의 작성기·편집기가
+   * 저마다 `try/catch` 로 카드 안에서 말하고, 실행취소만 `useQuickLog` 가 들고 있다.
+   *
+   * 읽기가 실패하면 `loading` 은 내려가되 화면은 빈 상태를 말하면 안 된다 — 서버가 단일
+   * 원본이 된 뒤(ADR-0005) "아직 습관이 없습니다" 는 오프라인일 때 앱이 하는 거짓말이다.
+   */
+  failure: Failure | null;
+  /**
    * The habits selectable **on `date`**, in repository order — the target selector's
    * options. Non-archived, and (#14 D3) created on or before `date`: a habit that did
    * not exist yet cannot be backfilled into, and `isBackfillableDate` says so.
@@ -495,6 +505,7 @@ export function useToday({
   now = () => new Date(),
 }: { today?: string; date?: string; now?: () => Date } = {}): TodayView {
   const repository = useRepository();
+  const { failure, report, clear } = useFailure();
   const [loaded, setLoaded] = useState<Loaded>(EMPTY);
   const [loading, setLoading] = useState(true);
   /**
@@ -611,11 +622,19 @@ export function useToday({
 
       if (!cancelled) {
         setLoaded(next);
+        clear();
         setLoading(false);
       }
     }
 
-    void load();
+    load().catch(() => {
+      if (cancelled) return;
+      // 실패 기록과 `setLoading(false)` 는 한 쌍이다. 후자만 붙이면 무한 스피너가 "아직
+      // 습관이 없습니다" 로 바뀔 뿐이고, 그것이 더 나쁘다 (`TodayView.failure`).
+      setLoading(false);
+      // 다시 시도는 `version` 카운터 — 읽기는 이 효과 하나뿐이다.
+      report(LOAD_FAILED_NOTE, reload);
+    });
 
     return () => {
       cancelled = true;
@@ -866,6 +885,7 @@ export function useToday({
     editFreeLog,
     removeFreeLog,
     toast: quick.toast,
+    failure: failure ?? quick.failure,
     undoLast: quick.undoLast,
   };
 }

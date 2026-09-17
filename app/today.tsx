@@ -17,7 +17,12 @@ import {
   TOAST_OVERLAY_CLEARANCE,
   ToastOverlay,
 } from '@/components';
-import { deleteConfirmLines, LOG_TYPE_LABELS, SKIP_REASON_LABELS } from '@/config/copy';
+import {
+  deleteConfirmLines,
+  LOG_TYPE_LABELS,
+  RETRY_LABEL,
+  SKIP_REASON_LABELS,
+} from '@/config/copy';
 import { isFloorMet } from '@/domain/classify';
 import { weekdayOf } from '@/domain/dates';
 import {
@@ -1289,6 +1294,7 @@ export default function Today() {
     logCount,
     xpToday,
     loading,
+    failure,
     logActivity,
     logSkip,
     previewOf,
@@ -1363,6 +1369,13 @@ export default function Today() {
           </Banner>
         )}
 
+        {/* 읽기 실패는 여기 한 자리에서 말한다. 다시 시도가 무엇인지는 훅이 정한다 (#51). */}
+        {failure != null && (
+          <Banner trailing={<Button label={RETRY_LABEL} onPress={failure.retry} />}>
+            {failure.message}
+          </Banner>
+        )}
+
         {loading ? (
           <Text style={[styles.notice, { color: colors.muted }]}>불러오는 중…</Text>
         ) : (
@@ -1375,7 +1388,9 @@ export default function Today() {
                 the habit one. It is no longer the *whole* screen, though: a free log
                 links to no habit at all (§3.4), so needing one first would be a
                 dependency the model deliberately does not have. */}
-            {rows.length === 0 && (
+            {/* `failure` 가 있으면 쓰지 않는다: 불러오지 못한 것을 "아직 습관이 없습니다"
+                라고 말하면 앱이 사용자 기록이 없다고 주장하는 셈이다 (#51). */}
+            {rows.length === 0 && failure == null && (
               <Text style={[styles.notice, { color: colors.muted }]}>
                 아직 습관이 없습니다. 먼저 습관을 하나 만들어 주세요.
               </Text>

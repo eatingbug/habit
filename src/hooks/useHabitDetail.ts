@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 
-import { LIFECYCLE_LABELS } from '@/config/copy';
+import { LIFECYCLE_LABELS, LOAD_FAILED_NOTE, SAVE_FAILED_NOTE } from '@/config/copy';
 import { TUNING } from '@/config/tuning';
 import { useRepository } from '@/context/RepositoryContext';
 import { isBackfillableDate, isBackfilledRow } from '@/domain/backfill';
@@ -16,6 +16,7 @@ import { weeklyActualTotals } from '@/domain/weekly';
 import { localNoonOn, localToday } from '@/lib/device';
 import type { DayState, Habit, HabitEntry, SkipReason, Stat } from '@/models';
 
+import { useFailure, type Failure } from './failure';
 import { logAffordances, useQuickLog, type LogAffordances, type QuickLogToast } from './useQuickLog';
 
 /**
@@ -303,6 +304,18 @@ export type DetailPanel = 'pills' | 'heatmap' | 'forming' | 'chart' | 'design' |
 
 export interface HabitDetailView {
   loading: boolean;
+  /**
+   * 실패한 읽기나 실패한 **생애주기 전환**, 또는 `null`.
+   *
+   * 읽기가 실패하면 `habit` 은 `null` 이 되는데, 그 자리의 기존 문구는 "습관을 찾을 수
+   * 없습니다" 다 — 오프라인일 때 앱이 없는 습관을 없다고 **단언하는** 셈이라, 이 값이
+   * 있으면 화면은 그 문장 대신 실패를 말한다.
+   *
+   * 쓰기 중에서는 생애주기만 여기 온다. `saveDesign` 은 `app/habit/[id].tsx` 의 설계
+   * 편집기가 이미 `try/catch` 로 받고 있고, 잠깐 쉬기·보관하기 버튼만 `run()` 을 그대로
+   * 부르는 자리라 실패가 어디에도 닿지 않는다.
+   */
+  failure: Failure | null;
   /** `null` when the id names no stored habit — the screen says so and shows nothing. */
   habit: Habit | null;
   /** Absent when `habit.statId` names no configured stat — a data defect, not a state. */
@@ -554,6 +567,7 @@ export function useHabitDetail(
   }: { today?: string; now?: () => Date } = {},
 ): HabitDetailView {
   const repository = useRepository();
+  const { failure, report, clear, attempt } = useFailure();
   const [loaded, setLoaded] = useState<Loaded>(EMPTY);
   const [loading, setLoading] = useState(true);
   const [backfillDate, setBackfillDate] = useState<string | null>(null);
@@ -584,11 +598,19 @@ export function useHabitDetail(
 
       if (!cancelled) {
         setLoaded({ habit, entries });
+        clear();
         setLoading(false);
       }
     }
 
-    void load();
+    load().catch(() => {
+      if (cancelled) return;
+      // 실패 기록과 `setLoading(false)` 는 한 쌍이다. 후자만 붙이면 무한 스피너가 "습관을
+      // 찾을 수 없습니다" 로 바뀔 뿐이고, 그것이 더 나쁘다 (`HabitDetailView.failure`).
+      setLoading(false);
+      // 다시 시도는 `version` 카운터 — 읽기는 이 효과 하나뿐이다.
+      report(LOAD_FAILED_NOTE, reload);
+    });
 
     return () => {
       cancelled = true;
@@ -706,8 +728,13 @@ export function useHabitDetail(
     subject: Habit,
     next: (subject: Habit, day: string) => Habit,
   ): Promise<void> {
-    await repository.upsertHabit(next(subject, today));
-    reload();
+    // `saveDesign` 과 달리 여기서 잡는다: 설계 편집기는 자기 `try/catch` 를 갖고 있지만
+    // 잠깐 쉬기·보관하기 버튼은 이 함수를 그대로 부르는 자리라 실패가 어디에도 닿지 않는다.
+    // 보관했다고 믿은 습관이 그대로 남아 있는 것은 조용히 삼켜진 탭과 같은 종류의 버그다.
+    await attempt(SAVE_FAILED_NOTE, async () => {
+      await repository.upsertHabit(next(subject, today));
+      reload();
+    });
   }
 
   function lifecycleActions(subject: Habit): LifecycleAction[] {
@@ -784,6 +811,7 @@ export function useHabitDetail(
     saveDesign,
     lifecycleActions: habit == null ? [] : lifecycleActions(habit),
     toast: quick.toast,
+    failure: failure ?? quick.failure,
     undoLast: quick.undoLast,
   };
 }
