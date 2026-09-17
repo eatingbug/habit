@@ -78,7 +78,7 @@ import { FONT_FAMILY, FONT_SIZE, RADIUS, SPACE, TAP_TARGET, type Palette } from 
  * and the ribbon this screen does draw comes from `YesNo.body.html:31`, where it is
  * `aria-hidden="true"` — a read-only strip, not a row of dates to press. A cell could
  * not be one anyway: it is a `TUNING.heatmapDays`-th of the strip, far under
- * `TAP_TARGET` (`src/theme/tokens.ts:116`), which is the repo convention
+ * `TAP_TARGET` (`src/theme/tokens.ts`), which is the repo convention
  * `app/index.tsx:143–153` follows when it refuses the same affordance on the Dashboard
  * ribbon and keeps `Heatmap` hidden from assistive tech.
  *
@@ -941,7 +941,7 @@ function RowEditor({
  *
  * The journal is a **date walk**: a past day with no rows still gets a line, and that
  * line is the control that fills it (`day.backfillable`). It carries `TAP_TARGET`
- * (`src/theme/tokens.ts:116`) and an assembled accessible name, because three separate
+ * (`src/theme/tokens.ts`) and an assembled accessible name, because three separate
  * `Text`s would tell a screen reader nothing about what pressing does.
  */
 function JournalDayRow({
@@ -1328,7 +1328,7 @@ const styles = StyleSheet.create({
   jday: { flexDirection: 'row', gap: SPACE.lg - 2, paddingVertical: SPACE.md + 1, borderBottomWidth: 1 },
   jd: { width: 52, fontFamily: FONT_FAMILY.mono, fontSize: FONT_SIZE.sm, paddingTop: 2 },
   jc: { flex: 1, gap: SPACE.sm },
-  // `TAP_TARGET` (`src/theme/tokens.ts:116`): the chip is the control that opens the day's composer.
+  // `TAP_TARGET` (`src/theme/tokens.ts`): the chip is the control that opens the day's composer.
   jchip: { alignSelf: 'flex-start', justifyContent: 'center', minHeight: TAP_TARGET },
   // Each row is the control that opens its own editor, so it carries the minimum too.
   jrow: { justifyContent: 'center', minHeight: TAP_TARGET, borderRadius: RADIUS.sm, gap: SPACE.xs },

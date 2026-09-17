@@ -65,7 +65,7 @@ export function SkipReasonChips({
             label={chipLabel}
             accessibilityLabel={`${habitName} 못 함 · ${chipLabel}`}
             variant={selected === reason ? 'sel' : 'ghost'}
-            // §6.0's 44px minimum. These chips take `tap` where B2's quick-add chips
+            // `TAP_TARGET` (`src/theme/tokens.ts`). These chips take `tap` where B2's quick-add chips
             // deliberately do not: those only *stage* an amount, so a mis-tap costs
             // nothing, whereas one tap here **writes** a skip row.
             tap

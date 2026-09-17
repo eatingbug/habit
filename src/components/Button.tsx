@@ -32,8 +32,8 @@ export interface ButtonProps {
 }
 
 /**
- * `.btn` — the one interactive surface. `pri` carries the accent, and §6.0's 44px
- * minimum, because it is the control that logs or commits.
+ * `.btn` — the one interactive surface. `pri` carries the accent, and `TAP_TARGET`
+ * (`src/theme/tokens.ts`), because it is the control that logs or commits.
  *
  * Pressed state replaces the CSS `:hover{border-color:accent}`: touch has no hover, so
  * the accent border/tint is the only feedback that a tap registered.

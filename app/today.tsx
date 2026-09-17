@@ -115,7 +115,7 @@ function stateLabel(state: DayState): string {
 
 /**
  * One feed line, and a **control** (#13): pressing it opens `EntryEditor` on that row,
- * so it carries §6.0's 44px minimum and a button role.
+ * so it carries `TAP_TARGET` (`src/theme/tokens.ts`) and a button role.
  *
  * `accessibilityLabel` is assembled rather than left to the three child `Text`s: a
  * screen reader would otherwise announce "07:10 독서 +3쪽" with no hint that the line
@@ -268,8 +268,9 @@ function headingFor(kind: DateControl['kind']): string {
  * and the label rule at `design/parts/Backfill.logic.js:67`.
  *
  * It decides nothing: where each control may go, and which of the three labels applies,
- * are `dateControl`'s fields. Every control carries §6.0's 44px minimum (`tap`), and
- * the two arrows carry the canvas's own `aria-label`s — `‹`/`›` alone name nothing.
+ * are `dateControl`'s fields. Every control carries `TAP_TARGET` via `tap`
+ * (`src/theme/tokens.ts`), and the two arrows carry the canvas's own `aria-label`s —
+ * `‹`/`›` alone name nothing.
  */
 function DateControlBar({
   control,
@@ -1057,7 +1058,7 @@ function EntryEditor({
           {/* 캔버스 출처 없음 — 신규 문구 (`저장`·`취소`·`삭제`). 근거: the canvas
               draws no edit form, so it names none of these three; they are the
               conventional Korean labels for the three actions and assert nothing about
-              the domain. 삭제 keeps the 44px minimum (§6.0) via `tap`, as every control
+              the domain. 삭제 keeps `TAP_TARGET` (`src/theme/tokens.ts`) via `tap`, as every control
               that writes on this screen does. */}
           <Button
             label="저장"
@@ -1548,7 +1549,7 @@ const styles = StyleSheet.create({
   emptyFeed: { gap: SPACE.xs },
   // The hairline and vertical rhythm move to the item, so a skip row's reason line
   // sits inside the same separated block as the amount it explains.
-  // §6.0's 44px minimum — the row is the control that opens the editor (#13).
+  // `TAP_TARGET` (`src/theme/tokens.ts`) — the row is the control that opens the editor (#13).
   feedItem: {
     borderBottomWidth: 1,
     paddingVertical: SPACE.md,

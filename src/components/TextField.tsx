@@ -53,8 +53,8 @@ export interface NumberFieldProps {
 }
 
 /**
- * `.numfield` — narrow, centred, mono with tabular numerals (§6.0), 44px minimum
- * because it is part of a logging control.
+ * `.numfield` — narrow, centred, mono with tabular numerals (§6.0), and `TAP_TARGET`
+ * (`src/theme/tokens.ts`) because it is part of a logging control.
  */
 export function NumberField({
   value,
