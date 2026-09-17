@@ -7,6 +7,7 @@ import { dayStates } from '@/domain/classify';
 import { compareDates, dateOf, windowEndingAt } from '@/domain/dates';
 import { heatCells, type HeatCell } from '@/domain/heatLevel';
 import { computeStatXP, levelForXP, type HabitWithEntries } from '@/domain/score';
+import { aggregateStatusCount, deriveStatusLight, type StatusLight } from '@/domain/statusLight';
 import { computeStreak } from '@/domain/streak';
 import { localToday } from '@/lib/device';
 import type { Habit, SkipReason, Stat } from '@/models';
@@ -47,6 +48,14 @@ export interface DashboardRow extends LogAffordances {
    * `TUNING.heatmapDays` would otherwise be silently clipped.
    */
   streak: number;
+  /**
+   * The row's 상태등 (§4.6) — `deriveStatusLight`, the whole diagnosis as one glyph.
+   *
+   * Derived here rather than in the screen for the reason `StatProgress` gives: the
+   * screen has no test seam, and this is a judgment (which of four states a habit is
+   * in), not a rendering. The screen only chooses the glyph for it.
+   */
+  statusLight: StatusLight;
 }
 
 /**
@@ -93,6 +102,16 @@ export interface DashboardView {
    * the screen would be a judgment no test can reach.
    */
   characterLevel: number;
+  /**
+   * 손볼 습관 N개 — the §4.6 aggregate the canvas puts beside the character block
+   * (`design/parts/Dashboard.body.html:7`). `aggregateStatusCount`'s two counts summed:
+   * 🟡 and 🔴 are both "손볼" — the chip is one number, and the two lights already
+   * distinguish themselves on the rows below.
+   *
+   * Counted over the same non-archived habits the rows show. Paused habits contribute
+   * nothing by construction — `deriveStatusLight` returns `stable` for them (ADR-0003).
+   */
+  shaky: number;
   loading: boolean;
   /**
    * 실패한 읽기나 실패한 한 번 누르기, 또는 `null`.
@@ -153,6 +172,7 @@ export function useDashboard({ today = localToday() }: { today?: string } = {}):
   const { failure, report, clear, attempt } = useFailure();
   const [rows, setRows] = useState<DashboardRow[]>([]);
   const [stats, setStats] = useState<StatProgress[]>([]);
+  const [shaky, setShaky] = useState(0);
   const [loading, setLoading] = useState(true);
   /**
    * Bumped by a write, so the load effect is the single place that reads. `loading` is
@@ -197,6 +217,7 @@ export function useDashboard({ today = localToday() }: { today?: string } = {}):
               stat: statFor(habit.statId),
               cells: heatCells(habit, entries, from, to, today),
               streak: computeStreak(entries, habit, today),
+              statusLight: deriveStatusLight(habit, entries, today),
               // The one-tap control reads a classified day, not a heat cell: a cell is
               // a *rendering* instruction, and deriving an affordance from one is how
               // this drifted away from Today's identical derivation once already.
@@ -209,9 +230,18 @@ export function useDashboard({ today = localToday() }: { today?: string } = {}):
       if (!cancelled) {
         // §3.2 — archived habits are hidden from the Dashboard. Paused ones are not:
         // pause is "later", not "over" (ADR-0003), and it stays visible to be resumed.
-        setRows(
-          loaded.filter(({ habit }) => habit.lifecycle !== 'archived').map(({ row }) => row),
+        const visible = loaded.filter(({ habit }) => habit.lifecycle !== 'archived');
+        setRows(visible.map(({ row }) => row));
+        // The chip's number comes from the domain, not from counting `rows` here: the
+        // rules for what counts (paused ignored, an entry-less habit absent rather than
+        // an error) are `aggregateStatusCount`'s, and `statusLight.test.ts` is where
+        // they are asserted.
+        const shakyCount = aggregateStatusCount(
+          visible.map(({ habit }) => habit),
+          Object.fromEntries(visible.map(({ habit, entries }) => [habit.id, entries])),
+          today,
         );
+        setShaky(shakyCount.caution + shakyCount.intervention);
         // The stat cards read **every** habit, archived included. AC 5 calls the figure
         // cumulative XP, and ADR-0003's rule that a recorded day's earnings are never
         // clawed back applies here too: filtering the same list the rows use would drop
@@ -250,6 +280,7 @@ export function useDashboard({ today = localToday() }: { today?: string } = {}):
     rows,
     stats,
     characterLevel: stats.reduce((highest, stat) => Math.max(highest, stat.level), 0),
+    shaky,
     loading,
     // 실행취소의 실패는 `useQuickLog` 가 들고 있다 — 한 배너 자리를 둘이 나눠 쓴다.
     failure: failure ?? quick.failure,

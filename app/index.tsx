@@ -23,6 +23,7 @@ import {
 } from '@/components';
 import { RETRY_LABEL, SIGN_OUT_LABEL } from '@/config/copy';
 import { useSession } from '@/context/SessionContext';
+import type { StatusLight } from '@/domain/statusLight';
 import { useDashboard, type DashboardRow, type StatProgress } from '@/hooks/useDashboard';
 import type { SkipReason } from '@/models';
 import { useTheme } from '@/theme/ThemeProvider';
@@ -32,13 +33,12 @@ import { FONT_FAMILY, FONT_SIZE, RADIUS, SPACE } from '@/theme/tokens';
  * Dashboard — SPEC §6.1; layout from `design/parts/Dashboard.body.html`.
  *
  * The artboard is the finished design, so it shows more than this screen renders. The
- * status lights and the "손볼 습관 N개" aggregate belong to #20 and are left out rather
- * than stubbed: a hardcoded number would read as data the user does not have. The
  * character header's 칭호 (`· 꾸준함`) is #39's — there is no titles engine to derive one
  * from, so the header shows the level alone. What ships here is the character header and
- * the stat cards with their XP bars (#17), and the row itself — name, stat tag, the
- * `TUNING.heatmapDays` heatmap, the 🔥 streak count (#14), the one-tap log with its
- * 실행취소 toast (#11), and the long-press skip chips (#12).
+ * the stat cards with their XP bars (#17), the 상태등 and its 손볼 습관 N개 chip (#20),
+ * and the row itself — name, stat tag, the `TUNING.heatmapDays` heatmap, the 🔥 streak
+ * count (#14), the one-tap log with its 실행취소 toast (#11), and the long-press skip
+ * chips (#12).
  */
 
 /**
@@ -57,6 +57,40 @@ import { FONT_FAMILY, FONT_SIZE, RADIUS, SPACE } from '@/theme/tokens';
 function oneTapLabel(row: DashboardRow): string {
   if (row.habit.kind === 'binary') return row.hasActivityToday ? '✓ 했어요' : '✓ 완료';
   return row.hasActivityToday ? '+1 더' : '+최소';
+}
+
+/**
+ * The row's 상태등 (§4.6) — `design/parts/Dashboard.body.html:33` puts it first in
+ * `.qtop`, as an 8px `.dot` coloured `.g` / `.a` / `.r` (`design/_tokens.css:54–55`).
+ * A `personal_best` row swaps the dot for a ⭐ instead, which is what the canvas draws
+ * (`design/parts/Star.body.html:19` · `:35`).
+ *
+ * **It is read, not pressed.** §6.1 (`docs/SPEC.md:899`) navigates a tap on the 🔴/🟡
+ * to `reflect/[habitId]`, but no `app/reflect*` exists — that screen is #21's, and
+ * `app.json:38` sets `typedRoutes: true`, so a link to a route that is not there does
+ * not typecheck. #21 attaches the press; until then this renders as a glyph, with no
+ * `Pressable` around it.
+ *
+ * The light is spoken rather than left as a coloured pixel: colour alone carries the
+ * whole state here, so a screen reader would otherwise get nothing at all.
+ */
+function StatusDot({ light }: { light: StatusLight }) {
+  const { colors } = useTheme();
+
+  if (light === 'personal_best') {
+    return (
+      <Text style={styles.star} accessibilityLabel="최고 기록">
+        ⭐
+      </Text>
+    );
+  }
+
+  const tone =
+    light === 'intervention' ? colors.crit : light === 'caution' ? colors.warn : colors.good;
+  const label =
+    light === 'intervention' ? '손봐야 해요' : light === 'caution' ? '살펴보세요' : '괜찮아요';
+
+  return <View style={[styles.dot, { backgroundColor: tone }]} accessibilityLabel={label} />;
 }
 
 /**
@@ -157,6 +191,7 @@ function HabitRow({
         accessibilityLabel={`${row.habit.name} 습관 열기`}
       >
         <View style={styles.qtop}>
+          <StatusDot light={row.statusLight} />
           <Text style={[styles.qname, { color: colors.text }]} numberOfLines={1}>
             {row.habit.name}
           </Text>
@@ -249,8 +284,18 @@ export default function Dashboard() {
   const { colors, preference, toggle } = useTheme();
   const router = useRouter();
   const { signOut } = useSession();
-  const { rows, stats, characterLevel, loading, failure, logActivity, logSkip, toast, undoLast } =
-    useDashboard();
+  const {
+    rows,
+    stats,
+    characterLevel,
+    shaky,
+    loading,
+    failure,
+    logActivity,
+    logSkip,
+    toast,
+    undoLast,
+  } = useDashboard();
 
   return (
     <View style={[styles.fill, { backgroundColor: colors.surface }]}>
@@ -286,11 +331,18 @@ export default function Dashboard() {
             {/* `.rowline` — the character block
                 (`design/parts/Dashboard.body.html:3–6`). `Lv.N` is the highest stat
                 level (§4.2), derived in the hook. */}
-            <View>
-              <Eyebrow>캐릭터</Eyebrow>
-              <Text style={[styles.character, { color: colors.text }]}>
-                Lv.<Text style={styles.characterNum}>{characterLevel}</Text>
-              </Text>
+            <View style={styles.rowline}>
+              <View>
+                <Eyebrow>캐릭터</Eyebrow>
+                <Text style={[styles.character, { color: colors.text }]}>
+                  Lv.<Text style={styles.characterNum}>{characterLevel}</Text>
+                </Text>
+              </View>
+              {/* `손볼 습관 N개` — `design/parts/Dashboard.body.html:7`. The canvas
+                  draws it `warnc` when there is something to do and `goodc` at zero
+                  (`design/parts/Star.body.html:7`), so the chip's own colour is the
+                  "nothing to fix" news; the number is the hook's. */}
+              <Chip label={`손볼 습관 ${shaky}개`} variant={shaky > 0 ? 'warn' : 'good'} />
             </View>
 
             {/* `.stats` — one card per configured stat, in `TUNING.stats` order. */}
@@ -360,6 +412,9 @@ const styles = StyleSheet.create({
   fill: { flex: 1 },
   screen: { padding: SPACE.xl, paddingBottom: TOAST_OVERLAY_CLEARANCE, gap: SPACE.lg },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  // `.rowline` (`design/_tokens.css:48`) — the character block and the 손볼 습관 chip on
+  // one baseline, the chip pushed to the trailing edge.
+  rowline: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: SPACE.md },
   headerControls: { flexDirection: 'row', alignItems: 'center', gap: SPACE.md },
   title: { fontSize: FONT_SIZE.xl, fontWeight: '600', letterSpacing: -0.2 },
   toggle: {
@@ -399,6 +454,11 @@ const styles = StyleSheet.create({
   statTo: { fontSize: FONT_SIZE.xs, fontFamily: FONT_FAMILY.mono },
   quests: { gap: 9 },
   qtop: { flexDirection: 'row', alignItems: 'center', gap: SPACE.md },
+  // `.dot` (`design/_tokens.css:54`) — 8px, never shrunk by a long habit name.
+  dot: { width: 8, height: 8, borderRadius: 4, flexShrink: 0 },
+  // The ⭐ stands in the dot's place, at the canvas's 12px
+  // (`design/parts/Star.body.html:19`).
+  star: { fontSize: 12, flexShrink: 0 },
   qname: { fontSize: FONT_SIZE.md, fontWeight: '600', letterSpacing: -0.14, flexShrink: 1 },
   // `.qcue` — pushed to the row's trailing edge and clipped, so a long cue can never
   // squeeze the name or the heatmap.
