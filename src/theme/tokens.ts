@@ -112,5 +112,15 @@ export const FONT_FAMILY = {
   }),
 } as const;
 
-/** Minimum tap target for a control that logs something (§6.0). */
+/**
+ * Minimum tap target for a control that logs something — a **repo convention**, not a
+ * SPEC clause: §6.0 is the visual language (colour, type, spacing, shape) and states no
+ * tap-target minimum in any unit.
+ *
+ * 44 is where the external accessibility guidance lands: WCAG 2.5.5 Target Size
+ * (Enhanced, AAA) asks for at least 44 by 44 CSS pixels, and Apple's UI design tips ask
+ * for controls of at least 44 points x 44 points (`developer.apple.com/design/tips/`).
+ *
+ * Applied as `minHeight` wherever it is used; width is left to the control's content.
+ */
 export const TAP_TARGET = 44;

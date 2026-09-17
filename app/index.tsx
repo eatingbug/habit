@@ -186,7 +186,7 @@ function HabitRow({
         </Text>
         {/* B5's gesture is on the **ribbon**, not on today's individual cell. Two
             reasons: one cell is a `TUNING.heatmapDays`-th of the strip (~15px), far
-            under §6.0's 44px tap target; and `Heatmap` is deliberately hidden from
+            under `TAP_TARGET` (`src/theme/tokens.ts`); and `Heatmap` is deliberately hidden from
             assistive tech (a ribbon is a summary of days, not 20 controls), so a
             `Pressable` inside it would be unreachable there. The ribbon is a
             superset of "long-press today's cell" — easier to hit, and outside the
@@ -414,8 +414,9 @@ const styles = StyleSheet.create({
   // The strip carries `.ribbon`'s `flex: 1` up to the row, so the heatmap still takes
   // every pixel the one-tap control leaves.
   strip: { flex: 1, minWidth: 0 },
-  // `.ribbon` already claims the slack with `flex: 1`; the control must not be
-  // squeezed below §6.0's 44px tap target on a narrow row.
+  // `.ribbon` already claims the slack with `flex: 1`; the control must not give up its
+  // width to it on a narrow row. (`TAP_TARGET`, `src/theme/tokens.ts`, is a `minHeight`
+  // only — nothing enforces a width floor here.)
   onetap: { flexShrink: 0 },
   skiprow: { borderTopWidth: 1, paddingTop: SPACE.sm, marginTop: SPACE.xs },
 });
