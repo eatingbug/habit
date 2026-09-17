@@ -109,7 +109,7 @@ export interface JournalRow {
   /**
    * Does this row carry the §6.3 noon pin — was it written by a backfill? Read off the
    * row's own date, never off the day being shown, so a row genuinely logged at 09:00
-   * reads 09:00 (#14 D2).
+   * reads 09:00.
    */
   backfilled: boolean;
   /**

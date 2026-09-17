@@ -369,7 +369,7 @@ describe('useDashboard', () => {
   });
 
   /**
-   * #14 D9 — the row's 연속 날수. The number itself is `computeStreak`'s and is proven
+   * The row's 연속 날수. The number itself is `computeStreak`'s and is proven
    * in `src/domain/streak.test.ts`; what belongs here is that the Dashboard reads it
    * over the whole history and that a backfill repairs it in place (ADR-0001).
    */

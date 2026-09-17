@@ -645,7 +645,7 @@ function Composer({
           edit surface, not this ticket's.)
 
           The guarantee is scoped to the habit, to the skip path **and to the date** —
-          `Composer` is keyed on `${habit.id}:${date}` (#14 D7), so switching habits or
+          `Composer` is keyed on `${habit.id}:${date}`, so switching habits or
           stepping the date remounts, and a note typed for one day can never be picked
           up by a chip tapped on another.
 
@@ -1447,7 +1447,7 @@ export default function Today() {
               <FreeComposer key={`${FREE_TARGET}:${date}`} date={date} onLog={logFree} />
             ) : selectedHabit != null ? (
               <Composer
-                // #14 D7 — the date is part of the identity: stepping it must not leave
+                // The date is part of the identity: stepping it must not leave
                 // an amount, a time or a skip note staged for the day before.
                 key={`${selectedHabit.habit.id}:${date}`}
                 row={selectedHabit}
@@ -1489,7 +1489,7 @@ export default function Today() {
         )}
 
         {/* `Backfill.body.html:90` — the two ends of the range, in one sentence. It is
-            also what explains a habit's absence from the list on an early date (#14 D3),
+            also what explains a habit's absence from the list on an early date,
             which is why no per-row "not created yet" copy was invented. */}
         <Footnote>아직 오지 않은 날, 습관을 만들기 전 날짜는 고를 수 없어요.</Footnote>
       </ScrollView>

@@ -237,7 +237,7 @@ export function useQuickLog({
   const [toast, setToast] = useState<QuickLogToast | null>(null);
 
   /**
-   * Is this write a backfill? (#14 D4) Every write to a date other than `today` is,
+   * Is this write a backfill? Every write to a date other than `today` is,
    * and every one of them is stamped by `src/domain/backfill.ts` rather than by
    * `now()`.
    *
@@ -435,7 +435,7 @@ export function useQuickLog({
   }
 
   /**
-   * The cross-cutting toast rule (#13 D4): a correction to the row a live toast names
+   * The cross-cutting toast rule: a correction to the row a live toast names
    * **retires that toast at once**.
    *
    * Both directions are a stored fact lost (§7.3) otherwise. After a delete, 실행취소
@@ -474,7 +474,7 @@ export function useQuickLog({
   async function removeEntry(entryId: string): Promise<void> {
     await repository.deleteEntry(entryId);
     retireToastFor(entryId);
-    // Deliberately no new toast (#13 D5). `QuickLogToast` presupposes 실행취소, and
+    // Deliberately no new toast. `QuickLogToast` presupposes 실행취소, and
     // there is no undo of a delete to offer — the row is gone from the repository, and
     // re-appending it would mint a different id. The feed losing the line is the
     // confirmation; an edit's confirmation is the line changing.
