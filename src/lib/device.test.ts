@@ -25,12 +25,14 @@ describe('localToday', () => {
   it('reports the LOCAL day, not the UTC one, just after local midnight', () => {
     // The bug this function exists to prevent: `toISOString()` would label the wrong
     // day `pending` for anyone east or west of UTC (§3.3 — a date string is the user's
-    // declared local day). Just after local midnight the two calendars disagree
-    // wherever the offset is non-zero.
+    // declared local day). Just after local midnight the two calendars disagree only
+    // east of UTC; west of UTC the same instant is still the same UTC date, and the
+    // divergence shows up just before midnight instead — so the guard reads the sign
+    // of the offset, not merely that it is non-zero.
     freezeAtLocal(2026, 3, 10, 0, 30);
     expect(localToday()).toBe('2026-03-10');
 
-    if (new Date(2026, 2, 10, 0, 30).getTimezoneOffset() !== 0) {
+    if (new Date(2026, 2, 10, 0, 30).getTimezoneOffset() < 0) {
       expect(localToday()).not.toBe(new Date().toISOString().slice(0, 10));
     }
   });
@@ -38,6 +40,11 @@ describe('localToday', () => {
   it('reports the LOCAL day just before local midnight', () => {
     freezeAtLocal(2026, 3, 9, 23, 30);
     expect(localToday()).toBe('2026-03-09');
+
+    // The symmetric half: west of UTC this instant has already rolled over in UTC.
+    if (new Date(2026, 2, 9, 23, 30).getTimezoneOffset() > 0) {
+      expect(localToday()).not.toBe(new Date().toISOString().slice(0, 10));
+    }
   });
 
   it('rolls over a year end by the local calendar', () => {
