@@ -42,7 +42,7 @@ import {
  * - `today` is a parameter. Day-state depends on it (`pending` vs `missed`,
  *   ADR-0001), so a test must be able to pin it;
  * - `date` — the day being looked at — is a second parameter, and a distinct one from
- *   `today` (#14 D1). `date` says which rows to read and which day to write to; `today`
+ *   `today`. `date` says which rows to read and which day to write to; `today`
  *   is the basis for `pending` vs `missed` and the §6.3 upper bound. The date control
  *   (§6.2 B4) moves the first and never the second: substituting `date` for `today` in
  *   the classifier would make every past day `pending` and quietly repeal ADR-0001;
@@ -99,7 +99,7 @@ export interface TodayHabitFeedItem {
    * be showing: a row genuinely logged at 09:00 yesterday sits in the same feed and
    * reads 09:00.
    *
-   * Derived here rather than in the JSX for the usual reason (#14 D2): nothing under
+   * Derived here rather than in the JSX for the usual reason: nothing under
    * `app/` is reachable by a test.
    */
   backfilled: boolean;
@@ -164,7 +164,7 @@ export interface TargetOption {
 
 /**
  * Why deleting one row deserves a confirm — the whole basis of the warning, derived so
- * that nothing is left for the JSX to judge (#13 D2). This repo has no component render
+ * that nothing is left for the JSX to judge. This repo has no component render
  * tests (jest.config.js), so a condition written in a screen is a condition nothing
  * asserts.
  *
@@ -188,7 +188,7 @@ export interface DeleteEffect extends DeleteOutcome {
 }
 
 /**
- * The date control (§6.2 B4) as **derived values** — #14 D2.
+ * The date control (§6.2 B4) as **derived values**.
  *
  * Every judgment the stepper makes lives here rather than in the JSX: `testMatch` is
  * `<rootDir>/src/**` and there are no component render tests, so a condition written in
@@ -222,8 +222,8 @@ export interface DateControl {
   /** Where the 어제 chip moves to; `null` when yesterday predates every habit on screen. */
   yesterdayDate: string | null;
   /**
-   * The earliest selectable date: the **earliest `createdAt` among the visible habits**
-   * (#14 D3). Per-habit range is per-habit (`isBackfillableDate`), but the stepper is
+   * The earliest selectable date: the **earliest `createdAt` among the visible habits**.
+   * Per-habit range is per-habit (`isBackfillableDate`), but the stepper is
    * one control over several habits, so it takes the union and habits not yet created
    * on the chosen date simply drop out of `rows` — the footnote at
    * `Backfill.body.html:90` is what tells the user so. With no habits at all it equals
@@ -287,7 +287,7 @@ export interface TodayView {
   failure: Failure | null;
   /**
    * The habits selectable **on `date`**, in repository order — the target selector's
-   * options. Non-archived, and (#14 D3) created on or before `date`: a habit that did
+   * options. Non-archived, and created on or before `date`: a habit that did
    * not exist yet cannot be backfilled into, and `isBackfillableDate` says so.
    */
   rows: TodayHabitRow[];
@@ -481,7 +481,7 @@ interface Loaded {
   rows: TodayHabitRow[];
   feed: TodayFeedItem[];
   xpToday: number;
-  /** The stepper's lower bound (#14 D3) — see `DateControl.earliest`. */
+  /** The stepper's lower bound — see `DateControl.earliest`. */
   earliest: string | null;
   /**
    * Each visible habit's rows from its birth through today, by habit id — the range
@@ -530,7 +530,7 @@ export function useToday({
       // not: pause is "later", not "over" (ADR-0003), and a paused day still records.
       const visible = habits.filter((habit) => habit.lifecycle !== 'archived');
 
-      // #14 D3 — the stepper's lower bound is the union over the habits on screen, so
+      // The stepper's lower bound is the union over the habits on screen, so
       // it is taken before the per-date filter below narrows them.
       const earliest = visible
         .map((habit) => dateOf(habit.createdAt))
@@ -539,7 +539,7 @@ export function useToday({
           null,
         );
 
-      // #14 D3 — a habit that did not exist on `date` is not shown at all, rather than
+      // A habit that did not exist on `date` is not shown at all, rather than
       // shown inert: `isBackfillableDate` is the domain's own answer to "may this habit
       // be written to on this day?", and a disabled row would need copy the canvas
       // does not have (its footnote `:90` already explains the absence).
@@ -559,7 +559,7 @@ export function useToday({
 
           return {
             habit,
-            // `today` stays the last argument (#14 D1): it is what separates `pending`
+            // `today` stays the last argument: it is what separates `pending`
             // from `missed`, and passing `date` would make every past day pending.
             day: dayStates(habit, rowsOnDate, date, date, today)[0],
             rowsOnDate,
@@ -739,7 +739,7 @@ export function useToday({
   }
 
   /**
-   * #14 D2 — every judgment the date control makes, derived here. `earliest` falls back
+   * Every judgment the date control makes, derived here. `earliest` falls back
    * to `today` before the first load settles and when there are no habits at all, which
    * pins the stepper to today in both cases.
    */
