@@ -121,6 +121,6 @@ export const FONT_FAMILY = {
  * (Enhanced, AAA) asks for at least 44 by 44 CSS pixels, and Apple's UI design tips ask
  * for controls of at least 44 points x 44 points (`developer.apple.com/design/tips/`).
  *
- * Applied as `minHeight` wherever it is used; width is left to the control's content.
+ * Applied as `minHeight` wherever it is used; no usage applies it to width.
  */
 export const TAP_TARGET = 44;
