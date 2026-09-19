@@ -5,6 +5,7 @@ import {
   FREE_TARGET_LABEL,
   LOAD_FAILED_NOTE,
   LOG_TYPE_LABELS,
+  rowRewardLine,
   saveBannerLines,
 } from '@/config/copy';
 import { useRepository } from '@/context/RepositoryContext';
@@ -19,7 +20,7 @@ import {
 import { addDays, compareDates, dateOf } from '@/domain/dates';
 import { deleteOutcome, type DeleteOutcome } from '@/domain/deleteEffect';
 import { sortByDomainOrder } from '@/domain/feed';
-import { computeXP } from '@/domain/score';
+import { attributeDayXP, computeXP, type RowReward } from '@/domain/score';
 import { atRiskToday } from '@/domain/streak';
 import { localNoonOn, localToday, newId } from '@/lib/device';
 import type { DayState, FreeLog, Habit, HabitEntry, LogType, SkipReason } from '@/models';
@@ -103,6 +104,44 @@ export interface TodayHabitFeedItem {
    * `app/` is reachable by a test.
    */
   backfilled: boolean;
+  /** What this row contributed, and the line that says so — see `TodayRowReward`. */
+  reward: TodayRowReward;
+}
+
+/**
+ * A feed row's standing reward line (#37) — the canvas's `rewardtag` slot
+ * (`design/parts/Today.body.html:88`), which every habit row has and only free logs
+ * were filling (#16, `TodayFreeFeedItem.note`).
+ *
+ * The attribution rule is `attributeDayXP`'s — the delta this row caused when the day
+ * is replayed in the §7.3 total order — and its docblock carries the decision and the
+ * consequence that the row *crossing* the floor takes the floor XP. Decided here in the
+ * hook rather than in the row's JSX for this file's standing reason: `jest.config.js`
+ * matches `src/**` only, so `app/today.tsx` can be given words but no judgment.
+ *
+ * `xp` is on **every** habit row, skips included, because the sum over the feed's habit
+ * rows is what has to equal `xpToday` — leaving a kind of row out would be assuming its
+ * delta is zero rather than computing it.
+ *
+ * `line` is `null` for a **skip** row, and that is the coexistence decision: the canvas
+ * puts the skip reason in this very slot (`design/parts/Today.logic.js:99`,
+ * `reward: reason`), so the two are alternatives on one row, not two lines competing
+ * for it. The row's memo and the backfill marker are unaffected — they are separate
+ * lines the screen already stacks beneath this one.
+ */
+export interface TodayRowReward {
+  /** This row's share of the day's XP. Can be 0 — most later rows of a day are. */
+  xp: number;
+  /** The reward line, or `null` when the row is a skip and shows its reason instead. */
+  line: string | null;
+  /**
+   * Was the floor met as of this row? The canvas colours the slot by exactly this
+   * condition — `rcls: after >= h.floor ? 'rewardtag' : 'rewardtag warn'`
+   * (`design/parts/Today.logic.js:79`), i.e. `--good` vs `--partial`
+   * (`design/_tokens.css:132–133`). The screen cannot derive it: it would need the
+   * day's running sum through this row, which is what the replay above computes.
+   */
+  floorMet: boolean;
 }
 
 /**
@@ -477,6 +516,30 @@ function composerReadings(habit: Habit, day: ClassifiedDay | undefined) {
   };
 }
 
+/**
+ * One attributed row turned into the feed line — #37. The domain decides the number
+ * (`attributeDayXP`) and `src/config/copy` owns the sentence; this is only the join,
+ * plus the one judgment that is neither: a skip row shows its reason in this slot
+ * instead (see `TodayRowReward`).
+ */
+function rowReward(habit: Habit, row: RowReward): TodayRowReward {
+  return {
+    xp: row.xp,
+    floorMet: row.floorMet,
+    line:
+      row.entry.skipReason != null
+        ? null
+        : rowRewardLine({
+            xp: row.xp,
+            sum: row.sum,
+            floor: habit.floor,
+            floorMet: row.floorMet,
+            crossedFloor: row.crossedFloor,
+            crossedTarget: row.crossedTarget,
+          }),
+  };
+}
+
 interface Loaded {
   rows: TodayHabitRow[];
   feed: TodayFeedItem[];
@@ -565,11 +628,19 @@ export function useToday({
             rowsOnDate,
             history,
             xp: computeXP(history, habit) - computeXP(before, habit),
+            // #37 — the same two scores this `xp` is the difference of, taken one row
+            // at a time. `before` is the baseline for both, so the rewards sum to `xp`.
+            rewards: attributeDayXP(before, rowsOnDate, habit),
           };
         }),
       );
 
       const byId = new Map(selectable.map((habit) => [habit.id, habit]));
+      const rewardById = new Map(
+        perHabit.flatMap(({ habit, rewards }) =>
+          rewards.map((row) => [row.entry.id, rowReward(habit, row)] as const),
+        ),
+      );
       const allRows = perHabit.flatMap((entry) => entry.rowsOnDate);
       // §3.4 — free logs are grouped by their own declared `date`, which is what
       // `getFreeLogs` filters on. They are read for **any** `date`, including a past
@@ -604,6 +675,7 @@ export function useToday({
               // at 12:00 sharp would otherwise be labelled as one.
               backfilled:
                 entry.date !== today && isBackfilledRow(entry, localNoonOn(entry.date)),
+              reward: rewardById.get(entry.id) as TodayRowReward,
             } satisfies TodayHabitFeedItem,
           })),
           ...freeLogs.map((log) => ({

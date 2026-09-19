@@ -192,3 +192,88 @@ export function describeLogEffect(
     savedAtRiskDay: metAfter && atRiskToday(before, habit, logDate),
   };
 }
+
+/** One row's share of its day — see `attributeDayXP` (issue #37). */
+export interface RowReward {
+  entry: HabitEntry;
+  /** The XP this row caused: the day's XP through it, minus through the row before it. */
+  xp: number;
+  /** The day's activity sum through this row, under the total order. */
+  sum: number;
+  /** Was the floor met as of this row? */
+  floorMet: boolean;
+  /** Did *this* row take the day from below the floor to at or above it? */
+  crossedFloor: boolean;
+  /** The effective target this row crossed; absent when it crossed none. */
+  crossedTarget?: number;
+}
+
+/**
+ * What each of a day's rows earned — the feed's per-row reward line (issue #37).
+ *
+ * `describeLogEffect` cannot answer this: it needs the `before` of a log that is
+ * happening, and a row read back from the repository has no such `before`. So the day
+ * is **replayed** in the §7.3 total order `(timestamp ASC, id ASC)` and each row is
+ * credited with the delta it caused — the day's XP through that row minus the day's XP
+ * through the previous one.
+ *
+ * The deltas telescope, so their sum is `computeXP(before + dayRows) -
+ * computeXP(before, habit)` **by construction**: the very quantity `useToday.xpToday`
+ * sums per habit. That identity is the reason for this rule and not another one. Per-row
+ * independent recomputation, or splitting the day's XP evenly, cannot hold it: the
+ * floor XP is counted once per day and above-floor intensity is not linear in a row's
+ * amount.
+ *
+ * `before` is the habit's rows on **other** dates, and it is not optional padding: XP
+ * carries run-keyed bonuses (`xpStreakBonus`, `milestoneBonusXP`), so replaying the day
+ * from an empty set would score a different quantity than the one that must be matched.
+ *
+ * **The consequence, stated so it is not later read as a bug:** the row that *crosses*
+ * the floor takes the whole floor XP, and every other row of that day gets only its
+ * marginal contribution — frequently zero. A day filled 5/5 in one row and a day filled
+ * 1/5 five times therefore do not distribute alike. That is the content of the rule, not
+ * a defect: the floor XP exists once per day (`computeXP` pays
+ * `xpPerFloorCompletion` per floor-met **day**), so one row gets it and the others do
+ * not, and dividing it up would break the sum the rule exists to keep.
+ *
+ * Skip rows are attributed too, though they normally earn 0: a non-exception skip is a
+ * miss (§4.1) and can cut a run, so filtering them out would be assuming a delta rather
+ * than computing it.
+ */
+export function attributeDayXP(
+  before: HabitEntry[],
+  dayRows: HabitEntry[],
+  habit: Habit,
+): RowReward[] {
+  const ordered = sortDayRows(dayRows);
+  if (ordered.length === 0) return [];
+
+  const date = ordered[0].date;
+  const rewards: RowReward[] = [];
+  const prefix: HabitEntry[] = [];
+  let xpThrough = computeXP(before, habit);
+  // The day's own date as `today`: an empty prefix then reads `pending` rather than
+  // `missed`, and neither is floor-met, so the crossing tests are unaffected either way.
+  let stateThrough = classifyDay(prefix, habit, date, date);
+
+  for (const entry of ordered) {
+    prefix.push(entry);
+    const xpBefore = xpThrough;
+    const stateBefore = stateThrough;
+    xpThrough = computeXP([...before, ...prefix], habit);
+    stateThrough = classifyDay(prefix, habit, date, date);
+
+    rewards.push({
+      entry,
+      xp: xpThrough - xpBefore,
+      sum: prefix.reduce((total, row) => total + (row.skipReason == null ? row.actual : 0), 0),
+      floorMet: isFloorMet(stateThrough),
+      crossedFloor: !isFloorMet(stateBefore) && isFloorMet(stateThrough),
+      // `over` is the classifier's own answer about the *effective* target (§4.1's
+      // defensive read), so `habit.target` is the real figure exactly in this branch.
+      crossedTarget:
+        stateBefore !== 'over' && stateThrough === 'over' ? habit.target : undefined,
+    });
+  }
+  return rewards;
+}

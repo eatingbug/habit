@@ -6,6 +6,7 @@ import {
   SKIP_REASON_LABELS,
   deleteConfirmLines,
   rewardToastLines,
+  rowRewardLine,
   saveBannerLines,
   signInCopy,
   type RewardToastFacts,
@@ -382,5 +383,45 @@ describe('CONFIG_MISSING_NOTE — 흰 화면 대신 무엇을 넣어야 하는�
   it('없는 환경변수 두 개의 이름을 그대로 담는다', () => {
     expect(CONFIG_MISSING_NOTE).toContain('EXPO_PUBLIC_SUPABASE_URL');
     expect(CONFIG_MISSING_NOTE).toContain('EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY');
+  });
+});
+
+/**
+ * 네 갈래는 캔버스의 `logAmount` 그대로다 — `design/parts/Today.logic.js:60` 과
+ * `:65–68`. 숫자는 캔버스에서 옮겨 적지 않는다: 여기 넣는 `xp` 는 `attributeDayXP` 가
+ * 계산한 값이고, 이 테스트는 그 값이 문장에 그대로 나오는지만 본다.
+ */
+describe('rowRewardLine — 피드 행에 남는 보상 줄 (#37)', () => {
+  const base = { xp: 0, sum: 0, floor: 5, floorMet: false, crossedFloor: false };
+
+  it('최소에 못 미친 행은 XP 대신 "나타남" 을 말한다 (`:60`)', () => {
+    expect(rowRewardLine({ ...base, sum: 3 })).toBe(
+      '→ 3/5 · 최소엔 못 미쳤지만 “나타남” 하루 추가',
+    );
+  });
+
+  it('목표를 넘긴 행은 합과 목표와 XP 를 말한다 (`:65`)', () => {
+    expect(
+      rowRewardLine({ ...base, xp: 78, sum: 8, floorMet: true, crossedTarget: 8 }),
+    ).toBe('→ 합 8 · 목표 8 넘음 · +78 XP');
+  });
+
+  it('최소를 채운 행은 오늘 몫 완료를 말한다 (`:67`)', () => {
+    expect(rowRewardLine({ ...base, xp: 60, sum: 5, floorMet: true, crossedFloor: true })).toBe(
+      '→ 5/5 오늘 몫 완료 · +60 XP',
+    );
+  });
+
+  /** 이 줄이 답해야 하는 질문이 "왜 이 행은 0 이냐" 라서, 0 도 적는다. */
+  it('이미 채워진 뒤의 행은 제 몫만 말하고, 0 이면 0 이라고 적는다 (`:68`)', () => {
+    expect(rowRewardLine({ ...base, xp: 0, sum: 9, floorMet: true })).toBe('→ 합 9 · +0 XP');
+    expect(rowRewardLine({ ...base, xp: 18, sum: 9, floorMet: true })).toBe('→ 합 9 · +18 XP');
+  });
+
+  /** 예/아니오 습관은 floor 1 이고 목표가 없다 (§3.2) — 갈래를 따로 두지 않는다. */
+  it('예/아니오 습관은 1/1 오늘 몫 완료로 읽힌다', () => {
+    expect(
+      rowRewardLine({ xp: 60, sum: 1, floor: 1, floorMet: true, crossedFloor: true }),
+    ).toBe('→ 1/1 오늘 몫 완료 · +60 XP');
   });
 });

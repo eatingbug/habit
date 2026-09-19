@@ -1702,3 +1702,118 @@ describe('useToday', () => {
     });
   });
 });
+
+/**
+ * The feed row's standing reward line (#37).
+ *
+ * AC 2 is the reason the attribution rule is the one it is: the sum of the rows' XP has
+ * to equal `xpToday`, and only the replayed delta holds that identity by construction
+ * (`attributeDayXP`). So the invariant is asserted against `xpToday` itself — the hook's
+ * own independently computed figure, which this ticket deliberately did not redefine as
+ * the attribution sum, or the assertion would be a tautology.
+ */
+describe('useToday — 행마다 남는 보상 줄 (#37)', () => {
+  function rewardXPSum(view: TodayView): number {
+    return habitFeed(view).reduce((total, item) => total + item.reward.xp, 0);
+  }
+
+  function lines(view: TodayView): (string | null)[] {
+    return habitFeed(view).map((item) => item.reward.line);
+  }
+
+  it('sums the rows to xpToday — one full row', async () => {
+    const result = await todayScreen(new LocalRepository(await seed([habit()])));
+    await log(result, 'h1', 5);
+
+    expect(rewardXPSum(result.current)).toBe(result.current.xpToday);
+    expect(result.current.xpToday).toBe(TUNING.xpPerFloorCompletion);
+  });
+
+  it('sums the rows to xpToday — several partial rows, an over-target row, a skip', async () => {
+    const result = await todayScreen(
+      new LocalRepository(await seed([habit(), binary()])),
+    );
+    await log(result, 'h1', 1);
+    await log(result, 'h1', 1);
+    await log(result, 'h1', 3);
+    await log(result, 'h1', 4);
+    await logSkip(result, binary(), 'cue');
+
+    expect(habitFeed(result.current)).toHaveLength(5);
+    expect(rewardXPSum(result.current)).toBe(result.current.xpToday);
+    expect(result.current.xpToday).toBeGreaterThan(0);
+  });
+
+  it('sums the rows to xpToday — an under-floor day and an empty day', async () => {
+    const empty = await todayScreen(new LocalRepository(await seed([habit()])));
+    expect(rewardXPSum(empty.current)).toBe(empty.current.xpToday);
+    expect(empty.current.xpToday).toBe(0);
+
+    await log(empty, 'h1', 2);
+    expect(rewardXPSum(empty.current)).toBe(empty.current.xpToday);
+    expect(empty.current.xpToday).toBe(0);
+  });
+
+  /**
+   * 판정의 내용 그대로 — 바닥 XP 는 하루에 한 번뿐이라 **바닥을 넘는 행**이 그것을 다
+   * 가져가고, 같은 날의 나머지 행은 제 몫만 받는다. 3+2 는 첫 행이 아니라 둘째 행이
+   * 넘는다.
+   */
+  it('gives the floor XP to the row that crosses the floor, not to the first row', async () => {
+    const result = await todayScreen(new LocalRepository(await seed([habit()])));
+    await log(result, 'h1', 3);
+    await log(result, 'h1', 2);
+
+    expect(habitFeed(result.current).map((item) => item.reward.xp)).toEqual([
+      0,
+      TUNING.xpPerFloorCompletion,
+    ]);
+    expect(rewardXPSum(result.current)).toBe(result.current.xpToday);
+  });
+
+  it('writes the four canvas branches, with the numbers it computed', async () => {
+    const result = await todayScreen(new LocalRepository(await seed([habit()])));
+
+    await log(result, 'h1', 2);
+    expect(lines(result.current)).toEqual(['→ 2/5 · 최소엔 못 미쳤지만 “나타남” 하루 추가']);
+    // 캔버스가 이 줄의 색을 고르는 조건 그대로 (`Today.logic.js:79`).
+    expect(habitFeed(result.current).map((item) => item.reward.floorMet)).toEqual([false]);
+
+    await log(result, 'h1', 3);
+    expect(lines(result.current)[1]).toBe(`→ 5/5 오늘 몫 완료 · +${TUNING.xpPerFloorCompletion} XP`);
+    expect(habitFeed(result.current).map((item) => item.reward.floorMet)).toEqual([false, true]);
+
+    await log(result, 'h1', 3);
+    expect(lines(result.current)[2]).toBe(
+      `→ 합 8 · 목표 8 넘음 · +${TUNING.xpBonusTargetExceed + 3 * TUNING.xpPerAboveFloorUnit} XP`,
+    );
+
+    await log(result, 'h1', 1);
+    expect(lines(result.current)[3]).toBe(`→ 합 9 · +${TUNING.xpPerAboveFloorUnit} XP`);
+  });
+
+  /**
+   * 건너뜀 행의 둘째 줄은 캔버스에서도 사유다 (`design/parts/Today.logic.js:99`,
+   * `reward: reason`). 줄은 비우되 **XP 는 그대로 귀속한다** — 합이 `xpToday` 와
+   * 맞아야 하는 대상은 모든 습관 행이다.
+   */
+  it('leaves a skip row without a reward line, and still attributes its XP', async () => {
+    const result = await todayScreen(new LocalRepository(await seed([habit()])));
+    await logSkip(result, habit(), 'cue');
+
+    const [row] = habitFeed(result.current);
+    expect(row.entry.skipReason).toBe('cue');
+    expect(row.reward.line).toBeNull();
+    expect(rewardXPSum(result.current)).toBe(result.current.xpToday);
+  });
+
+  it('reads a yes/no row as 1/1 오늘 몫 완료', async () => {
+    const result = await todayScreen(new LocalRepository(await seed([binary()])));
+    await log(result, 'b1', 1);
+
+    expect(lines(result.current)).toEqual([
+      `→ 1/1 오늘 몫 완료 · +${TUNING.xpPerFloorCompletion} XP`,
+    ]);
+    expect(rewardXPSum(result.current)).toBe(result.current.xpToday);
+  });
+});
