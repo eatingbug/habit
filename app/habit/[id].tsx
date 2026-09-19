@@ -77,7 +77,7 @@ import { FONT_FAMILY, FONT_SIZE, RADIUS, SPACE, TAP_TARGET, type Palette } from 
  * `aria-hidden="true"` — a read-only strip, not a row of dates to press. A cell could
  * not be one anyway: it is a `TUNING.heatmapDays`-th of the strip, far under
  * `TAP_TARGET` (`src/theme/tokens.ts`), which is the repo convention
- * `app/index.tsx:143–153` follows when it refuses the same affordance on the Dashboard
+ * `app/index.tsx` follows when it refuses the same affordance on the Dashboard
  * ribbon and keeps `Heatmap` hidden from assistive tech.
  *
  * So the two controls that open a composer are both text-sized, and both apply §6.3's
