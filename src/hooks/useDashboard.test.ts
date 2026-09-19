@@ -551,4 +551,101 @@ describe('useDashboard', () => {
       expect(cardFor(result.current, 'strength').barFraction).toBeGreaterThan(0);
     });
   });
+
+  /**
+   * #20 — the status light on the row and the 손볼 습관 chip beside the character block.
+   *
+   * The §4.6 rules themselves are `statusLight.test.ts`'s; what is asserted here is the
+   * wiring: the row carries the light its own history earns, and the chip's number is
+   * the aggregate over the habits the Dashboard actually shows.
+   */
+  describe('the status light and its aggregate (#20)', () => {
+    /** Floor-met every day the habit has existed, ending yesterday. */
+    function everyDayDone(habitId: string): HabitEntry[] {
+      return [1, 2, 3, 4, 5].map((back) => activity(habitId, addDays(TODAY, -back), 5));
+    }
+
+    it('turns 🔴 on a forming habit that has missed past the threshold, and counts it', async () => {
+      // Born five days ago with nothing recorded: every past day is `missed`
+      // (ADR-0001), which is more than `interventionConsecMiss` in a row.
+      const result = await dashboard(new LocalRepository(await seed([habit()])));
+
+      expect(result.current.rows[0].statusLight).toBe('intervention');
+      expect(result.current.shaky).toBe(1);
+    });
+
+    it('does not ask for attention when the floor is met every day', async () => {
+      const kv = await seed([habit()], everyDayDone('h1'));
+      const result = await dashboard(new LocalRepository(kv));
+
+      expect(['intervention', 'caution']).not.toContain(result.current.rows[0].statusLight);
+      expect(result.current.shaky).toBe(0);
+    });
+
+    it('turns 🟡 on a Rule 1 flag with no miss run, and the chip counts 🟡 too', async () => {
+      // Nine recorded days: five at the floor, four sub-floor. The floor-completion
+      // rate is 5/9 ≈ 56% — under `lowFloorRateThreshold`, so Rule 1 raises one flag —
+      // while `partial` is transparent to the miss run, so there is no 🔴.
+      const born = addDays(TODAY, -9);
+      const dates = [9, 8, 7, 6, 5, 4, 3, 2, 1].map((back) => addDays(TODAY, -back));
+      const kv = await seed(
+        [habit({ createdAt: `${born}T09:00:00.000Z` })],
+        dates.map((date, i) => activity('h1', date, i < 5 ? 5 : 2)),
+      );
+      const result = await dashboard(new LocalRepository(kv));
+
+      expect(result.current.rows[0].statusLight).toBe('caution');
+      expect(result.current.shaky).toBe(1);
+    });
+
+    it('sums 🟡 and 🔴 into one number and leaves the healthy habit out', async () => {
+      const kv = await seed(
+        [habit(), habit({ id: 'h2', name: '독서', statId: 'intelligence' })],
+        everyDayDone('h2'),
+      );
+      const result = await dashboard(new LocalRepository(kv));
+
+      expect(result.current.rows).toHaveLength(2);
+      expect(result.current.shaky).toBe(1);
+    });
+
+    it('a paused habit demands nothing, however bare its record (AC 8, ADR-0003)', async () => {
+      // The same empty five-day history that reads 🔴 above — paused, it reads stable
+      // and adds nothing to the chip, while the row itself stays on the Dashboard.
+      const kv = await seed([
+        habit({ lifecycle: 'paused', pauses: [{ from: addDays(TODAY, -5) }] }),
+      ]);
+      const result = await dashboard(new LocalRepository(kv));
+
+      expect(result.current.rows).toHaveLength(1);
+      expect(result.current.rows[0].statusLight).toBe('stable');
+      expect(result.current.shaky).toBe(0);
+    });
+
+    it('an archived habit is neither a row nor a number in the chip', async () => {
+      const kv = await seed([
+        habit(),
+        habit({ id: 'h2', lifecycle: 'archived', pauses: [{ from: addDays(TODAY, -5) }] }),
+      ]);
+      const result = await dashboard(new LocalRepository(kv));
+
+      expect(result.current.rows.map((row) => row.habit.id)).toEqual(['h1']);
+      expect(result.current.shaky).toBe(1);
+    });
+
+    it('recomputes the light and the chip as soon as a log lands', async () => {
+      // `consecutiveMissCount` counts the run **ending at today** (§4.3), so a
+      // floor-met day today ends it: the 🔴 clears on the one tap and the chip follows
+      // it down in the same reload.
+      const repository = new LocalRepository(await seed([habit()]));
+      const result = await dashboard(repository);
+      expect(result.current.rows[0].statusLight).toBe('intervention');
+      expect(result.current.shaky).toBe(1);
+
+      await log(result, result.current.rows[0].habit, 5);
+
+      expect(result.current.rows[0].statusLight).not.toBe('intervention');
+      expect(result.current.shaky).toBe(0);
+    });
+  });
 });
