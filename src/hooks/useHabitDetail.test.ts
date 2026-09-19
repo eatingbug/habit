@@ -207,6 +207,70 @@ describe('useHabitDetail — the stat pills (D1)', () => {
   });
 
   /**
+   * 최고 연속 (#41) — `design/parts/YesNo.body.html:12`, the binary habit's counterpart
+   * to 빠짐없이. `docs/SPEC.md` §6.3's pill list (`:964–965`) does not name it; the
+   * canvas is this screen's layout authority.
+   */
+  describe('최고 연속', () => {
+    /** Binary rows on the given days back from today. */
+    function meditated(...backs: number[]): HabitEntry[] {
+      return backs.map((back) =>
+        activity(addDays(TODAY, -back), 1, '09:00:00', { habitId: 'b1' }),
+      );
+    }
+
+    it('shows the longest run in the whole history, which the current streak may trail', async () => {
+      // Three done days, a two-day gap that misses, then two more done days.
+      const result = await detail(await seed(binary(), meditated(7, 6, 5, 2, 1)), 'b1');
+
+      expect(result.current.pills.longestStreak).toBe(3);
+      expect(result.current.pills.streak).toBe(2);
+    });
+
+    it('is 0 for a habit with no entries', async () => {
+      const result = await detail(await seed(binary()), 'b1');
+
+      expect(result.current.pills.showLongestStreak).toBe(true);
+      expect(result.current.pills.longestStreak).toBe(0);
+    });
+
+    it('takes the second slot, which 빠짐없이 can never also be holding', async () => {
+      const result = await detail(await seed(binary(), meditated(2, 1)), 'b1');
+
+      expect(result.current.pills.showLongestStreak).toBe(true);
+      // The only other candidate for that slot leads on a **count** habit, so the two
+      // are mutually exclusive by kind rather than by the order the screen writes.
+      expect(result.current.pills.engagementLeads).toBe(false);
+    });
+
+    it('stays on an established binary habit — the gate is the kind, not the lifecycle', async () => {
+      const subject = binary({ lifecycle: 'established' });
+      const result = await detail(await seed(subject, meditated(1)), 'b1');
+
+      expect(result.current.pills.showLongestStreak).toBe(true);
+    });
+
+    it('is withheld from a count habit, whose second slot is 빠짐없이 (#18)', async () => {
+      const result = await detail(await seed(habit(), [activity(addDays(TODAY, -1), 6)]));
+
+      expect(result.current.pills.showLongestStreak).toBe(false);
+    });
+
+    it('rises when a backfill joins two past runs (ADR-0001 — derived, never stored)', async () => {
+      // Days −5…−3 done, −2 missed, −1 done: two runs, the longer one is three.
+      const result = await detail(await seed(binary(), meditated(5, 4, 3, 1)), 'b1');
+      expect(result.current.pills.longestStreak).toBe(3);
+
+      act(() => result.current.openBackfill(addDays(TODAY, -2)));
+      await act(async () => {
+        await result.current.fillDay();
+      });
+
+      expect(result.current.pills.longestStreak).toBe(5);
+    });
+  });
+
+  /**
    * 주간 XP (#17) — the ISO week `mondayOf` defines, which is the week the growth
    * chart's rightmost bar covers, so the pill and the bar can never disagree.
    */
