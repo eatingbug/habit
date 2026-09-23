@@ -398,28 +398,15 @@ export interface HabitDetailView {
    * field).
    */
   composerAffordances: LogAffordances | null;
-  /**
-   * What the open composer's amount field starts prefilled with (§6.2 B2) — `null`
-   * when no composer is open. The date's first record gets the habit's `floor` ("I did
-   * my minimum" is the dominant case); from the second record on it gets the date's
-   * last amount, because a second log is usually another helping of the same size.
-   * Binary has no amount to stage, so it is always 1 (§3.3).
-   *
-   * It lives here and not in the composer's JSX for the same reason
-   * `composerAffordances` does: it is a rule, and nothing under `app/` is reachable by
-   * a test.
-   */
-  composerDefaultAmount: number | null;
   /** Ignores a date the §6.3 range forbids, so a stale cell cannot open a bad composer. */
   openBackfill(date: string): void;
   closeBackfill(): void;
   /**
    * Append an activity row to `backfillDate` (or to today when no composer is open).
-   * Defaults to the habit's floor — the one-tap "채우기" amount, and exactly "mark
-   * done" for a binary habit, whose floor is 1 (§6.3). `opts.note` is the row's note
+   * A binary habit always writes 1, its floor (§6.3). `opts.note` is the row's note
    * (#77).
    */
-  fillDay(actual?: number, opts?: { note?: string }): Promise<void>;
+  fillDay(actual: number, opts?: { note?: string }): Promise<void>;
   /** Append a reason-bearing skip row to the same date (§6.3, ADR-0001). */
   skipDay(reason: SkipReason, opts?: { note?: string }): Promise<void>;
   /** Rewrite one journal row (§6.2 / #13). The caller passes the **whole** row. */
@@ -639,7 +626,7 @@ export function useHabitDetail(
   const chart = habit == null ? null : growthChart(habit, entries, today);
   const forming = habit == null ? null : formingExpectation(habit, entries, today);
   const heatWindow = windowEndingAt(today, TUNING.heatmapDays);
-  /** The open composer's date, classified once — both its readings come off that day. */
+  /** The open composer's date, classified once — the form reads everything off it. */
   const composer =
     habit == null || backfillDate == null
       ? null
@@ -650,10 +637,10 @@ export function useHabitDetail(
     setBackfillDate(date);
   }
 
-  async function fillDay(actual?: number, opts?: { note?: string }): Promise<void> {
+  async function fillDay(actual: number, opts?: { note?: string }): Promise<void> {
     if (habit == null) throw new Error('useHabitDetail.fillDay: 습관을 아직 불러오지 못했습니다');
     // Binary has no amount: its floor is 1 and a row is always `actual: 1` (§3.3).
-    await quick.logActivity(habit, habit.kind === 'count' ? (actual ?? habit.floor) : 1, opts);
+    await quick.logActivity(habit, habit.kind === 'count' ? actual : 1, opts);
   }
 
   async function skipDay(reason: SkipReason, opts?: { note?: string }): Promise<void> {
@@ -803,7 +790,6 @@ export function useHabitDetail(
           },
     backfillDate,
     composerAffordances: composer,
-    composerDefaultAmount: composer?.defaultAmount ?? null,
     openBackfill,
     closeBackfill: () => setBackfillDate(null),
     fillDay,

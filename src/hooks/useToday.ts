@@ -12,7 +12,6 @@ import { useRepository } from '@/context/RepositoryContext';
 import { isBackfilledRow, isBackfillableDate } from '@/domain/backfill';
 import {
   type ClassifiedDay,
-  classifyDay,
   dayStates,
   isFloorMet,
 } from '@/domain/classify';
@@ -22,7 +21,7 @@ import { sortByDomainOrder } from '@/domain/feed';
 import { attributeDayXP, computeXP, type RowReward } from '@/domain/score';
 import { atRiskToday } from '@/domain/streak';
 import { localNoonOn, localToday, newId } from '@/lib/device';
-import type { DayState, FreeLog, Habit, HabitEntry, LogType, SkipReason } from '@/models';
+import type { FreeLog, Habit, HabitEntry, LogType, SkipReason } from '@/models';
 
 import { useFailure, type Failure } from './failure';
 import {
@@ -65,17 +64,6 @@ export interface TodayHabitRow extends LogAffordances {
    * into a paused day is legitimate and still earns (§7.3).
    */
   day?: ClassifiedDay;
-  /**
-   * The quick-add chips (B2): `+1` / `+최소량` / `직전값`, in that order and deduped —
-   * `직전값` is absent on the day's first record because there is no previous amount.
-   */
-  quickChips: number[];
-  /**
-   * True when the day is floor-met and the habit has no **effective** target, so the
-   * screen can suggest setting one (C7a: "최소량을 넘기면 … 목표를 넌지시 권한다").
-   * A `target <= floor` counts as no target, mirroring §4.1's defensive read.
-   */
-  suggestTarget: boolean;
 }
 
 /** A habit row's line of the chronological feed (§6.2). */
@@ -282,12 +270,16 @@ export interface SaveBanner {
   rest: string;
   /**
    * `✓ 완료` — one tap that takes today to its floor, which is what clears the banner
-   * (AC 5). The amount is the day's `progress.remaining`, not `oneTapAmount`: the two
+   * (AC 5). The amount is the day's `progress.remaining`, not `defaultAmount`: the two
    * agree on an empty day, and differ on a `partial` one, which `atRiskToday` admits
-   * (`src/domain/streak.ts:142`). There `logAffordances` gives 1 — the composer's
-   * `+1 더`, a second helping — and a banner promising 완료 must instead finish the
-   * day. `remaining` is never 0 while the banner shows, since both admitted states
-   * hold `sum < floor`, so §3.3's `actual > 0` invariant cannot be broken.
+   * (`src/domain/streak.ts:142`). There `defaultAmount` repeats the day's last amount,
+   * and a banner promising 완료 must instead finish the day. `remaining` is never 0
+   * while the banner shows, since both admitted states hold `sum < floor`, so §3.3's
+   * `actual > 0` invariant cannot be broken.
+   *
+   * It writes no note. The log form's note is the form's own state (#79), and the
+   * screen draws this button in the default variant so it does not read as the form's
+   * submit.
    */
   onSave(): Promise<void>;
 }
@@ -350,14 +342,9 @@ export interface TodayView {
    * Rejects `actual <= 0` — §3.3's invariant. A zero amount is not an activity row;
    * the state that means "didn't do it" is a skip row, which carries a reason.
    *
-   * `opts.timestamp` is the B3 time reveal: it overrides the default "now" for
-   * ordering only — `date` is still today (§3.3). `opts.note` is the row's note (#77).
+   * `opts.note` is the row's note (#77).
    */
-  logActivity(
-    habitId: string,
-    actual: number,
-    opts?: { timestamp?: string; note?: string },
-  ): Promise<void>;
+  logActivity(habitId: string, actual: number, opts?: { note?: string }): Promise<void>;
   /**
    * Append one skip row for today — a reason chip's whole action (§6.2 B5), with the
    * note the user may have typed above the chips.
@@ -368,15 +355,6 @@ export interface TodayView {
    * it is rendering — so there is no lookup and no "unknown habitId" branch to write.
    */
   logSkip(habit: Habit, reason: SkipReason, opts?: { note?: string }): Promise<void>;
-  /**
-   * What the day would become if `staged` were appended now (C7a) — the composer's
-   * "→ 5/5 성공" preview. `null` only when `habitId` names no visible habit.
-   *
-   * The state comes from the real `classifyDay` over the day's rows plus a synthetic
-   * one, never from a local `sum >= floor` comparison: a second copy of that rule is
-   * how `over` and the defensive `target <= floor` read eventually drift apart (§4.1).
-   */
-  previewOf(habitId: string, staged: number): { sum: number; state: DayState } | null;
   /**
    * Rewrite one existing row of the feed (#13, AC 1–3). Keyed on `entry.id`, so the
    * row count never grows; the caller passes the **whole** row, because the write
@@ -406,8 +384,7 @@ export interface TodayView {
    * scoring weight (§3.4), so it can neither empty a habit's day nor erase a miss, and
    * #16 AC 6 asks for its delete to be immediate.
    *
-   * Computed the same way `previewOf` is: the remaining row set is run back through the
-   * domain (`dayStates`, the shared walk that owns ADR-0003's scope rule) rather than
+   * The remaining row set is run back through the domain (`dayStates`, the shared walk that owns ADR-0003's scope rule) rather than
    * compared against a local rule of our own.
    */
   deletePreview(entryId: string): DeleteEffect | null;
@@ -438,9 +415,8 @@ export interface TodayView {
    * explicitly to today at creation — §3.4 makes `date` authoritative for grouping, so
    * it may never be left to be re-derived from `timestamp` in some other timezone.
    *
-   * `opts.timestamp` is B3's time reveal, which §6.2 says "applies to habit entries and
-   * free logs alike"; it orders the row within the day and never contradicts its
-   * `date`. Rejects a call on a past date — see `freeLogAvailable`.
+   * `opts.timestamp` is B3's time reveal, which §6.2 keeps for free logs; it orders the
+   * row within the day and never contradicts its `date`. Rejects a call on a past date — see `freeLogAvailable`.
    */
   logFree(type: LogType, text: string, opts?: { timestamp?: string }): Promise<void>;
   /**
@@ -462,45 +438,9 @@ export interface TodayView {
    * yields "immediate", with nothing for `deletePreview` to warn about.
    */
   removeFreeLog(id: string): Promise<void>;
-  /** The live 실행취소 toast for a one-tap/quick-chip append (B6). */
+  /** The live 실행취소 toast for an append from the log form or the banner (B6). */
   toast: QuickLogToast | null;
   undoLast(): Promise<void>;
-}
-
-/**
- * Everything the composer reads off one habit's day — the shared affordances (the
- * prefilled amount and the progress line among them), plus the quick chips and the
- * target nudge, which only Today's composer has.
- */
-function composerReadings(habit: Habit, day: ClassifiedDay | undefined) {
-  const affordances = logAffordances(habit, day);
-
-  return {
-    ...affordances,
-    // Binary has no amount to stage, so it has no chips. From the second record on
-    // `defaultAmount` *is* the day's last amount, so it is the `직전값` chip.
-    quickChips:
-      habit.kind === 'count'
-        ? [
-            ...new Set([
-              1,
-              habit.floor,
-              ...(affordances.hasActivityToday ? [affordances.defaultAmount] : []),
-            ]),
-          ]
-        : [],
-    // C7a's second half. `target != null && target > floor` mirrors `effectiveTarget`
-    // in `src/domain/classify.ts` — the same defensive read, not a new rule; a
-    // `target <= floor` is meaningless and reads as no target at all (§3.2 / §4.1).
-    //
-    // The 최고기록 half of the nudge is deliberately **not** here: `personal_best`
-    // already exists in the parked `statusLight.ts` and lands with #20. A second
-    // implementation would be the duplication that module was written to prevent.
-    suggestTarget:
-      habit.kind === 'count' &&
-      !(habit.target != null && habit.target > habit.floor) &&
-      isFloorMet(day?.state),
-  };
 }
 
 /**
@@ -640,7 +580,7 @@ export function useToday({
         rows: perHabit.map(({ habit, day }) => ({
           habit,
           day,
-          ...composerReadings(habit, day),
+          ...logAffordances(habit, day),
         })),
         // One sort over the habit rows **and** the free logs together, so the feed is
         // the domain's total order across both kinds (§6.2) — not a per-habit
@@ -714,7 +654,7 @@ export function useToday({
   async function logActivity(
     habitId: string,
     actual: number,
-    opts?: { timestamp?: string; note?: string },
+    opts?: { note?: string },
   ): Promise<void> {
     const row = rowFor(habitId);
     // Deliberately not user-facing Korean: the selector's options *are* `rows`, so a
@@ -724,33 +664,6 @@ export function useToday({
     if (row == null) throw new Error(`useToday.logActivity: unknown habitId ${habitId}`);
 
     await quick.logActivity(row.habit, actual, opts);
-  }
-
-  function previewOf(habitId: string, staged: number): { sum: number; state: DayState } | null {
-    const row = rowFor(habitId);
-    if (row == null) return null;
-
-    // A paused day holds no `ClassifiedDay` at all (ADR-0003), but it is still
-    // loggable — so the rows come from `day?.entries ?? []`, not from a `day != null`
-    // gate that would leave the composer with no preview.
-    const entries = row.day?.entries ?? [];
-    const synthetic: HabitEntry = {
-      id: 'preview',
-      habitId,
-      date,
-      // A preview is never stored, so the exact stamp only has to fall on the day —
-      // the real one comes from `nextBackfillTimestamp` at write time (§6.3). Local
-      // noon, not `${date}T12:00Z`: a UTC stamp lands on the neighbouring day for
-      // anyone far enough east or west, and the preview would classify the wrong one.
-      timestamp: date === today ? now().toISOString() : localNoonOn(date),
-      actual: staged,
-    };
-
-    return {
-      // The one sum, from `progress` — which takes it from the domain's `day.sum`.
-      sum: row.progress.sum + staged,
-      state: classifyDay([...entries, synthetic], row.habit, date, today),
-    };
   }
 
   /** The feed's habit lines only — the ones `deleteEntry` and `deleteOutcome` know. */
@@ -936,7 +849,6 @@ export function useToday({
     logSkip: quick.logSkip,
     editEntry: quick.editEntry,
     removeEntry,
-    previewOf,
     deletePreview,
     targetOptions,
     resolvesToFree,

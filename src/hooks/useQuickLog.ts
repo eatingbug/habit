@@ -84,19 +84,14 @@ export interface QuickLog {
    */
   failure: Failure | null;
   /**
-   * Append one activity row. `opts.timestamp` overrides the default "now" — the B3
-   * time reveal. `date` is always the day being recorded; `timestamp` only orders
-   * within it (§3.3). `opts.note` is the optional note typed beside the amount — it
-   * belongs to this row, exactly as a skip's note belongs to its row (#77).
+   * Append one activity row, stamped now — or noon-pinned on a backfill (§6.3).
+   * `opts.note` is the optional note typed beside the amount — it belongs to this row,
+   * exactly as a skip's note belongs to its row (#77).
    *
    * Rejects `actual <= 0` — §3.3's invariant. A zero amount is not an activity row;
    * the state that means "didn't do it" is a skip row, which carries a reason.
    */
-  logActivity(
-    habit: Habit,
-    actual: number,
-    opts?: { timestamp?: string; note?: string },
-  ): Promise<void>;
+  logActivity(habit: Habit, actual: number, opts?: { note?: string }): Promise<void>;
   /**
    * Append one **skip** row for today: `actual: 0` plus a reason (§3.3's row
    * discriminator, §6.2 B5). One chip tap is the whole gesture, so this takes the
@@ -168,8 +163,8 @@ export interface QuickLogOptions {
  */
 export interface LogAffordances {
   /**
-   * Does the day already hold at least one **activity** row? The control then reads
-   * `+1 더` rather than offering the whole minimum again.
+   * Does the day already hold at least one **activity** row? The Dashboard's one-tap
+   * then reads `+1 더` rather than offering the whole minimum again.
    *
    * On a **binary** habit this is also the "already done" reading: its floor is 1, so
    * any activity row makes the day `done` and the control is shown completed and
@@ -179,6 +174,9 @@ export interface LogAffordances {
   /**
    * What one tap appends: the `floor` on the day's first record, otherwise 1 — the
    * second tap is "+1 더", not a second whole minimum. Binary is always 1.
+   *
+   * Its one reader is the Dashboard row's one-tap. The log form has none (#79), and
+   * #80 replaces the Dashboard's with that form.
    */
   oneTapAmount: number;
   /**
@@ -212,8 +210,6 @@ export interface LogAffordances {
    * habit's `floor` — "I did my minimum" is the dominant case; from the second record
    * on it gets the day's last activity amount, because a second log is usually another
    * helping of the same size. Binary has no amount to stage, so it is always 1 (§3.3).
-   *
-   * Distinct from `oneTapAmount` on purpose: a tap adds `+1 더`, a staged form repeats.
    */
   defaultAmount: number;
   /**
@@ -276,10 +272,7 @@ export function useQuickLog({
    * to be sitting at — 21:00 today would place a backfill after a 09:00 row it knows
    * nothing about. The pin is the day's **local** noon, read at the edge by
    * `localNoonOn` — the domain may not read a timezone (SPEC §2.2), and a UTC-noon
-   * stamp would come back out of the feed as 21:00 in Seoul. So `opts.timestamp`,
-   * B3's time reveal, is ignored on a backfill too;
-   * the canvas says as much on the control itself (`Backfill.logic.js:81` —
-   * `🕑 낮 12:00으로 기록`).
+   * stamp would come back out of the feed as 21:00 in Seoul.
    */
   const isBackfill = date !== today;
 
@@ -343,7 +336,7 @@ export function useQuickLog({
   async function logActivity(
     habit: Habit,
     actual: number,
-    opts: { timestamp?: string; note?: string } = {},
+    opts: { note?: string } = {},
   ): Promise<void> {
     if (!(actual > 0)) {
       throw new RangeError('활동 기록의 양은 0보다 커야 합니다 — 0은 건너뛰기입니다 (§3.3).');
@@ -380,7 +373,7 @@ export function useQuickLog({
             habitId: habit.id,
             // `date` is the authoritative day (§3.3); `timestamp` only orders within it.
             date,
-            timestamp: opts.timestamp ?? now().toISOString(),
+            timestamp: now().toISOString(),
             actual,
           }),
       // Absent, not empty — the same rule as `logSkip`.

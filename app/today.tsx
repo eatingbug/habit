@@ -9,6 +9,7 @@ import {
   Eyebrow,
   Footnote,
   Hint,
+  LogForm,
   NumberField,
   SegmentedControl,
   SkipReasonChips,
@@ -67,11 +68,11 @@ import { FONT_FAMILY, FONT_SIZE, SPACE, TAP_TARGET } from '@/theme/tokens';
  * there are no component render tests (jest.config.js), and `testMatch` covers `src/**`
  * only, so anything decided in this file is decided where no test can reach it.
  *
- * What ships here is the low-friction path: pick a habit, press one control (or a
- * quick chip), and see the row appear in the feed with the day's state recomputed.
- * Every figure on screen — the prefilled amount, the chips, the progress line and the
- * staged preview — comes from `useToday`, which computes it from the rows through the
- * domain. Nothing here re-derives a floor comparison of its own.
+ * What ships here is the low-friction path: pick a habit, press `기록` on the shared
+ * `LogForm` (#79), and see the row appear in the feed with the day's state recomputed.
+ * Every figure on screen — the prefilled amount and the progress line — comes from
+ * `useToday`, which computes it from the rows through the domain. Nothing here
+ * re-derives a floor comparison of its own.
  */
 
 const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토'];
@@ -257,17 +258,6 @@ function FreeFeedRow({ item, onPress }: { item: TodayFreeFeedItem; onPress: () =
 }
 
 /**
- * The quick-add chip's label (B2) — canvas copy, derived from the amount so the hook
- * can keep handing plain numbers. `+1` is the nudge, the floor reads "최소만큼", and
- * anything else is the day's previous amount.
- */
-function chipLabel(amount: number, floor: number): string {
-  if (amount === 1) return '+1';
-  if (amount === floor) return '최소만큼';
-  return `지난번 ${amount}`;
-}
-
-/**
  * The heading over the date — `오늘` / `어제` / `지난 날` (#14). The kind is
  * `dateControl.kind`'s judgment; these are the words for it. `지난 날` is the canvas's
  * own name for a backfilled day (`design/parts/Backfill.body.html:3`, `:67`).
@@ -407,280 +397,40 @@ function TimeReveal({
   );
 }
 
+/**
+ * The selected habit's card — the shared `LogForm` (#79), plus the day-state chip and
+ * the day-state footnotes that belong to Today rather than to the form. Keyed on
+ * `${habit.id}:${date}` by the screen, so an amount or a note typed for one habit or
+ * day never follows the user to another.
+ */
 function Composer({
   row,
-  date,
-  isBackfill,
-  previewOf,
+  dayLabel,
   onLog,
   onSkip,
 }: {
   row: TodayHabitRow;
-  date: string;
-  /** Is this a past date? Then the row is noon-pinned and B3's override does nothing. */
-  isBackfill: boolean;
-  previewOf: (staged: number) => { sum: number; state: DayState } | null;
-  onLog: (actual: number, opts?: { timestamp?: string; note?: string }) => Promise<void>;
-  onSkip: (reason: SkipReason, opts?: { note?: string }) => Promise<void>;
+  dayLabel: string;
+  onLog: (actual: number, opts: { note: string }) => Promise<void>;
+  onSkip: (reason: SkipReason, opts: { note: string }) => Promise<void>;
 }) {
-  const { colors } = useTheme();
-  /**
-   * `null` means "untouched", so the field falls back to `row.defaultAmount` — the
-   * floor on the day's first record, the day's previous amount afterwards (B2). A log
-   * resets it to `null`, which is what re-prefills the field with the new default
-   * rather than leaving the old number staged.
-   */
-  const [staged, setStaged] = useState<string | null>(null);
-  const [timeOpen, setTimeOpen] = useState(false);
-  const [hour, setHour] = useState('');
-  const [minute, setMinute] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
-  /**
-   * The row's optional note — one field for every write this card makes, activity and
-   * skip alike, because a note belongs to the row it is saved with (#77).
-   */
-  const [note, setNote] = useState('');
-
-  const isCount = row.habit.kind === 'count';
-  const unit = row.habit.floorUnit;
-  const amount = staged ?? `${row.defaultAmount}`;
-  const parsed = Number(amount);
-  // §3.3: an activity row is `actual > 0`. A sub-floor amount is perfectly valid — it
-  // sums toward the day (§4.1) — but zero is not an activity row at all, so the only
-  // control that could write one is disabled. The path for "didn't do it" is a skip
-  // row with a reason (#12).
-  const canLog = amount.trim().length > 0 && Number.isFinite(parsed) && parsed > 0;
-
-  // Binary's floor is 1, so one row is the whole day: nothing is left to append and
-  // the control reads as completed (AC — 완료 후 비활성).
-  const binaryDone = !isCount && row.hasActivityToday;
-  const oneTapLabel = isCount
-    ? row.hasActivityToday
-      ? '+1 더'
-      : `✓ 최소만큼 했어요 (+${row.habit.floor}${unit})`
-    : binaryDone
-      ? '✓ 했어요'
-      : '✓ 완료';
-
-  const preview = canLog ? previewOf(parsed) : null;
-  const { sum, floor, remaining } = row.progress;
-
-  /**
-   * An explicit override must never be silently discarded. The revealed fields are
-   * prefilled from now, so an invalid pair means the user typed one — so the log
-   * controls go disabled until it reads as a time, exactly as the amount field's own
-   * `canLog` gate works. No new error copy for a state the user is mid-edit on.
-   */
-  const timestamp = timeOpen ? timestampAtLocalTime(date, hour, minute) : undefined;
-  const timeUsable = !timeOpen || timestamp != null;
-
-  async function submit(actual: number) {
-    if (saving) return;
-    /**
-     * The amount and time fields are done being used the moment a log commits, and a
-     * raised soft keyboard would hide the bottom-pinned undo toast — on iOS the window
-     * does not resize for the keyboard, so an absolutely positioned overlay stays
-     * behind it and B6's 실행취소 is unreachable for the whole `TUNING.undoToastMs`.
-     * Dismissing needs no layout change; wrapping the screen in a
-     * `KeyboardAvoidingView` would alter every other surface on it.
-     */
-    Keyboard.dismiss();
-    setSaving(true);
-    setError(null);
-    try {
-      await onLog(actual, { timestamp, note });
-      // The amount and the note reset — the next row must not inherit this one's note.
-      // An open time reveal is an explicit override the user chose, and a second log
-      // of the same session belongs at the same time.
-      setStaged(null);
-      setNote('');
-    } catch {
-      setError('기록하지 못했어요. 잠시 뒤 다시 눌러 주세요.');
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  /**
-   * A chip tap is the whole gesture — no confirm step, so this commits directly.
-   * `Keyboard.dismiss()` for the same reason `submit` does it: the note field raises
-   * the soft keyboard, and on iOS the window does not resize for it, so the
-   * bottom-pinned 실행취소 toast would sit behind the keyboard for its whole window.
-   */
-  async function submitSkip(reason: SkipReason) {
-    if (saving) return;
-
-    Keyboard.dismiss();
-    setSaving(true);
-    setError(null);
-    try {
-      await onSkip(reason, { note });
-      // The next skip must not inherit this one's note.
-      setNote('');
-    } catch {
-      setError('기록하지 못했어요. 잠시 뒤 다시 눌러 주세요.');
-    } finally {
-      setSaving(false);
-    }
-  }
-
   return (
     <Card>
-      <View style={styles.composerHead}>
-        <Text style={[styles.composerName, { color: colors.text }]} numberOfLines={1}>
-          {row.habit.name}
-        </Text>
-        {row.day != null && (
-          <Chip
-            label={stateLabel(row.day.state)}
-            variant={isFloorMet(row.day.state) ? 'good' : 'neutral'}
-          />
-        )}
-      </View>
-
-      {/* B1 — the one-tap control, first and widest: the highest-frequency action is
-          the cheapest one on the screen. */}
-      <Button
-        label={oneTapLabel}
-        variant="pri"
-        block
-        disabled={saving || binaryDone || !timeUsable}
-        onPress={() => submit(row.oneTapAmount)}
-      />
-
-      {isCount && (
-        <>
-          <View style={styles.amountRow}>
-            <NumberField
-              accessibilityLabel="기록할 양"
-              value={amount}
-              onChangeText={(next) => {
-                setStaged(next);
-                setError(null);
-              }}
-              placeholder={`${row.habit.floor}`}
+      <LogForm
+        habit={row.habit}
+        affordances={row}
+        dayLabel={dayLabel}
+        badge={
+          row.day != null && (
+            <Chip
+              label={stateLabel(row.day.state)}
+              variant={isFloorMet(row.day.state) ? 'good' : 'neutral'}
             />
-            <Text style={[styles.unit, { color: colors.muted }]}>{unit}</Text>
-            <Button
-              label="기록"
-              disabled={!canLog || saving || !timeUsable}
-              onPress={() => submit(parsed)}
-              tap
-              style={styles.grow}
-            />
-          </View>
-
-          {/* B2 — quick chips. They stage the amount; 기록 commits it, so a mis-tap
-              costs nothing. */}
-          <View style={styles.chipRow}>
-            <Text style={[styles.lbl, { color: colors.faint }]}>빠른 추가</Text>
-            {row.quickChips.map((chip) => (
-              <Button
-                key={chip}
-                label={chipLabel(chip, row.habit.floor)}
-                mono
-                onPress={() => setStaged(`${chip}`)}
-              />
-            ))}
-          </View>
-
-          {/* C7a — progress-to-floor, and what the staged amount would make of the
-              day. The state comes from `previewOf`, i.e. from the real classifier. */}
-          <View style={styles.progress}>
-            <Text style={[styles.progressText, { color: colors.muted }]}>
-              오늘 {sum}/{floor}
-              {unit}
-            </Text>
-            <Text
-              style={[styles.progressText, { color: remaining === 0 ? colors.done : colors.muted }]}
-            >
-              {remaining === 0 ? '오늘 몫 완료 ✓' : `${remaining}${unit} 남음`}
-            </Text>
-          </View>
-          {preview != null && (
-            <Hint>
-              → {preview.sum}/{floor}
-              {unit} {stateLabel(preview.state)}
-            </Hint>
-          )}
-          {/* C7a — once the day is floor-met, nudge the optional 목표. The 최고기록
-              half of that nudge waits for #20, which already owns `personal_best`.
-
-              `더 하고 싶은 양` is reused from the creation form's 목표 field
-              (`design/parts/Main.body.html:39`), which is the canvas's only wording
-              for what a target is; it is true anywhere. That line's trailing
-              `· 안 채워도 괜찮아요` is dropped — it describes leaving a *form field*
-              blank, and this screen has no target field to leave unfilled. The canvas
-              has no target-suggestion string for Today or Habit Detail, so nothing
-              replaces it rather than inventing a sentence. */}
-          {row.suggestTarget && <Hint>목표 — 더 하고 싶은 양</Hint>}
-        </>
-      )}
-
-      {/* The row's note (#77) — one field for every write on this card: the one-tap,
-          기록 and the reason chips all save it with their row. It sits between the
-          activity controls and the chips until #79 reorders the card around a single
-          기록 button. `메모 (선택)` is the front half of
-          `design/parts/Today.body.html:56`; the trailing `— 오늘 무슨 일이 있었나요`
-          belongs to the free-log (일기) field. `Composer` is keyed on
-          `${habit.id}:${date}`, so a note typed for one habit or day never follows the
-          user to another. */}
-      <TextField
-        accessibilityLabel="메모"
-        value={note}
-        onChangeText={setNote}
-        placeholder="메모 (선택)"
+          )
+        }
+        onLog={onLog}
+        onSkip={onSkip}
       />
-
-      {/* B3 — the time picker is collapsed behind "🕑 지금 HH:MM" and revealed only to
-          override. `timestamp` is ordering and tiebreak only (§3.3), so this is rare.
-
-          On a backfill there is nothing to override: the row is noon-pinned so the
-          day's total order is defined (§6.3/§7.3), and `useQuickLog` ignores an override
-          there. The control becomes the canvas's static statement of that fact
-          (`design/parts/Backfill.logic.js:81`) rather than a field that would silently
-          do nothing. */}
-      {isBackfill ? (
-        <Footnote>🕑 낮 12:00으로 기록</Footnote>
-      ) : (
-        <TimeReveal
-          open={timeOpen}
-          label={`🕑 지금 ${clockOf(new Date().toISOString())}`}
-          hour={hour}
-          minute={minute}
-          onChangeHour={setHour}
-          onChangeMinute={setMinute}
-          onOpen={() => {
-            // Prefilled from now, so the revealed fields show what the collapsed
-            // label promised — and an empty field can never stamp local midnight.
-            const at = new Date();
-            setHour(`${at.getHours()}`.padStart(2, '0'));
-            setMinute(`${at.getMinutes()}`.padStart(2, '0'));
-            setTimeOpen(true);
-          }}
-          onReset={() => {
-            setTimeOpen(false);
-            setHour('');
-            setMinute('');
-          }}
-        />
-      )}
-
-      {/* B5 — the skip affordance: the reason chips, withheld whole on a day activity
-          covers (`row.skippable`, §4.1). The note is not in this group: it sits above,
-          shared with the activity path, and a chip tap saves it with the skip row. */}
-      {row.skippable && (
-        <View style={[styles.skipGroup, { borderColor: colors.border }]}>
-          <SkipReasonChips
-            label="건너뛰기"
-            habitName={row.habit.name}
-            selected={row.skipReasonToday}
-            disabled={saving}
-            onPick={(reason) => void submitSkip(reason)}
-          />
-        </View>
-      )}
 
       {row.day?.state === 'partial' && <Footnote>최소엔 못 미침, 실패 아님</Footnote>}
       {/* The one day-state line this screen did not have a state for until now
@@ -691,7 +441,6 @@ function Composer({
       {row.day?.state === 'missed' && (
         <Footnote>기록이 없어 실패로 잡힌 날 — 지금 채우면 회복됩니다</Footnote>
       )}
-      {error != null && <Banner>{error}</Banner>}
     </Card>
   );
 }
@@ -733,9 +482,8 @@ function LogTypeChips({
  * button and the "no score" hint, in that order.
  *
  * Its own component rather than a branch inside `Composer`: the two share no field —
- * no amount, no quick chips, no progress line, no skip path. The one thing they do
- * share is the time reveal, and that is now `TimeReveal`, used by both of them and by
- * both editors.
+ * no amount, no progress line, no skip path. Its time reveal is `TimeReveal`, which
+ * both editors use too; the habit path has none since #79.
  *
  * **The time reveal is a recorded deviation from the canvas.** `Today.logic.js:179`
  * sets `isHabit: !isFree`, and `Today.body.html:61–63` gates the `🕑 지금` block on it,
@@ -982,8 +730,8 @@ function EntryEditor({
       {/* AC 2 — the activity ↔ skip transition, as the row's kind. 캔버스 출처 없음 —
           신규 문구: the canvas has no such switch. 근거: `못 했어요` is the canvas's own
           label for the skip affordance (`design/parts/Backfill.body.html:57`), and
-          `했어요` is the counterpart already on this screen's binary one-tap control
-          (`✓ 했어요`). */}
+          `했어요` is the counterpart already on this screen's binary log control
+          (`LogForm`'s `✓ 했어요`). */}
       <SegmentedControl
         label="기록 종류"
         options={[
@@ -1037,7 +785,8 @@ function EntryEditor({
           §7.3's total order gives it.
 
           Withheld on a backfilled row (`item.backfilled`), which keeps the noon pin
-          intact — same rule and same sentence as the composer's. */}
+          intact — the canvas's sentence for a noon-pinned write
+          (`design/parts/Backfill.logic.js:81`). */}
       {item.backfilled ? (
         <Footnote>🕑 낮 12:00으로 기록</Footnote>
       ) : (
@@ -1252,6 +1001,11 @@ function FreeLogEditor({
  * The two halves of the sentence arrive already split (`SaveBanner.lead`/`.rest`),
  * because which half is bold is a fact about the copy and `config/copy.ts` is where
  * that copy is asserted. This file only colours them.
+ *
+ * **A deviation from the canvas**: its button is `btn pri` (`Today.body.html:14`), this
+ * one is the default variant. The banner writes no note, and the form's `기록` below it
+ * is the one primary control that saves the note typed in the form (#79). Two primaries
+ * would read as the same submit.
  */
 function SaveBannerCard({ banner }: { banner: SaveBanner }) {
   const { colors } = useTheme();
@@ -1262,7 +1016,6 @@ function SaveBannerCard({ banner }: { banner: SaveBanner }) {
       trailing={
         <Button
           label="✓ 완료"
-          variant="pri"
           onPress={() => void banner.onSave()}
           // The label is the same two characters on every such button; out of context
           // it has to say which habit it finishes.
@@ -1297,7 +1050,6 @@ export default function Today() {
     failure,
     logActivity,
     logSkip,
-    previewOf,
     editEntry,
     removeEntry,
     deletePreview,
@@ -1448,12 +1200,10 @@ export default function Today() {
             ) : selectedHabit != null ? (
               <Composer
                 // The date is part of the identity: stepping it must not leave
-                // an amount, a time or a note staged for the day before.
+                // an amount or a note staged for the day before.
                 key={`${selectedHabit.habit.id}:${date}`}
                 row={selectedHabit}
-                date={date}
-                isBackfill={dateControl.isBackfill}
-                previewOf={(stagedAmount) => previewOf(selectedHabit.habit.id, stagedAmount)}
+                dayLabel={headingFor(dateControl.kind)}
                 onLog={(actual, opts) => logActivity(selectedHabit.habit.id, actual, opts)}
                 onSkip={(reason, opts) => logSkip(selectedHabit.habit, reason, opts)}
               />
@@ -1527,16 +1277,6 @@ const styles = StyleSheet.create({
   composerName: { fontSize: FONT_SIZE.md, fontWeight: '600', letterSpacing: -0.14, flexShrink: 1 },
   amountRow: { flexDirection: 'row', alignItems: 'center', gap: SPACE.md - 2 },
   chipRow: { flexDirection: 'row', alignItems: 'center', gap: SPACE.md - 2, flexWrap: 'wrap' },
-  lbl: { fontSize: FONT_SIZE.xs, textTransform: 'uppercase', letterSpacing: 0.4 },
-  progress: { flexDirection: 'row', justifyContent: 'space-between', gap: SPACE.md },
-  progressText: {
-    fontSize: FONT_SIZE.sm,
-    fontFamily: FONT_FAMILY.mono,
-    fontVariant: ['tabular-nums'],
-  },
-  // The reason chips as one hairline-topped block. No canvas selector is cited:
-  // `.skiprow` is the chip row's own class (see `SkipReasonChips`).
-  skipGroup: { borderTopWidth: 1, paddingTop: SPACE.md, gap: SPACE.md - 2 },
   time: { alignSelf: 'flex-start' },
   editActions: { flexDirection: 'row', alignItems: 'center', gap: SPACE.md - 2 },
   confirm: { gap: SPACE.md },

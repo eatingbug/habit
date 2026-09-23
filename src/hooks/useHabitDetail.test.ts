@@ -263,7 +263,7 @@ describe('useHabitDetail — the stat pills (D1)', () => {
 
       act(() => result.current.openBackfill(addDays(TODAY, -2)));
       await act(async () => {
-        await result.current.fillDay();
+        await result.current.fillDay(1);
       });
 
       expect(result.current.pills.longestStreak).toBe(5);
@@ -607,7 +607,7 @@ describe('useHabitDetail — backfill (D10, D14)', () => {
 
     act(() => result.current.openBackfill(gap));
     await act(async () => {
-      await result.current.fillDay();
+      await result.current.fillDay(5);
     });
 
     expect(result.current.nextBackfillDate).toBeNull();
@@ -640,21 +640,21 @@ describe('useHabitDetail — backfill (D10, D14)', () => {
     );
 
     // No composer, nothing prefilled.
-    expect(result.current.composerDefaultAmount).toBeNull();
+    expect(result.current.composerAffordances).toBeNull();
 
     const empty = addDays(TODAY, -6);
     act(() => result.current.openBackfill(empty));
-    expect(result.current.composerDefaultAmount).toBe(5);
+    expect(result.current.composerAffordances?.defaultAmount).toBe(5);
 
     act(() => result.current.openBackfill(past));
-    expect(result.current.composerDefaultAmount).toBe(3);
+    expect(result.current.composerAffordances?.defaultAmount).toBe(3);
   });
 
   it('prefills a binary composer with 1, which is the only amount it has (§3.3)', async () => {
     const result = await detail(await seed(binary()), 'b1');
 
     act(() => result.current.openBackfill(addDays(TODAY, -3)));
-    expect(result.current.composerDefaultAmount).toBe(1);
+    expect(result.current.composerAffordances?.defaultAmount).toBe(1);
   });
 
   it('ignores a request to open a date the §6.3 range forbids', async () => {
@@ -675,7 +675,7 @@ describe('useHabitDetail — backfill (D10, D14)', () => {
 
     act(() => result.current.openBackfill(past));
     await act(async () => {
-      await result.current.fillDay();
+      await result.current.fillDay(5);
     });
 
     const day = dayOf(result.current, past);
@@ -739,7 +739,7 @@ describe('useHabitDetail — backfill (D10, D14)', () => {
 
     act(() => result.current.openBackfill(past));
     await act(async () => {
-      await result.current.fillDay();
+      await result.current.fillDay(1);
     });
 
     const day = dayOf(result.current, past);
@@ -1021,7 +1021,7 @@ describe('useHabitDetail — 정지·보관·재개 컨트롤 (#19)', () => {
       await action(result.current, 'resume').run();
     });
     await act(async () => {
-      await result.current.fillDay();
+      await result.current.fillDay(5);
     });
 
     expect(result.current.habit?.pauses).toEqual([{ from: TODAY, to: TODAY, resumeTo: 'forming' }]);

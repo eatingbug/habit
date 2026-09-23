@@ -86,7 +86,7 @@ async function log(
   result: { current: QuickLog },
   target: Habit,
   actual: number,
-  opts?: { timestamp?: string; note?: string },
+  opts?: { note?: string },
 ): Promise<void> {
   await act(async () => {
     await result.current.logActivity(target, actual, opts);
@@ -237,17 +237,6 @@ describe('useQuickLog', () => {
     expect(result.current.toast).toBeNull();
   });
 
-  it('stamps an overridden timestamp on the row but keeps the day (B3, §3.3)', async () => {
-    const repository = await repositoryWith();
-    const { result } = quickLog(repository);
-    const at = new Date(`${TODAY}T02:34:00.000Z`).toISOString();
-
-    await log(result, habit(), 3, { timestamp: at });
-
-    const rows = await rowsIn(repository);
-    expect(rows[0].timestamp).toBe(at);
-    expect(rows[0].date).toBe(TODAY);
-  });
   describe('the undo window (§6.2 B6)', () => {
     beforeEach(() => {
       jest.useFakeTimers();

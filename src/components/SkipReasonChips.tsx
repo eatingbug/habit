@@ -8,12 +8,12 @@ import { FONT_SIZE, SPACE } from '@/theme/tokens';
 import { Button } from './Button';
 
 export interface SkipReasonChipsProps {
-  /** The row's own lead-in — Today's `건너뛰기`, the Dashboard's `오늘 못 했어요 · 왜?`. */
+  /** The row's own lead-in — `LogForm`'s and the Dashboard's `오늘 못 했어요 · 왜?`. */
   label: string;
   /** The reason already representing today, if any — `row.skipReasonToday`. */
   selected?: SkipReason;
   /**
-   * Blocks the chips while a write is in flight. Today's composer passes its
+   * Blocks the chips while a write is in flight. `LogForm` passes its
    * `saving` flag because the row stays on screen across the write; the Dashboard
    * passes nothing because picking a reason collapses its disclosure in the same
    * commit, so the chips are gone before a second tap could land.
@@ -27,9 +27,9 @@ export interface SkipReasonChipsProps {
 /**
  * `.skiprow` — the four reason chips (SPEC §6.2 B5), one tap each.
  *
- * **One component for both surfaces.** Today's composer and the Dashboard's
- * long-press both render this same row, so it lives here rather than being copied
- * into two screens — the same reason `ToastOverlay` is shared.
+ * **One component for every surface.** `LogForm`, the row editor and the Dashboard's
+ * long-press all render this same row, so it lives here rather than being copied
+ * into each screen — the same reason `ToastOverlay` is shared.
  *
  * The chips come from `SKIP_REASON_LABELS`' own key order, so a reason can never be
  * declared and then quietly left off the row.
@@ -82,6 +82,6 @@ const styles = StyleSheet.create({
   // Four chips plus the label overflow a narrow row, so they wrap rather than
   // squeezing each other below a legible width.
   row: { flexDirection: 'row', alignItems: 'center', gap: SPACE.md - 2, flexWrap: 'wrap' },
-  // The same treatment as Today's other row lead-ins (`styles.lbl` there).
+  // The same treatment as Today's other row lead-ins.
   lbl: { fontSize: FONT_SIZE.xs, textTransform: 'uppercase', letterSpacing: 0.4 },
 });
