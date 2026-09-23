@@ -1046,6 +1046,8 @@ chips, progress-to-floor, collapsed time, computed day-states incl. `partial`, t
 engagement streak, the weekly-actual growth chart, the log-time reward, and the
 never-miss-twice save banner) with gamification rendered minimally. It is the visual
 source of truth for implementation and supersedes the old demo's look.
+*(Revised: its recording UX is superseded by the one log form of §6.1 and §6.2. Reason:
+the one-tap, the quick-add chips and the new-entry time reveal are gone (#76).)*
 
 ---
 
