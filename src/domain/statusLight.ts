@@ -65,7 +65,7 @@ function weeksSinceBirth(habit: Habit, today: string): number {
  * back to the floor: the guard's question is "has it fallen to the level the user
  * committed to?", and for those habits the floor *is* that level.
  */
-function guardLevel(habit: Habit): number {
+export function guardLevel(habit: Habit): number {
   if (habit.kind === 'count' && habit.target != null && habit.target > habit.floor) {
     return habit.target;
   }
@@ -90,16 +90,23 @@ function lastCompletedWeekEnd(today: string): string {
  * The comparison is **strictly** decreasing, never "non-increasing". A resumed habit's
  * paused weeks read 0, so a non-strict test would fire 🔴 on every resume — ADR-0003's
  * "pause never costs" would fail at the light.
+ *
+ * Returns the completed-week totals it read (oldest first) when the arm fires, and
+ * `null` otherwise. The totals are the Reflection screen's evidence for this 🔴
+ * (§6.4, #21): `diagnose` raises no flag for a decline, so without them an
+ * Established 🔴 would open onto a screen with nothing to cite.
  */
-function hasDecliningTrend(habit: Habit, entries: HabitEntry[], today: string): boolean {
+export function decliningWeeks(habit: Habit, entries: HabitEntry[], today: string): number[] | null {
+  if (habit.lifecycle !== 'established') return null;
+
   const weeks = TUNING.statusLight.establishedDeclWeeks;
   const totals = weeklyActualTotals(entries, habit, lastCompletedWeekEnd(today), weeks);
   for (let i = 1; i < totals.length; i += 1) {
-    if (totals[i] >= totals[i - 1]) return false;
+    if (totals[i] >= totals[i - 1]) return null;
   }
   const latest = totals[totals.length - 1];
-  if (!TUNING.statusLight.establishedDeclineFloorGuard) return true;
-  return latest <= guardLevel(habit);
+  if (TUNING.statusLight.establishedDeclineFloorGuard && latest > guardLevel(habit)) return null;
+  return totals;
 }
 
 /**
@@ -168,7 +175,7 @@ export function deriveStatusLight(habit: Habit, entries: HabitEntry[], today: st
   const intervention =
     habit.lifecycle === 'forming'
       ? needsNeverMissTwiceIntervention(entries, habit, today)
-      : hasDecliningTrend(habit, entries, today);
+      : decliningWeeks(habit, entries, today) != null;
   if (intervention) return 'intervention';
 
   // Flag-driven: a Rule 1 caution is an intended *opportunity* (§7.4), which is why it

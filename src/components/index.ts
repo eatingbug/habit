@@ -8,6 +8,7 @@ export { Button, type ButtonProps, type ButtonVariant } from './Button';
 export { Card, type CardProps } from './Card';
 export { Chip, type ChipProps, type ChipVariant } from './Chip';
 export { Field, type FieldProps } from './Field';
+export { GrowthPanel } from './GrowthPanel';
 export { Heatmap, type HeatmapProps } from './Heatmap';
 export { LogForm, type LogFormProps } from './LogForm';
 export { Pill, type PillProps } from './Pill';

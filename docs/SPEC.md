@@ -700,7 +700,7 @@ Priority order (first matching rule wins):
 | Any `critical` flag on `cue` | `'fill_cue'` |
 | Any `critical` flag on `identity` | `'fill_identity'` |
 | Any `warning` flag on `floor` | `'lower_floor'` |
-| Any `warning` flag on `cue` | `'adjust_cue'` |
+| Any `warning` flag on `cue` | `'adjust_cue'` (`'fill_cue'` when no cue is set) |
 | Any `warning` flag on `identity` | `'fill_identity'` (revisit your "why") |
 | Any `warning` flag on `load` (stagnation) | `'raise_target'` |
 | No flags at all | `'keep'` |
@@ -710,10 +710,10 @@ Priority order (first matching rule wins):
 > your why." A dedicated `adjust_identity` action is a future refinement (cf. the yes/no
 > limitation below).
 
-> **Yes/No limitation (known, deferred):** `lower_floor` and `raise_target` are
-> meaningless for a yes/no habit (floor is fixed at 1, no target). `suggestAction`
-> and the Reflection action list do not yet special-case `kind` — hiding those two
-> actions for yes/no habits (and the numeric mirror values) is a planned refinement.
+> **Yes/No limitation (resolved, #21):** `lower_floor` and `raise_target` are
+> meaningless for a yes/no habit (floor is fixed at 1, no target). `offeredActions`
+> hides both for yes/no habits, and `lower_floor` for any floor of 1. `suggestAction`
+> skips a rule whose action is not offered. The mirror shows ✓ instead of a number.
 
 ### 4.6 Status-light derivation — `domain/statusLight.ts`
 
@@ -1031,7 +1031,7 @@ restrained language; §6.5 links the reference mockup.
     Rule 3 stagnation and the decline light (§4.6, C4), and **skip-reason counts** for
     Rule 5 (Part D). This is the guardrail against rubber-stamping (CONCEPT §6.2 rule 4).
 - **Recommended action** — pre-selected button (with explanation). User can switch.
-  (For yes/no habits, `lower_floor`/`raise_target` are not yet hidden — see §4.5.)
+  (For yes/no habits, `lower_floor`/`raise_target` are hidden — see §4.5.)
 - **Commit button** — writes:
   1. Updated `Habit` record (design change).
   2. `ReflectionSession` record (`designBefore`, `designAfter`, `chosenAction`,

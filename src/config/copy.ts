@@ -1,4 +1,10 @@
-import type { Habit, LogType, SkipReason } from '@/models';
+import type {
+  DiagnosisComponent,
+  Habit,
+  LogType,
+  ReflectionAction,
+  SkipReason,
+} from '@/models';
 
 /**
  * User-facing strings that no single layer can own.
@@ -409,6 +415,75 @@ export const LIFECYCLE_LABELS = {
 /** The supporting line under those buttons — see `LIFECYCLE_LABELS`. */
 export const LIFECYCLE_NOTE =
   '지우는 게 아니에요. 쉬는 동안은 실패로 세지 않고, 기록도 이어 온 날수도 그대로 남아 있어요.';
+
+/**
+ * The Reflection action buttons (SPEC §6.4, #21). Here rather than in
+ * `app/reflect/[id].tsx` because `useReflection` hands the screen its options already
+ * labelled, and a hook cannot read copy that lives in `app/`.
+ *
+ * Canvas: `fill_cue` (`design/parts/Reflection.body.html:48`), `lower_floor` (`:52`),
+ * `keep` (`:54`). `pause` and `archive` are `LIFECYCLE_LABELS`' own words — `:53`
+ * draws `잠깐 쉬기` too — so one action has one name on both screens. The other three
+ * are **캔버스 출처 없음 — 신규 문구**.
+ */
+export const REFLECTION_ACTION_LABELS: Record<ReflectionAction, string> = {
+  fill_cue: '할 시간 정하기',
+  adjust_cue: '할 시간 바꾸기',
+  fill_identity: '하는 이유 적기',
+  lower_floor: '최소량 줄이기',
+  raise_target: '목표 올리기',
+  pause: LIFECYCLE_LABELS.pause,
+  archive: LIFECYCLE_LABELS.archive,
+  keep: '그대로 두기',
+};
+
+/**
+ * The line under the recommended action — "with explanation" (§6.4). `fill_cue` is the
+ * canvas's (`Reflection.body.html:49`); the rest are **캔버스 출처 없음 — 신규 문구**.
+ */
+export const REFLECTION_ACTION_REASONS: Record<ReflectionAction, string> = {
+  fill_cue: '언제, 어디서 할지만 정해도 훨씬 잘 됩니다. 맞으면 누르기만 하세요.',
+  adjust_cue: '지금 정한 때가 자꾸 어긋나요. 더 잘 지켜지는 때로 옮겨 보세요.',
+  fill_identity: '왜 하는지가 분명하면 내키지 않는 날에도 이어 가기 쉬워요.',
+  lower_floor: '최소량을 못 할 수가 없을 만큼 낮추면 이어 가기가 쉬워져요.',
+  raise_target: '최소량은 이미 몸에 붙었어요. 조금 더 높은 목표를 걸어 보세요.',
+  pause: LIFECYCLE_NOTE,
+  archive: LIFECYCLE_NOTE,
+  keep: '지금 설계를 그대로 두고 한 주 더 지켜봐요.',
+};
+
+/**
+ * The flag card's component badge (§6.4 "Component (CUE / FLOOR / IDENTITY / LOAD)").
+ * `cue` and `floor` are the canvas's (`Reflection.body.html:37` · `:42`); `identity` and
+ * `load` are **캔버스 출처 없음 — 신규 문구**.
+ */
+export const COMPONENT_LABELS: Record<DiagnosisComponent, string> = {
+  cue: '언제 할지',
+  floor: '최소량',
+  identity: '하는 이유',
+  load: '양 늘리기',
+};
+
+/**
+ * The Established decline card (§4.6 C5) — the one 🔴 with no diagnosis flag, so it has
+ * no `COMPONENT_LABELS` badge of its own. The badge reuses the growth chart's own
+ * eyebrow (`주마다 한 양`, `HabitDetail.body.html:23`); the two lines are **캔버스 출처
+ * 없음 — 신규 문구**, since `Reflection.body.html` draws no decline card.
+ */
+export const DECLINE_BADGE = '주마다 한 양';
+
+export function declineMessage(weeks: number): string {
+  return `주마다 한 양이 ${weeks}주 연속 줄었어요.`;
+}
+
+/** Cites the totals the light read and the level the guard compared the last one to. */
+export function declineEvidence(totals: number[], level: 'target' | 'floor', value: number): string {
+  const name = level === 'target' ? '목표' : '최소량';
+  return `지난 ${totals.length}주 합계 ${totals.join(' → ')} · 마지막 주가 ${name} ${value} 이하`;
+}
+
+/** The design field a text action writes, placeholder included (`Reflection.body.html:50`). */
+export const REFLECTION_CUE_PLACEHOLDER = '예: “자기 전 양치 후, 침대 옆에서”';
 
 /**
  * 로그인 화면의 문구 — **캔버스 출처 없음, 신규 문구.** 디자인 캔버스는 로그인 화면을

@@ -3,7 +3,7 @@ import type { Habit, HabitEntry, SkipReason } from '@/models';
 import { TUNING } from '@/config/tuning';
 
 import { addDays } from './dates';
-import { aggregateStatusCount, deriveStatusLight } from './statusLight';
+import { aggregateStatusCount, decliningWeeks, deriveStatusLight } from './statusLight';
 import { weeklyActualTotals } from './weekly';
 
 /**
@@ -124,6 +124,17 @@ describe('Established 🔴 — declining weekly actual with the floor-guard (§4
       activity('2026-03-23', 6),
     ];
     expect(deriveStatusLight(habit, entries, MID_WEEK)).not.toBe('intervention');
+  });
+
+  it('names the completed-week totals the 🔴 read — the Reflection evidence (#21)', () => {
+    // `establishedDeclWeeks` (3) weeks, oldest first: the 9 is outside the window.
+    expect(decliningWeeks(habit, weeklyTotals([9, 8, 7, 6]), TODAY)).toEqual([8, 7, 6]);
+  });
+
+  it('names no totals whenever the 🔴 does not fire', () => {
+    expect(decliningWeeks(habit, weeklyTotals([12, 11, 10, 9]), TODAY)).toBeNull();
+    expect(decliningWeeks(habit, weeklyTotals([6, 6, 6]), TODAY)).toBeNull();
+    expect(decliningWeeks({ ...habit, lifecycle: 'forming' }, weeklyTotals([9, 8, 7, 6]), TODAY)).toBeNull();
   });
 
   it('does not fire for a Forming habit on the same declining volumes', () => {

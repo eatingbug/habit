@@ -468,7 +468,8 @@ function journalDay(habit: Habit, day: ClassifiedDay, today: string): JournalDay
   };
 }
 
-function growthChart(habit: Habit, entries: HabitEntry[], today: string): GrowthChart | null {
+/** Also the Reflection screen's weekly-totals evidence (§6.4, `useReflection`). */
+export function growthChart(habit: Habit, entries: HabitEntry[], today: string): GrowthChart | null {
   if (habit.kind !== 'count') return null;
 
   const totals = weeklyActualTotals(entries, habit, today, TUNING.growthChartWeeks);
@@ -530,6 +531,29 @@ function panelsFor(habit: Habit, hasChart: boolean, hasForming: boolean): Detail
     'design',
     'journal',
   ].filter((panel): panel is DetailPanel => panel != null);
+}
+
+/**
+ * The same three rules `app/habit/new.tsx` applies at creation, because a habit that
+ * violates §3.2 is a data defect wherever it is written from — the design box here and
+ * the Reflection commit (`useReflection`). Messages are that form's, so one wording
+ * serves all three.
+ */
+export function designErrors(floor: number, floorUnit: string, target: number | undefined): DesignErrors {
+  const errors: DesignErrors = {};
+  if (!Number.isFinite(floor) || floor < 1) {
+    errors.floor = '최소량은 1 이상의 숫자로 적어 주세요.';
+  }
+  if (floorUnit.length === 0) errors.floorUnit = '단위를 적어 주세요 (예: 회, 쪽, 분).';
+  if (target != null) {
+    if (!Number.isFinite(target)) errors.target = '목표는 숫자로 적어 주세요.';
+    // §3.2 (strict): a target at or below the floor says nothing, and `over` could
+    // never be reached above it.
+    else if (errors.floor == null && target <= floor) {
+      errors.target = '목표는 최소량보다 커야 합니다.';
+    }
+  }
+  return errors;
 }
 
 /** A patched text field: blank and `null` both clear it, absent leaves it alone. */
@@ -677,22 +701,7 @@ export function useHabitDetail(
         : (patch.target ?? undefined)
       : undefined;
 
-    // The same three rules `app/habit/new.tsx` applies at creation, because a habit
-    // that violates §3.2 is a data defect wherever it is written from. Messages are
-    // that form's, so one wording serves both.
-    const errors: DesignErrors = {};
-    if (!Number.isFinite(floor) || floor < 1) {
-      errors.floor = '최소량은 1 이상의 숫자로 적어 주세요.';
-    }
-    if (floorUnit.length === 0) errors.floorUnit = '단위를 적어 주세요 (예: 회, 쪽, 분).';
-    if (target != null) {
-      if (!Number.isFinite(target)) errors.target = '목표는 숫자로 적어 주세요.';
-      // §3.2 (strict): a target at or below the floor says nothing, and `over` could
-      // never be reached above it.
-      else if (errors.floor == null && target <= floor) {
-        errors.target = '목표는 최소량보다 커야 합니다.';
-      }
-    }
+    const errors = designErrors(floor, floorUnit, target);
     if (Object.keys(errors).length > 0) return errors;
 
     await repository.upsertHabit({

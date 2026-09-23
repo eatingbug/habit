@@ -1,5 +1,5 @@
-import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { useCallback, useRef, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import {
@@ -20,7 +20,7 @@ import type { StatusLight } from '@/domain/statusLight';
 import { useDashboard, type DashboardRow, type StatProgress } from '@/hooks/useDashboard';
 import type { SkipReason } from '@/models';
 import { useTheme } from '@/theme/ThemeProvider';
-import { FONT_FAMILY, FONT_SIZE, RADIUS, SPACE } from '@/theme/tokens';
+import { FONT_FAMILY, FONT_SIZE, RADIUS, SPACE, TAP_TARGET } from '@/theme/tokens';
 
 /**
  * Dashboard — SPEC §6.1; layout from `design/parts/Dashboard.body.html`.
@@ -40,11 +40,9 @@ import { FONT_FAMILY, FONT_SIZE, RADIUS, SPACE } from '@/theme/tokens';
  * A `personal_best` row swaps the dot for a ⭐ instead, which is what the canvas draws
  * (`design/parts/Star.body.html:19` · `:35`).
  *
- * **It is read, not pressed.** §6.1 (`docs/SPEC.md:899`) navigates a tap on the 🔴/🟡
- * to `reflect/[habitId]`, but no `app/reflect*` exists — that screen is #21's, and
- * `app.json:38` sets `typedRoutes: true`, so a link to a route that is not there does
- * not typecheck. #21 attaches the press; until then this renders as a glyph, with no
- * `Pressable` around it.
+ * A 🔴/🟡 is pressed to open `reflect/[habitId]` (§6.1, #21); `HabitRow` wraps it in
+ * the `Pressable` when the row is `reflectable`. The glyph itself stays press-free, so
+ * a 🟢 or ⭐ reads as what it is.
  *
  * The light is spoken rather than left as a coloured pixel: colour alone carries the
  * whole state here, so a screen reader would otherwise get nothing at all.
@@ -110,10 +108,12 @@ function StatCard({ card }: { card: StatProgress }) {
 function HabitRow({
   row,
   onPress,
+  onReflect,
   onOpenLog,
 }: {
   row: DashboardRow;
   onPress: () => void;
+  onReflect: () => void;
   onOpenLog: () => void;
 }) {
   const { colors } = useTheme();
@@ -136,13 +136,30 @@ function HabitRow({
           it *does*; the habit's name alone would give two controls one identity. An
           a11y label is an affordance description, not screen copy, so the canvas
           citation rule (which only covers visible strings) does not reach these. */}
-      <Pressable
-        onPress={onPress}
-        accessibilityRole="button"
-        accessibilityLabel={`${row.habit.name} 습관 열기`}
-      >
-        <View style={styles.qtop}>
+      <View style={styles.qtop}>
+        {/* 🔴/🟡 open Reflection — the light is its only entry point (§6.1). A sibling of
+            the row body, not its child, for the same reason as 기록 below. Padding
+            with a matching negative margin grows the 8px dot to `TAP_TARGET` without
+            moving it; `hitSlop` is not relied on because the web build must honour it
+            too. Which lights qualify is the hook's `reflectable`. */}
+        {row.reflectable ? (
+          <Pressable
+            onPress={onReflect}
+            style={styles.dotTarget}
+            accessibilityRole="button"
+            accessibilityLabel={`${row.habit.name} 회고 열기`}
+          >
+            <StatusDot light={row.statusLight} />
+          </Pressable>
+        ) : (
           <StatusDot light={row.statusLight} />
+        )}
+        <Pressable
+          onPress={onPress}
+          accessibilityRole="button"
+          accessibilityLabel={`${row.habit.name} 습관 열기`}
+          style={styles.qbody}
+        >
           <Text style={[styles.qname, { color: colors.text }]} numberOfLines={1}>
             {row.habit.name}
           </Text>
@@ -154,8 +171,8 @@ function HabitRow({
               {row.habit.cue}
             </Text>
           )}
-        </View>
-      </Pressable>
+        </Pressable>
+      </View>
       <View style={styles.qbottom}>
         {/* `.streak` (`design/parts/Dashboard.body.html:38`) — 연속 날수, ahead of the
             ribbon it summarises. The number is `useDashboard`'s `computeStreak`, never
@@ -263,7 +280,21 @@ export default function Dashboard() {
     logSkip,
     toast,
     undoLast,
+    reload,
   } = useDashboard();
+  /**
+   * Re-read on every return to this screen. It stays mounted under what it pushes, so
+   * without this a Reflection commit (§6.4: "status light should have updated") — or a
+   * habit created or edited — would not show until a reload. The first focus is the
+   * mount, whose load `useDashboard` already runs.
+   */
+  const focusedBefore = useRef(false);
+  useFocusEffect(
+    useCallback(() => {
+      if (focusedBefore.current) reload();
+      focusedBefore.current = true;
+    }, [reload]),
+  );
   /**
    * The habit whose 기록 modal is open. An id, not the row: the form reads the row from
    * the latest `rows`, so its affordances are never a stale snapshot.
@@ -352,6 +383,7 @@ export default function Dashboard() {
                 key={row.habit.id}
                 row={row}
                 onPress={() => router.push(`/habit/${row.habit.id}`)}
+                onReflect={() => router.push(`/reflect/${row.habit.id}`)}
                 onOpenLog={() => setLoggingId(row.habit.id)}
               />
             ))}
@@ -437,6 +469,10 @@ const styles = StyleSheet.create({
   statTo: { fontSize: FONT_SIZE.xs, fontFamily: FONT_FAMILY.mono },
   quests: { gap: 9 },
   qtop: { flexDirection: 'row', alignItems: 'center', gap: SPACE.md },
+  // The 🔴/🟡 press target: a `TAP_TARGET` square around the 8px dot, laid out as the dot.
+  dotTarget: { padding: (TAP_TARGET - 8) / 2, margin: -(TAP_TARGET - 8) / 2 },
+  // The row body — everything in `.qtop` after the dot, as one press target.
+  qbody: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: SPACE.md },
   // `.dot` (`design/_tokens.css:54`) — 8px, never shrunk by a long habit name.
   dot: { width: 8, height: 8, borderRadius: 4, flexShrink: 0 },
   // The ⭐ stands in the dot's place, at the canvas's 12px
