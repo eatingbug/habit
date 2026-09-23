@@ -316,6 +316,24 @@ describe('useDashboard', () => {
       expect(result.current.rows[0].hasActivityToday).toBe(false);
       expect(result.current.toast).toBeNull();
     });
+
+    it("carries the log form's prefilled amount and progress, as Today's row does (#78)", async () => {
+      const result = await dashboard(new LocalRepository(await seed([habit()])));
+
+      expect(result.current.rows[0].defaultAmount).toBe(5);
+      expect(result.current.rows[0].progress).toEqual({ sum: 0, floor: 5, remaining: 5 });
+
+      await log(result, result.current.rows[0].habit, 3);
+
+      expect(result.current.rows[0].defaultAmount).toBe(3);
+      expect(result.current.rows[0].progress).toEqual({ sum: 3, floor: 5, remaining: 2 });
+
+      await log(result, result.current.rows[0].habit, 4);
+
+      // Past the floor, `remaining` stops at 0 rather than going negative.
+      expect(result.current.rows[0].defaultAmount).toBe(4);
+      expect(result.current.rows[0].progress).toEqual({ sum: 7, floor: 5, remaining: 0 });
+    });
   });
   describe('the long-press skip path (§6.1 B5)', () => {
     it('turns today into a skip day, fills the cell and reports the reason', async () => {

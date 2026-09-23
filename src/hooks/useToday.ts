@@ -15,7 +15,6 @@ import {
   classifyDay,
   dayStates,
   isFloorMet,
-  sortDayRows,
 } from '@/domain/classify';
 import { addDays, compareDates, dateOf } from '@/domain/dates';
 import { deleteOutcome, type DeleteOutcome } from '@/domain/deleteEffect';
@@ -67,19 +66,10 @@ export interface TodayHabitRow extends LogAffordances {
    */
   day?: ClassifiedDay;
   /**
-   * What the amount field starts prefilled with (B2). The day's first record gets the
-   * habit's `floor` — "I did my minimum" is the dominant case; from the second record
-   * on it gets the day's last amount, because a second log is usually another helping
-   * of the same size.
-   */
-  defaultAmount: number;
-  /**
    * The quick-add chips (B2): `+1` / `+최소량` / `직전값`, in that order and deduped —
    * `직전값` is absent on the day's first record because there is no previous amount.
    */
   quickChips: number[];
-  /** The day's progress-to-floor line (C7a). `remaining` clamps at 0. */
-  progress: { sum: number; floor: number; remaining: number };
   /**
    * True when the day is floor-met and the habit has no **effective** target, so the
    * screen can suggest setting one (C7a: "최소량을 넘기면 … 목표를 넌지시 권한다").
@@ -474,34 +464,27 @@ export interface TodayView {
 }
 
 /**
- * A day's **activity** rows only, in the domain total order (§7.3) — skip rows carry
- * `actual: 0`, which is not a legal staged amount and must never become a default or
- * a chip. Order comes from `sortDayRows`, never from the repository's array order.
- */
-function activityRows(entries: HabitEntry[]): HabitEntry[] {
-  return sortDayRows(entries.filter((entry) => entry.actual > 0 && entry.skipReason == null));
-}
-
-/**
- * Everything the composer reads off one habit's day — the prefilled amount, the quick
- * chips, the progress line and the target nudge — plus the shared one-tap affordances.
+ * Everything the composer reads off one habit's day — the shared affordances (the
+ * prefilled amount and the progress line among them), plus the quick chips and the
+ * target nudge, which only Today's composer has.
  */
 function composerReadings(habit: Habit, day: ClassifiedDay | undefined) {
-  const activity = activityRows(day?.entries ?? []);
-  // The day's sum is the domain's (`dayStates`), never a second reduce of our own: two
-  // sums drift, and the visible failure is one line contradicting the next.
-  const sum = day?.sum ?? 0;
-  const previous = activity[activity.length - 1]?.actual;
+  const affordances = logAffordances(habit, day);
 
   return {
-    ...logAffordances(habit, day),
-    defaultAmount: previous ?? habit.floor,
-    // Binary has no amount to stage, so it has no chips.
+    ...affordances,
+    // Binary has no amount to stage, so it has no chips. From the second record on
+    // `defaultAmount` *is* the day's last amount, so it is the `직전값` chip.
     quickChips:
       habit.kind === 'count'
-        ? [...new Set([1, habit.floor, ...(previous == null ? [] : [previous])])]
+        ? [
+            ...new Set([
+              1,
+              habit.floor,
+              ...(affordances.hasActivityToday ? [affordances.defaultAmount] : []),
+            ]),
+          ]
         : [],
-    progress: { sum, floor: habit.floor, remaining: Math.max(0, habit.floor - sum) },
     // C7a's second half. `target != null && target > floor` mirrors `effectiveTarget`
     // in `src/domain/classify.ts` — the same defensive read, not a new rule; a
     // `target <= floor` is meaningless and reads as no target at all (§3.2 / §4.1).
