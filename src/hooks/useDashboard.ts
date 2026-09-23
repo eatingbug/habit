@@ -134,7 +134,7 @@ export interface DashboardView {
    * Takes the habit itself: the row the screen is rendering already holds it, so
    * there is nothing to look up and no "habit not found" branch to write.
    */
-  logActivity(habit: Habit, actual: number, opts?: { timestamp?: string }): Promise<void>;
+  logActivity(habit: Habit, actual: number): Promise<void>;
   /**
    * Reason-tag today as a skip (§6.1 B5) — what the long-press chips call. The same
    * primitive Today's chip row uses, so there is one skip-write implementation.
@@ -284,8 +284,8 @@ export function useDashboard({ today = localToday() }: { today?: string } = {}):
     loading,
     // 실행취소의 실패는 `useQuickLog` 가 들고 있다 — 한 배너 자리를 둘이 나눠 쓴다.
     failure: failure ?? quick.failure,
-    logActivity: (habit, actual, opts) =>
-      attempt(WRITE_FAILED_NOTE, () => quick.logActivity(habit, actual, opts)),
+    logActivity: (habit, actual) =>
+      attempt(WRITE_FAILED_NOTE, () => quick.logActivity(habit, actual)),
     logSkip: (habit, reason, opts) =>
       attempt(WRITE_FAILED_NOTE, () => quick.logSkip(habit, reason, opts)),
     toast: quick.toast,

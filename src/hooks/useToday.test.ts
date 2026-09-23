@@ -100,7 +100,7 @@ async function log(
   result: { current: TodayView },
   habitId: string,
   actual: number,
-  opts?: { timestamp?: string; note?: string },
+  opts?: { note?: string },
 ): Promise<void> {
   await act(async () => {
     await result.current.logActivity(habitId, actual, opts);
@@ -363,29 +363,27 @@ describe('useToday', () => {
       expect(dayOf(result.current, 'h1')?.state).toBe('partial');
     });
 
-    it('appends on a second one-tap rather than overwriting the first (§3.3)', async () => {
+    it('appends a second record rather than overwriting the first (§3.3)', async () => {
       const result = await todayScreen(new LocalRepository(await seed([habit()])));
 
-      await log(result, 'h1', rowOf(result.current, 'h1').oneTapAmount);
-      await log(result, 'h1', rowOf(result.current, 'h1').oneTapAmount);
+      await log(result, 'h1', rowOf(result.current, 'h1').defaultAmount);
+      await log(result, 'h1', rowOf(result.current, 'h1').defaultAmount);
 
       const day = dayOf(result.current, 'h1');
       expect(day?.entries).toHaveLength(2);
-      expect(day?.entries.map((e) => e.actual)).toEqual([5, 1]);
-      expect(day?.sum).toBe(6);
+      expect(day?.entries.map((e) => e.actual)).toEqual([5, 5]);
+      expect(day?.sum).toBe(10);
       expect(result.current.logCount).toBe(2);
     });
 
-    it('flips hasActivityToday and oneTapAmount after the day\u2019s first record', async () => {
+    it('flips hasActivityToday after the day\u2019s first record', async () => {
       const result = await todayScreen(new LocalRepository(await seed([habit()])));
 
       expect(rowOf(result.current, 'h1').hasActivityToday).toBe(false);
-      expect(rowOf(result.current, 'h1').oneTapAmount).toBe(5);
 
       await log(result, 'h1', 5);
 
       expect(rowOf(result.current, 'h1').hasActivityToday).toBe(true);
-      expect(rowOf(result.current, 'h1').oneTapAmount).toBe(1);
     });
 
     it('leaves a skip-only day reading as its first record (a skip row is not activity)', async () => {
@@ -402,26 +400,23 @@ describe('useToday', () => {
 
       expect(dayOf(result.current, 'h1')?.state).toBe('skip');
       expect(rowOf(result.current, 'h1').hasActivityToday).toBe(false);
-      expect(rowOf(result.current, 'h1').oneTapAmount).toBe(5);
       // `actual: 0` is not a legal staged amount, so it must never become the default.
       expect(rowOf(result.current, 'h1').defaultAmount).toBe(5);
     });
 
-    it('keeps a binary habit at one tap with no amount chips', async () => {
+    it('keeps a binary habit at an amount of 1', async () => {
       const result = await todayScreen(new LocalRepository(await seed([binary()])));
 
-      expect(rowOf(result.current, 'b1').oneTapAmount).toBe(1);
-      expect(rowOf(result.current, 'b1').quickChips).toEqual([]);
-      expect(result.current.previewOf('b1', 1)?.state).toBe('done');
+      expect(rowOf(result.current, 'b1').defaultAmount).toBe(1);
 
       await log(result, 'b1', 1);
 
       expect(result.current.toast?.detail).toBe(`✓ 완료 · +${TUNING.xpPerFloorCompletion} XP`);
-      expect(rowOf(result.current, 'b1').oneTapAmount).toBe(1);
+      expect(rowOf(result.current, 'b1').defaultAmount).toBe(1);
     });
   });
 
-  describe('smart defaults, quick chips and progress (#11)', () => {
+  describe('smart defaults and progress (#11)', () => {
     it('prefills the floor on the first record and the previous amount afterwards', async () => {
       const result = await todayScreen(new LocalRepository(await seed([habit()])));
 
@@ -452,20 +447,6 @@ describe('useToday', () => {
       const result = await todayScreen(repository);
 
       expect(rowOf(result.current, 'h1').defaultAmount).toBe(4);
-      expect(rowOf(result.current, 'h1').quickChips).toEqual([1, 5, 4]);
-    });
-
-    it('orders the chips +1 / 최소량 / 직전값 and omits 직전값 on the first record', async () => {
-      const result = await todayScreen(new LocalRepository(await seed([habit()])));
-
-      expect(rowOf(result.current, 'h1').quickChips).toEqual([1, 5]);
-
-      await log(result, 'h1', 2);
-      expect(rowOf(result.current, 'h1').quickChips).toEqual([1, 5, 2]);
-
-      // A 직전값 that repeats the floor is deduped rather than shown twice.
-      await log(result, 'h1', 5);
-      expect(rowOf(result.current, 'h1').quickChips).toEqual([1, 5]);
     });
 
     it('counts remaining down to 0 at the floor and never below it', async () => {
@@ -483,22 +464,7 @@ describe('useToday', () => {
       expect(rowOf(result.current, 'h1').progress).toEqual({ sum: 9, floor: 5, remaining: 0 });
     });
 
-    it('previews the staged amount through the real classifier', async () => {
-      const result = await todayScreen(new LocalRepository(await seed([habit()])));
-
-      expect(result.current.previewOf('h1', 2)).toEqual({ sum: 2, state: 'partial' });
-      expect(result.current.previewOf('h1', 5)).toEqual({ sum: 5, state: 'done' });
-      expect(result.current.previewOf('h1', 8)).toEqual({ sum: 8, state: 'over' });
-      expect(result.current.previewOf('nobody', 5)).toBeNull();
-
-      await log(result, 'h1', 3);
-
-      // The preview adds to what the day already holds, not to nothing.
-      expect(result.current.previewOf('h1', 2)).toEqual({ sum: 5, state: 'done' });
-      expect(result.current.previewOf('h1', 1)).toEqual({ sum: 4, state: 'partial' });
-    });
-
-    it('previews and progresses an empty paused day, which has no state at all', async () => {
+    it('progresses an empty paused day, which has no state at all', async () => {
       const result = await todayScreen(
         new LocalRepository(
           await seed([habit({ id: 'paused', lifecycle: 'paused', pauses: [{ from: TODAY }] })]),
@@ -512,72 +478,9 @@ describe('useToday', () => {
         floor: 5,
         remaining: 5,
       });
-      expect(result.current.previewOf('paused', 5)).toEqual({ sum: 5, state: 'done' });
     });
 
-    it('orders a time-overridden row by the time the user typed (B3)', async () => {
-      const result = await todayScreen(new LocalRepository(await seed([habit()])));
-
-      await log(result, 'h1', 3);
-      await log(result, 'h1', 4, { timestamp: `${TODAY}T02:00:00.000Z` });
-
-      const stamps = habitFeed(result.current).map((item) => item.entry.timestamp);
-      expect(stamps[0]).toBe(`${TODAY}T02:00:00.000Z`);
-      expect([...stamps].sort()).toEqual(stamps);
-      // `date` is unchanged by the override — the row is still today's (§3.3).
-      expect(habitFeed(result.current).every((item) => item.entry.date === TODAY)).toBe(true);
-      expect(dayOf(result.current, 'h1')?.sum).toBe(7);
-    });
   });
-  describe('the target nudge (C7a)', () => {
-    it('stays silent below the floor and fires once the day is floor-met', async () => {
-      // No target at all — the habit that C7a is nudging.
-      const result = await todayScreen(
-        new LocalRepository(await seed([habit({ target: undefined })])),
-      );
-
-      expect(rowOf(result.current, 'h1').suggestTarget).toBe(false);
-
-      await log(result, 'h1', 2);
-      expect(dayOf(result.current, 'h1')?.state).toBe('partial');
-      expect(rowOf(result.current, 'h1').suggestTarget).toBe(false);
-
-      await log(result, 'h1', 3);
-      expect(dayOf(result.current, 'h1')?.state).toBe('done');
-      expect(rowOf(result.current, 'h1').suggestTarget).toBe(true);
-    });
-
-    it('stays silent when a valid target already exists', async () => {
-      const result = await todayScreen(new LocalRepository(await seed([habit()])));
-
-      await log(result, 'h1', 5);
-
-      expect(dayOf(result.current, 'h1')?.state).toBe('done');
-      expect(rowOf(result.current, 'h1').suggestTarget).toBe(false);
-    });
-
-    it('treats a corrupt target <= floor as no target, mirroring §4.1', async () => {
-      const result = await todayScreen(
-        new LocalRepository(await seed([habit({ floor: 5, target: 3 })])),
-      );
-
-      await log(result, 'h1', 5);
-
-      // `classifyDay` ignores that target, so the nudge must read it the same way.
-      expect(dayOf(result.current, 'h1')?.state).toBe('done');
-      expect(rowOf(result.current, 'h1').suggestTarget).toBe(true);
-    });
-
-    it('never nudges a binary habit, which has no amount to target', async () => {
-      const result = await todayScreen(new LocalRepository(await seed([binary()])));
-
-      await log(result, 'b1', 1);
-
-      expect(dayOf(result.current, 'b1')?.state).toBe('done');
-      expect(rowOf(result.current, 'b1').suggestTarget).toBe(false);
-    });
-  });
-
   it('throws rather than dropping a log for a habit it cannot resolve', async () => {
     const result = await todayScreen(new LocalRepository(await seed([habit()])));
 
@@ -638,10 +541,8 @@ describe('useToday', () => {
 
       const row = rowOf(result.current, 'h1');
       expect(row.hasActivityToday).toBe(false);
-      expect(row.oneTapAmount).toBe(5);
       // `actual: 0` is not a legal staged amount and must never become a default.
       expect(row.defaultAmount).toBe(5);
-      expect(row.quickChips).toEqual([1, 5]);
       expect(row.progress.sum).toBe(0);
     });
 
@@ -1041,21 +942,6 @@ describe('useToday', () => {
       ]);
     });
 
-    it('ignores the B3 time override on a backfill and keeps using the clock on today (D4)', async () => {
-      const repository = new LocalRepository(await seed([habit()]));
-
-      const past = await screenOn(repository, YESTERDAY);
-      await log(past, 'h1', 5, { timestamp: atLocal(YESTERDAY, 21) });
-      // The noon pin is the sole basis of the day's total order, so a wall clock cannot
-      // override it — the canvas puts the same sentence on the control
-      // (`design/parts/Backfill.logic.js:81`).
-      expect((await rowsFor(repository, YESTERDAY))[0].timestamp).toBe(noonOn(YESTERDAY));
-
-      const present = await screenOn(repository, TODAY, stepClock());
-      await log(present, 'h1', 5);
-      expect((await rowsFor(repository, TODAY))[0].timestamp).toBe(`${TODAY}T09:00:00.000Z`);
-    });
-
     it('recovers a missed day: one backfilled log reclassifies it to done (AC 8a)', async () => {
       const repository = new LocalRepository(await seed([habit()]));
       const result = await screenOn(repository, YESTERDAY);
@@ -1242,11 +1128,13 @@ describe('useToday', () => {
 
     it('interleaves free logs and habit rows in one chronological list (AC 3)', async () => {
       const repository = new LocalRepository(await seed([habit()]));
-      const result = await todayScreen(repository);
+      // The habit rows take the hook's clock, the free logs their own stamp.
+      let clock = '09:00';
+      const result = await todayScreen(repository, () => new Date(`${TODAY}T${clock}:00.000Z`));
 
       // Written out of order, and all four stamps are `Z` literals so the order under
       // test is the domain's and not the runner's timezone.
-      await log(result, 'h1', 5, { timestamp: `${TODAY}T09:00:00.000Z` });
+      await log(result, 'h1', 5);
       await act(async () => {
         await result.current.logFree('mood', '점심 먹고 나른함', {
           timestamp: `${TODAY}T13:00:00.000Z`,
@@ -1255,7 +1143,8 @@ describe('useToday', () => {
       await act(async () => {
         await result.current.logFree('note', '아침 메모', { timestamp: `${TODAY}T07:00:00.000Z` });
       });
-      await log(result, 'h1', 2, { timestamp: `${TODAY}T11:00:00.000Z` });
+      clock = '11:00';
+      await log(result, 'h1', 2);
 
       expect(result.current.feed.map((item) => item.kind)).toEqual([
         'free',

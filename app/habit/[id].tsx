@@ -12,6 +12,7 @@ import {
   Footnote,
   Heatmap,
   Hint,
+  LogForm,
   NumberField,
   Pill,
   SegmentedControl,
@@ -569,7 +570,9 @@ function DesignRow({ label, value, empty }: { label: string; value?: string; emp
 
 /**
  * The composer for one journal date — the append path (§6.3), opened from the day it
- * writes to and closing over that date entirely.
+ * writes to and closing over that date entirely. The form is the shared `LogForm`
+ * (#79); this card adds only the date's header and its 닫기. It renders under the day
+ * that opened it, so opening another day mounts a fresh form with nothing staged.
  *
  * It states nothing about *when* the row lands. On a past date the write is noon-pinned
  * and on today it is stamped now (`useQuickLog`), and the rows themselves say which
@@ -578,146 +581,37 @@ function DesignRow({ label, value, empty }: { label: string; value?: string; emp
  */
 function DayComposer({
   habit,
-  date,
   dayLabel,
   affordances,
-  defaultAmount,
   onFill,
   onSkip,
   onClose,
 }: {
   habit: Habit;
-  date: string;
   /** `오늘` on today — one screen, one name for the day (`JournalDay.isToday`). */
   dayLabel: string;
   /**
    * `composerAffordances` — what this date affords, derived once in the hook the way
-   * Today and the Dashboard derive theirs. `skippable` is §4.1's precedence, and
-   * `oneTapAmount`/`hasActivityToday` are the one-tap rule (`logAffordances`).
+   * Today and the Dashboard derive theirs (`logAffordances`).
    */
   affordances: LogAffordances;
-  /**
-   * `composerDefaultAmount` — the floor on the date's first record, the date's last
-   * amount afterwards (§6.2 B2), derived in the hook the way Today derives its
-   * `defaultAmount`. It differing from the one-tap's `+1` is the rule, not a
-   * disagreement: the field stages another helping, the button appends one.
-   */
-  defaultAmount: number;
-  onFill: (actual?: number, opts?: { note?: string }) => Promise<void>;
-  onSkip: (reason: SkipReason, opts?: { note?: string }) => Promise<void>;
+  onFill: (actual: number, opts: { note: string }) => Promise<void>;
+  onSkip: (reason: SkipReason, opts: { note: string }) => Promise<void>;
   onClose: () => void;
 }) {
-  const { colors } = useTheme();
-  const isCount = habit.kind === 'count';
-  /**
-   * `null` means "untouched", so the field falls back to `defaultAmount`. A write
-   * resets it to `null`, which is what re-prefills the field with the date's new
-   * default rather than leaving the old number staged (`app/today.tsx` stages the
-   * same way).
-   */
-  const [staged, setStaged] = useState<string | null>(null);
-  const [note, setNote] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
-
-  const amount = staged ?? `${defaultAmount}`;
-  const parsed = Number(amount);
-  // §3.3: an activity row is `actual > 0`. Zero is not one — the way to say "didn't do
-  // it" is a skip row with a reason.
-  const canLog = amount.trim().length > 0 && Number.isFinite(parsed) && parsed > 0;
-
-  // The shared derivation, not a second copy of the rule: the floor on the date's first
-  // record, otherwise 1. `app/today.tsx` words the two cases exactly this way. (Its
-  // binary `✓ 했어요` is not imported — there the label is load-bearing on a `disabled`
-  // this append-only composer does not have.)
-  const oneTapLabel = isCount
-    ? affordances.hasActivityToday
-      ? '+1 더'
-      : `✓ 최소만큼 했어요 (+${habit.floor}${habit.floorUnit})`
-    : '✓ 완료';
-
-  async function run(write: () => Promise<void>) {
-    if (saving) return;
-    // A raised soft keyboard would sit over the bottom-pinned 실행취소 toast for its
-    // whole window — the same reason `app/today.tsx` dismisses it before every write.
-    Keyboard.dismiss();
-    setSaving(true);
-    setError(null);
-    try {
-      await write();
-      setStaged(null);
-      setNote('');
-    } catch {
-      setError('기록하지 못했어요. 잠시 뒤 다시 눌러 주세요.');
-    } finally {
-      setSaving(false);
-    }
-  }
-
   return (
     <Card>
       <View style={styles.rowline}>
         <Eyebrow>{dayLabel} 기록 추가</Eyebrow>
         <Button label="닫기" variant="ghost" onPress={onClose} />
       </View>
-
-      {/* B1's one-tap, in the canvas's composer wording (`Backfill.body.html:35`). */}
-      <Button
-        label={oneTapLabel}
-        variant="pri"
-        block
-        disabled={saving}
-        onPress={() => void run(() => onFill(affordances.oneTapAmount, { note }))}
+      <LogForm
+        habit={habit}
+        affordances={affordances}
+        dayLabel={dayLabel}
+        onLog={onFill}
+        onSkip={onSkip}
       />
-
-      {isCount && (
-        <View style={styles.amountRow}>
-          <NumberField
-            accessibilityLabel="기록할 양"
-            value={amount}
-            onChangeText={(next) => {
-              setStaged(next);
-              setError(null);
-            }}
-            placeholder={`${habit.floor}`}
-          />
-          <Text style={[styles.unit, { color: colors.muted }]}>{habit.floorUnit}</Text>
-          <Button
-            label="기록"
-            disabled={!canLog || saving}
-            onPress={() => void run(() => onFill(parsed, { note }))}
-            tap
-            style={styles.grow}
-          />
-        </View>
-      )}
-
-      {/* The row's note (#77) — one field for every write this composer makes. Placed
-          before the reason chips, because it is filled in before the write that saves
-          it, and outside their block, because it belongs to activity rows too. */}
-      <TextField
-        accessibilityLabel="메모"
-        value={note}
-        onChangeText={setNote}
-        placeholder="메모 (선택)"
-      />
-
-      {/* B5 — the reason chips. The block is withheld once the date holds an activity
-          row: §4.1's precedence means a skip written there changes no state, no miss and
-          no diagnosis, so offering it would promise something untrue. The condition is
-          the hook's `skippable`, the same field Today and the Dashboard read. */}
-      {affordances.skippable && (
-        <View style={[styles.skipGroup, { borderColor: colors.border }]}>
-          <SkipReasonChips
-            label="못 했어요"
-            habitName={habit.name}
-            disabled={saving}
-            onPick={(reason) => void run(() => onSkip(reason, { note }))}
-          />
-        </View>
-      )}
-
-      {error != null && <Banner>{error}</Banner>}
     </Card>
   );
 }
@@ -1159,15 +1053,11 @@ export default function HabitDetail() {
                   {/* Both surfaces open **under the day they act on**: the journal is
                       as long as the habit's life, and one pinned to the top of the
                       screen would be off-screen for the day that opened it. */}
-                  {view.backfillDate === day.date &&
-                    view.composerAffordances != null &&
-                    view.composerDefaultAmount != null && (
+                  {view.backfillDate === day.date && view.composerAffordances != null && (
                       <DayComposer
                         habit={shown}
-                        date={day.date}
                         dayLabel={day.isToday ? '오늘' : monthDay(day.date)}
                         affordances={view.composerAffordances}
-                        defaultAmount={view.composerDefaultAmount}
                         onFill={view.fillDay}
                         onSkip={view.skipDay}
                         onClose={view.closeBackfill}
@@ -1352,7 +1242,6 @@ const styles = StyleSheet.create({
   statechipText: { fontSize: FONT_SIZE.xs, fontFamily: FONT_FAMILY.mono, fontWeight: '600' },
   tint: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, opacity: 0.16 },
   amountRow: { flexDirection: 'row', alignItems: 'center', gap: SPACE.md - 2 },
-  skipGroup: { borderTopWidth: 1, paddingTop: SPACE.md, gap: SPACE.md - 2 },
   actions: { flexDirection: 'row', alignItems: 'center', gap: SPACE.md - 2 },
   confirm: { gap: SPACE.md },
   unit: { fontSize: FONT_SIZE.sm },

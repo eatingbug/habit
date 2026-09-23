@@ -26,8 +26,8 @@ the first real implementation of Habiquest.
   yes/no: a single "done" = `actual: 1`). **Multiple entries per (habit, day) are
   allowed** — entries store raw facts only and the day's state
   `pending / missed / partial / done / over / skip` is **computed** from the day's summed
-  `actual` (§4.1). **Low-friction logging:** one-tap "+floor" / "✓" from Today *and* the
-  Dashboard (B1), smart-default + quick-add chips (B2), collapsed time picker (B3), a
+  `actual` (§4.1). **Low-friction logging:** one log form with a primary `기록` (B1), a
+  smart-default amount (B2), a collapsed time picker for free logs and edits (B3), a
   "yesterday" fast-path (B4), one-tap skip-reason chips (B5), undo-toast for one-tap
   appends (B6). skip-with-reason (4 categories, now diagnostic — Part D); per-entry edit &
   delete; backfill (bounded by `createdAt`); heatmap; never-miss-twice detection **plus a
@@ -545,8 +545,8 @@ this to show the 🔴 status light and the "don't miss twice" nudge.
   `missed` day — or a streak just broke, **and** today is still `pending`/`partial`. This is the open save window — *before* the second
   miss completes — that `needsNeverMissTwiceIntervention` (which fires only *after* two
   misses) misses. When `true`, Today shows an amber, opportunity-framed save banner
-  ("어제 놓쳤어요 — 오늘 최소 한 번이면 이어갈 수 있어요") wired to the B1 one-tap floor log
-  (§6.2). In-app only. Fulfils CONCEPT §5's "intervene at the moment of the second
+  ("어제 놓쳤어요 — 오늘 최소 한 번이면 이어갈 수 있어요") wired to a one-tap log of the
+  day's remaining amount (§6.2). In-app only. Fulfils CONCEPT §5's "intervene at the moment of the second
   *risk*, not just declare the principle."
 - **`engagementStreak` / `showedUpDays` (C3) — reward showing up, not XP.** Consecutive
   (and cumulative-in-window) days with **any real engagement** — `done`/`over`/**`partial`**
@@ -912,26 +912,31 @@ restrained language; §6.5 links the reference mockup.
     under ADR-0001 an unfilled day is a broken streak, so this is the repair path. Older gaps still use Habit-Detail backfill.
   - Target selector: "Free log" or one of the user's habits.
   - Free log path: type chips (Note / Win / Mood / Idea) + optional note.
+  - **One log form (#79).** Today's habit card and Habit Detail's fill panel render the
+    same form: amount, optional note, one primary `기록` button, then the skip chips.
+    *(Revised: the one-tap "✓ 최소 실행 (+floor)", the quick-add chips, the staged
+    preview, the target nudge and the new-entry time reveal are gone. Reason: several
+    paths to the same write made logging harder (#76).)*
   - **Habit path (count):**
-    - **One-tap "✓ 최소 실행 (+floor)".** Appends one activity row `actual = floor` with
-      no numeric entry — a guaranteed `done` + base XP for the highest-frequency action
-      ("I did my minimum today"), the count analog of binary's Mark-done.
-    - For any other amount: a numeric `actual` input **pre-filled with a smart default**
-      (the habit's `floor` for the day's first entry, else its last-used amount) plus
-      **quick-add chips `+1 / +floor / 직전값`**, so a full log is one tap + Log. `actual`
-      **must be `> 0`**; a **sub-floor amount is valid** (it sums toward the day →
-      `partial`); `0` is not an activity row — route to a skip instead.
-    - **Progress-to-floor (C7a).** The composer shows the day's **running sum** and
-      remaining-to-floor ("오늘 3/5 · 2 남음") and previews the staged amount's result
-      ("→ 5/5 done · +60 XP"); once the floor is met it flips to "done ✓" and nudges the
-      target / personal-best. Turns log-as-you-go into visible progress (goal-gradient).
-  - **Habit path (yes/no):** a single "✓ Mark done" (no amount; `actual: 1`) + optional note.
+    - **One primary `기록` (B1).** It appends one activity row with the staged amount and
+      the note. It is the form's only primary control.
+    - The numeric `actual` input is **pre-filled with a smart default (B2)**: the habit's
+      `floor` for the day's first entry, else the day's last amount. Most logs are one
+      tap on `기록`. `actual` **must be `> 0`**; a **sub-floor amount is valid** (it sums
+      toward the day → `partial`); `0` is not an activity row — route to a skip instead.
+    - **Progress-to-floor (C7a).** The form's title shows the day's **running sum**
+      against the floor ("오늘 3/5회"). Turns log-as-you-go into visible progress
+      (goal-gradient).
+  - **Habit path (yes/no):** a single "✓ 완료" (no amount; `actual: 1`) + optional note.
+    Once the day holds an activity row it reads "✓ 했어요" and is disabled.
   - **Skip path (B5).** A row of **one-tap reason chips** (깜빡함 `cue` / 너무 힘듦 `floor`
     / 예외 `exception` / 안 내킴 `identity`) — tapping a chip logs the skip (two taps total),
     replacing the old dropdown. Optional free-text note. (Reasons are diagnostic — Part D.)
   - **Time.** Defaults to **now**; the hour/minute picker is **collapsed behind a small
     "🕑 지금 HH:MM" affordance (B3)** and revealed only to override (rare — `timestamp` is
-    ordering/tiebreak only, §3.3). Applies to habit entries and free logs alike.
+    ordering/tiebreak only, §3.3). Applies to free logs and to editing an existing
+    entry. *(Revised: a new habit entry is always stamped now, or noon on a backfill.
+    The override is rare, and the log form stays simpler without it.)*
   - Log button — calls `upsertEntry` or `upsertFreeLog` (always a fresh `id`; the
     composer never overwrites another day's rows — multiple per day are expected).
   - **Log-time reward feedback (C1).** On a successful log, Today shows an immediate,
@@ -945,7 +950,7 @@ restrained language; §6.5 links the reference mockup.
   - Editable fields: `actual` (count), `timestamp` (via the reveal), `note`, and
     skip↔activity mode (incl. `skipReason`); free logs additionally allow `type`.
   - **Undo, not confirm, for one-tap appends (B6).** Every one-tap / quick-add append
-    (the `+floor` / `✓` and the chips, on Today and on the Dashboard §6.1) shows a
+    (the Dashboard's `+floor` / `✓` §6.1, and Today's log form) shows a
     transient **undo toast** ("기록됨 +N {unit} · 실행취소"); Undo deletes the
     just-appended row by `id` (append-only → a clean single-row delete). The toast also
     serves as the "it registered" confirmation one-tap logging otherwise lacks.
