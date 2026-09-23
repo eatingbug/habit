@@ -648,11 +648,11 @@ describe('useQuickLog', () => {
     });
   });
 
-  describe('logAffordances.skipReasonToday (D3 — the shared derivation)', () => {
-    function dayOf(entries: HabitEntry[], target = habit()) {
-      return dayStates(target, entries, TODAY, TODAY, TODAY)[0];
-    }
+  function dayOf(entries: HabitEntry[], target = habit()) {
+    return dayStates(target, entries, TODAY, TODAY, TODAY)[0];
+  }
 
+  describe('logAffordances.skipReasonToday (D3 — the shared derivation)', () => {
     it('is the reason on a day holding only a skip', () => {
       const day = dayOf([seededRow({ actual: 0, skipReason: 'floor' })]);
 
@@ -703,10 +703,6 @@ describe('useQuickLog', () => {
   });
 
   describe('logAffordances.defaultAmount / progress (#78 — the form reads one derivation)', () => {
-    function dayOf(entries: HabitEntry[], target = habit()) {
-      return dayStates(target, entries, TODAY, TODAY, TODAY)[0];
-    }
-
     it('starts the day on the floor', () => {
       expect(logAffordances(habit(), undefined).defaultAmount).toBe(5);
       expect(logAffordances(habit(), dayOf([])).defaultAmount).toBe(5);

@@ -288,6 +288,7 @@ describe('useDashboard', () => {
       // Binary's floor is 1, so one row is the whole day: the control is completed.
       expect(stateOn(result.current.rows[0].cells, TODAY)).toBe('done');
       expect(result.current.rows[0].hasActivityToday).toBe(true);
+      expect(result.current.rows[0].defaultAmount).toBe(1);
       expect(result.current.toast?.detail).toBe(`✓ 완료 · +${TUNING.xpPerFloorCompletion} XP`);
     });
 

@@ -221,8 +221,8 @@ export interface LogAffordances {
 
 /**
  * The one derivation behind every logging surface — Today's composer, the Dashboard
- * row and the habit detail's composer. `day` is optional because an empty paused day has no state at all
- * (ADR-0003) and is still loggable.
+ * row and the habit detail's composer. `day` is optional because an empty paused day
+ * has no state at all (ADR-0003) and is still loggable.
  *
  * The activity test is read off the **day's state**, which is legitimate only because
  * of §4.1's precedence: activity overrides skip, so `partial`/`done`/`over` are
