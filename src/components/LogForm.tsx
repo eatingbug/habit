@@ -21,13 +21,13 @@ export interface LogFormProps {
   badge?: ReactNode;
   onLog: (actual: number, opts: { note: string }) => Promise<void>;
   onSkip: (reason: SkipReason, opts: { note: string }) => Promise<void>;
-  /** Called after a write succeeds — #80's modal closes on it. */
+  /** Called after a write succeeds — the Dashboard's modal closes on it (#80). */
   onSaved?: () => void;
 }
 
 /**
- * The one log form (#79) — Today's habit card and the habit detail's fill panel both
- * render it, and #80's dashboard modal will. One amount field prefilled with
+ * The one log form (#79) — Today's habit card, the habit detail's fill panel and the
+ * Dashboard's 기록 modal (#80) all render it. One amount field prefilled with
  * `defaultAmount`, one note, one primary `기록` (`✓ 완료` on a binary habit), and the
  * reason chips while the day is `skippable`. There is deliberately no second way to
  * write an activity row here: one path is the easier form (SPEC §6.2 B1).
@@ -36,10 +36,12 @@ export interface LogFormProps {
  * amount to the day's new default and empties the note, so the next row cannot inherit
  * this one's note; a failed write leaves both staged and says so in the card. Each
  * habit and day gets its own mount (Today keys it, the detail screen renders it under
- * the day), so an input never follows the user to another.
+ * the day, the Dashboard mounts it only while its modal is open), so an input never
+ * follows the user to another.
  *
  * The container is the caller's: Today wraps it in its card with the day-state
- * footnotes, the detail screen under its `기록 추가 · 닫기` header.
+ * footnotes, the detail screen and the Dashboard's modal under a `기록 추가 · 닫기`
+ * header.
  */
 export function LogForm({
   habit,

@@ -86,9 +86,10 @@ async function log(
   result: { current: DashboardView },
   target: Habit,
   actual: number,
+  opts?: { note?: string },
 ): Promise<void> {
   await act(async () => {
-    await result.current.logActivity(target, actual);
+    await result.current.logActivity(target, actual, opts);
   });
 }
 
@@ -96,9 +97,10 @@ async function logSkip(
   result: { current: DashboardView },
   target: Habit,
   reason: SkipReason,
+  opts?: { note?: string },
 ): Promise<void> {
   await act(async () => {
-    await result.current.logSkip(target, reason);
+    await result.current.logSkip(target, reason, opts);
   });
 }
 
@@ -231,17 +233,62 @@ describe('useDashboard', () => {
     // …and the unpainted cell is a fifth reading, not a re-use of pending's.
     expect(new Set([...tuples, tupleOn(cells, FROM)]).size).toBe(5);
   });
-  describe('one-tap logging on the row (#11)', () => {
-    it('offers the floor as the first tap and reads +1 더 afterwards', async () => {
+  describe('the log modal on the row (#80)', () => {
+    it('reads today as holding activity once a log lands', async () => {
       const result = await dashboard(new LocalRepository(await seed([habit()])));
 
       expect(result.current.rows[0].hasActivityToday).toBe(false);
-      expect(result.current.rows[0].oneTapAmount).toBe(5);
 
-      await log(result, result.current.rows[0].habit, result.current.rows[0].oneTapAmount);
+      await log(result, result.current.rows[0].habit, 5);
 
       expect(result.current.rows[0].hasActivityToday).toBe(true);
-      expect(result.current.rows[0].oneTapAmount).toBe(1);
+    });
+
+    it('stores the note with the activity row, trimmed (#80)', async () => {
+      const repository = new LocalRepository(await seed([habit()]));
+      const result = await dashboard(repository);
+
+      await log(result, result.current.rows[0].habit, 5, { note: '  아침에  ' });
+
+      const rows = await repository.getEntries('h1', TODAY, TODAY);
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({ actual: 5, note: '아침에' });
+    });
+
+    it('stores the note with the skip row (#80)', async () => {
+      const repository = new LocalRepository(await seed([habit()]));
+      const result = await dashboard(repository);
+
+      await logSkip(result, result.current.rows[0].habit, 'cue', { note: '야근' });
+
+      const rows = await repository.getEntries('h1', TODAY, TODAY);
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({ actual: 0, skipReason: 'cue', note: '야근' });
+    });
+
+    it('undoes a noted log as one whole row', async () => {
+      const repository = new LocalRepository(await seed([habit()]));
+      const result = await dashboard(repository);
+
+      await log(result, result.current.rows[0].habit, 5, { note: '메모' });
+      await act(async () => {
+        await result.current.undoLast();
+      });
+
+      expect(await repository.getEntries('h1', TODAY, TODAY)).toHaveLength(0);
+    });
+
+    it('offers the skip chips until activity covers the day', async () => {
+      const result = await dashboard(new LocalRepository(await seed([habit()])));
+      expect(result.current.rows[0].skippable).toBe(true);
+
+      await logSkip(result, result.current.rows[0].habit, 'cue');
+      // A skip-only day is still skippable: the reason can be changed.
+      expect(result.current.rows[0].skippable).toBe(true);
+      expect(result.current.rows[0].skipReasonToday).toBe('cue');
+
+      await log(result, result.current.rows[0].habit, 5);
+      expect(result.current.rows[0].skippable).toBe(false);
     });
 
     it('turns today\u2019s cell done in place, without ever raising loading again', async () => {
@@ -261,7 +308,7 @@ describe('useDashboard', () => {
       expect(result.current.loading).toBe(false);
     });
 
-    it('appends a second tap instead of overwriting, and sums to over', async () => {
+    it('appends a second log instead of overwriting, and sums to over', async () => {
       const result = await dashboard(
         new LocalRepository(await seed([habit({ target: 6 })])),
       );
@@ -281,7 +328,6 @@ describe('useDashboard', () => {
       );
 
       expect(result.current.rows[0].hasActivityToday).toBe(false);
-      expect(result.current.rows[0].oneTapAmount).toBe(1);
 
       await log(result, result.current.rows[0].habit, 1);
 
@@ -300,10 +346,10 @@ describe('useDashboard', () => {
       expect(stateOn(result.current.rows[0].cells, TODAY)).toBe('skip');
       // A skip row is `actual: 0` — not activity, so this is still today's first record.
       expect(result.current.rows[0].hasActivityToday).toBe(false);
-      expect(result.current.rows[0].oneTapAmount).toBe(5);
+      expect(result.current.rows[0].defaultAmount).toBe(5);
     });
 
-    it('undoes the tap it just made and puts the day back to pending', async () => {
+    it('undoes the log it just made and puts the day back to pending', async () => {
       const result = await dashboard(new LocalRepository(await seed([habit()])));
 
       await log(result, result.current.rows[0].habit, 5);
@@ -336,7 +382,7 @@ describe('useDashboard', () => {
       expect(result.current.rows[0].progress).toEqual({ sum: 7, floor: 5, remaining: 0 });
     });
   });
-  describe('the long-press skip path (§6.1 B5)', () => {
+  describe('the skip path (§6.1 B5)', () => {
     it('turns today into a skip day, fills the cell and reports the reason', async () => {
       const result = await dashboard(new LocalRepository(await seed([habit()])));
       expect(stateOn(result.current.rows[0].cells, TODAY)).toBe('pending');
@@ -654,7 +700,7 @@ describe('useDashboard', () => {
 
     it('recomputes the light and the chip as soon as a log lands', async () => {
       // `consecutiveMissCount` counts the run **ending at today** (§4.3), so a
-      // floor-met day today ends it: the 🔴 clears on the one tap and the chip follows
+      // floor-met day today ends it: the 🔴 clears on the one log and the chip follows
       // it down in the same reload.
       const repository = new LocalRepository(await seed([habit()]));
       const result = await dashboard(repository);

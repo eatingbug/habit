@@ -35,6 +35,11 @@ export interface Palette {
   good: string;
   warn: string;
   crit: string;
+  /**
+   * The dimmed backdrop behind the Dashboard's 기록 modal (#80). Not in
+   * `design/_tokens.css` — the canvas draws no modal, so this is a new value.
+   */
+  scrim: string;
 }
 
 const light: Palette = {
@@ -59,6 +64,7 @@ const light: Palette = {
   good: '#3F9E72',
   warn: '#C08A2E',
   crit: '#C25B54',
+  scrim: 'rgba(27,28,32,0.40)',
 };
 
 const dark: Palette = {
@@ -83,6 +89,7 @@ const dark: Palette = {
   good: '#54B487',
   warn: '#D3A24A',
   crit: '#D06B63',
+  scrim: 'rgba(0,0,0,0.60)',
 };
 
 export const PALETTES: Record<ThemeName, Palette> = { light, dark };

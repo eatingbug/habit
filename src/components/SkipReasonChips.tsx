@@ -27,9 +27,9 @@ export interface SkipReasonChipsProps {
 /**
  * `.skiprow` — the four reason chips (SPEC §6.2 B5), one tap each.
  *
- * **One component for every surface.** `LogForm`, the row editor and the Dashboard's
- * long-press all render this same row, so it lives here rather than being copied
- * into each screen — the same reason `ToastOverlay` is shared.
+ * **One component for every surface.** `LogForm` and the row editor both render this
+ * same row, so it lives here rather than being copied into each screen — the same
+ * reason `ToastOverlay` is shared.
  *
  * The chips come from `SKIP_REASON_LABELS`' own key order, so a reason can never be
  * declared and then quietly left off the row.

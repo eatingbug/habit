@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 
-import { LOAD_FAILED_NOTE, WRITE_FAILED_NOTE } from '@/config/copy';
+import { LOAD_FAILED_NOTE } from '@/config/copy';
 import { TUNING } from '@/config/tuning';
 import { useRepository } from '@/context/RepositoryContext';
 import { dayStates } from '@/domain/classify';
@@ -114,30 +114,30 @@ export interface DashboardView {
   shaky: number;
   loading: boolean;
   /**
-   * 실패한 읽기나 실패한 한 번 누르기, 또는 `null`.
+   * 실패한 읽기나 실패한 실행취소, 또는 `null`.
    *
    * **`loading` 이 거짓이라고 화면이 빈 것은 아니다.** 읽기가 실패해도 `loading` 은
    * 내려가야 하지만(안 그러면 "불러오는 중…" 이 영원히 남는다), 그렇다고 `rows` 가
    * 비었으니 "아직 습관이 없습니다" 라고 말하면 앱이 사용자 기록이 없다고 **주장하는**
    * 것이라 멈춘 것보다 나쁘다. 이 값이 있으면 화면은 빈 상태 대신 실패를 말한다.
    *
-   * 한 번 누르기가 여기 있는 이유는 이 화면에만 받을 곳이 없기 때문이다. `app/today.tsx`
-   * 와 `app/habit/[id].tsx` 의 작성기는 자기 `try/catch` 로 카드 안에서 실패를 말하지만,
-   * 대시보드의 행 버튼은 `void logActivity(...)` 라 실패가 어디에도 닿지 않는다 — 이
-   * 티켓이 "최악의 버그" 라고 부르는 바로 그 모양이다.
+   * 기록과 건너뛰기의 실패는 여기 오지 않는다. 두 쓰기는 reject 하고, 기록 모달의
+   * `LogForm` 이 그것을 받아 폼 안에서 말한다(#80). 여기서 또 잡으면 한 실패에 배너가
+   * 둘이 뜨고, 폼은 성공으로 읽어 모달을 닫는다.
    */
   failure: Failure | null;
   /**
-   * One-tap logging on the row (§6.1 B1) with its 실행취소 toast (B6) — the same
-   * primitive Today's composer uses, so there is only one append/undo implementation.
+   * Append one activity row for today, with the form's note — what the row's 기록 modal
+   * calls (§6.1, #80). The same primitive Today's form uses, so there is only one
+   * append/undo implementation. Rejects on failure, for the form to say so.
    *
    * Takes the habit itself: the row the screen is rendering already holds it, so
    * there is nothing to look up and no "habit not found" branch to write.
    */
-  logActivity(habit: Habit, actual: number): Promise<void>;
+  logActivity(habit: Habit, actual: number, opts?: { note?: string }): Promise<void>;
   /**
-   * Reason-tag today as a skip (§6.1 B5) — what the long-press chips call. The same
-   * primitive Today's chip row uses, so there is one skip-write implementation.
+   * Reason-tag today as a skip, with the form's note (§6.1 B5) — the modal's reason
+   * chips call it. Rejects on failure, like `logActivity`.
    */
   logSkip(habit: Habit, reason: SkipReason, opts?: { note?: string }): Promise<void>;
   toast: QuickLogToast | null;
@@ -169,7 +169,7 @@ function statProgress(stat: Stat, all: HabitWithEntries[]): StatProgress {
 
 export function useDashboard({ today = localToday() }: { today?: string } = {}): DashboardView {
   const repository = useRepository();
-  const { failure, report, clear, attempt } = useFailure();
+  const { failure, report, clear } = useFailure();
   const [rows, setRows] = useState<DashboardRow[]>([]);
   const [stats, setStats] = useState<StatProgress[]>([]);
   const [shaky, setShaky] = useState(0);
@@ -177,7 +177,7 @@ export function useDashboard({ today = localToday() }: { today?: string } = {}):
   /**
    * Bumped by a write, so the load effect is the single place that reads. `loading` is
    * raised only for the first load, never for a reload — matching `useToday`: a
-   * one-tap log must not blank the row it just changed, and "loading" would describe a
+   * log must not blank the row it just changed, and "loading" would describe a
    * row that is already on screen (§6.1: the row updates in place).
    */
   const [version, setVersion] = useState(0);
@@ -218,7 +218,7 @@ export function useDashboard({ today = localToday() }: { today?: string } = {}):
               cells: heatCells(habit, entries, from, to, today),
               streak: computeStreak(entries, habit, today),
               statusLight: deriveStatusLight(habit, entries, today),
-              // The one-tap control reads a classified day, not a heat cell: a cell is
+              // The log form reads a classified day, not a heat cell: a cell is
               // a *rendering* instruction, and deriving an affordance from one is how
               // this drifted away from Today's identical derivation once already.
               ...logAffordances(habit, dayStates(habit, entries, today, today, today)[0]),
@@ -284,10 +284,8 @@ export function useDashboard({ today = localToday() }: { today?: string } = {}):
     loading,
     // 실행취소의 실패는 `useQuickLog` 가 들고 있다 — 한 배너 자리를 둘이 나눠 쓴다.
     failure: failure ?? quick.failure,
-    logActivity: (habit, actual) =>
-      attempt(WRITE_FAILED_NOTE, () => quick.logActivity(habit, actual)),
-    logSkip: (habit, reason, opts) =>
-      attempt(WRITE_FAILED_NOTE, () => quick.logSkip(habit, reason, opts)),
+    logActivity: quick.logActivity,
+    logSkip: quick.logSkip,
     toast: quick.toast,
     undoLast: quick.undoLast,
   };

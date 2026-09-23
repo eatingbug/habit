@@ -32,7 +32,8 @@ import { useFailure, type Failure } from './failure';
  * computed identically in two hooks, and "does today already hold activity?" ended up
  * with two different implementations whose equivalence nothing named.
  *
- * Both logging surfaces go through this hook: Today's composer and the Dashboard row.
+ * Every logging surface goes through this hook: Today's composer, the Dashboard modal
+ * and the habit detail's composer.
  * There is deliberately **one** append/undo implementation, because the undo rule is
  * subtle enough that a second copy would eventually get it wrong — the id is minted
  * here, *before* the write, and carried on the toast, so 실행취소 deletes exactly the
@@ -75,8 +76,8 @@ export interface QuickLog {
   /**
    * 실패한 **실행취소**, 또는 `null` — 이 훅에서 실패가 사용자에게 닿을 길이 없는 유일한
    * 쓰기다. 나머지 넷(`logActivity`·`logSkip`·`editEntry`·`removeEntry`)은 계속 reject
-   * 하고, `app/today.tsx` 와 `app/habit/[id].tsx` 의 작성기·편집기가 이미 그것을 받아
-   * 카드 안에서 말한다. 여기서 또 잡으면 한 실패에 배너가 둘이 뜬다.
+   * 하고, `app/today.tsx`·`app/habit/[id].tsx`·`app/index.tsx` 의 작성기·편집기·기록 모달이
+   * 그것을 받아 카드 안에서 말한다. 여기서 또 잡으면 한 실패에 배너가 둘이 뜬다.
    *
    * 실행취소만 다른 이유는 `ToastOverlay` 의 호출부가 세 화면 모두 `void undoLast()` 이기
    * 때문이다 — 토스트에는 실패를 담을 자리가 없고, 실패하면 사용자는 지웠다고 믿은 기록이
@@ -156,29 +157,20 @@ export interface QuickLogOptions {
 }
 
 /**
- * What a one-tap control on a habit's day should do and say it does (§6.1 B1), and
- * what the log form on that day starts from (B2, C7a). Both `TodayHabitRow` and
- * `DashboardRow` extend this, and the habit detail's composer reads it, so these
- * fields are documented in one place instead of drifting apart in three.
+ * What the log form on a habit's day starts from and offers (§6.2 B1, B2, C7a). Both
+ * `TodayHabitRow` and `DashboardRow` extend this, and the habit detail's composer
+ * reads it, so these fields are documented in one place instead of drifting apart in
+ * three.
  */
 export interface LogAffordances {
   /**
-   * Does the day already hold at least one **activity** row? The Dashboard's one-tap
-   * then reads `+1 더` rather than offering the whole minimum again.
+   * Does the day already hold at least one **activity** row?
    *
    * On a **binary** habit this is also the "already done" reading: its floor is 1, so
    * any activity row makes the day `done` and the control is shown completed and
    * disabled.
    */
   hasActivityToday: boolean;
-  /**
-   * What one tap appends: the `floor` on the day's first record, otherwise 1 — the
-   * second tap is "+1 더", not a second whole minimum. Binary is always 1.
-   *
-   * Its one reader is the Dashboard row's one-tap. The log form has none (#79), and
-   * #80 replaces the Dashboard's with that form.
-   */
-  oneTapAmount: number;
   /**
    * The reason representing today when today is a **skip-only** day — what the chip
    * row shows as selected.
@@ -190,8 +182,8 @@ export interface LogAffordances {
    * has no bearing on classification, misses or diagnosis, and must not be shown as
    * the day's answer.
    *
-   * Derived here rather than in each screen for the same reason the two fields above
-   * are: `TodayHabitRow` and `DashboardRow` both extend `LogAffordances`, so neither
+   * Derived here rather than in each screen for the same reason the field above is:
+   * `TodayHabitRow` and `DashboardRow` both extend `LogAffordances`, so neither
    * screen reads `day.skipReason` itself and the two cannot drift.
    */
   skipReasonToday?: SkipReason;
@@ -222,7 +214,7 @@ export interface LogAffordances {
 
 /**
  * The one derivation behind every logging surface — Today's composer, the Dashboard
- * row and the habit detail's composer. `day` is optional because an empty paused day
+ * modal and the habit detail's composer. `day` is optional because an empty paused day
  * has no state at all (ADR-0003) and is still loggable.
  *
  * The activity test is read off the **day's state**, which is legitimate only because
@@ -241,8 +233,6 @@ export function logAffordances(habit: Habit, day: ClassifiedDay | undefined): Lo
 
   return {
     hasActivityToday,
-    // Binary has no amount: its floor is 1 and a row is always `actual: 1` (§3.3).
-    oneTapAmount: habit.kind === 'count' && !hasActivityToday ? habit.floor : 1,
     skipReasonToday: day?.skipReason,
     skippable: !hasActivityToday,
     defaultAmount: habit.kind === 'count' ? (activity[activity.length - 1]?.actual ?? habit.floor) : 1,

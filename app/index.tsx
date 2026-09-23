@@ -1,13 +1,6 @@
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import {
-  AccessibilityInfo,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import {
   Banner,
@@ -17,7 +10,7 @@ import {
   Eyebrow,
   Footnote,
   Heatmap,
-  SkipReasonChips,
+  LogForm,
   TOAST_OVERLAY_CLEARANCE,
   ToastOverlay,
 } from '@/components';
@@ -37,27 +30,9 @@ import { FONT_FAMILY, FONT_SIZE, RADIUS, SPACE } from '@/theme/tokens';
  * from, so the header shows the level alone. What ships here is the character header and
  * the stat cards with their XP bars (#17), the 상태등 and its 손볼 습관 N개 chip (#20),
  * and the row itself — name, stat tag, the `TUNING.heatmapDays` heatmap, the 🔥 streak
- * count (#14), the one-tap log with its 실행취소 toast (#11), and the long-press skip
- * chips (#12).
+ * count (#14), and the row's `기록` button, which opens the log form in a modal with its
+ * 실행취소 toast (#80).
  */
-
-/**
- * The row's one-tap label (§6.1 B1) — copy from the design canvas.
- * `✓ 완료` / `✓ 했어요` / `+1 더` come from `design/parts/Dashboard.logic.js:61`;
- * `+최소` is the row one-tap's own label in `design/parts/RowSkip.body.html:17` and
- * `design/parts/Star.body.html:28` (that same file's `cta` reads `최소만큼`, which is
- * the *composer's* wording — the row uses the short form).
- *
- * The *readings* it branches on (`hasActivityToday`) are derived in `useDashboard`
- * from the shared `logAffordances`, where the hook tests can reach them; the *copy* is
- * applied here, in the screen. Today's composer has its own cascade because its count
- * strings differ — a shared helper there would be a false abstraction over two
- * genuinely different sets of words.
- */
-function oneTapLabel(row: DashboardRow): string {
-  if (row.habit.kind === 'binary') return row.hasActivityToday ? '✓ 했어요' : '✓ 완료';
-  return row.hasActivityToday ? '+1 더' : '+최소';
-}
 
 /**
  * The row's 상태등 (§4.6) — `design/parts/Dashboard.body.html:33` puts it first in
@@ -132,54 +107,30 @@ function StatCard({ card }: { card: StatProgress }) {
   );
 }
 
-/**
- * The screen-reader equivalent of the long press.
- *
- * A custom action name is used, rather than RN's standard `longpress`, so that the
- * `label` below travels with it — that label is the only text saying what this action
- * does. How the platform presents it is unverified on device: on web both the action
- * and the announcement are no-ops, so this is a manual verification item.
- */
-const PICK_SKIP_REASON = 'pickSkipReason';
-
 function HabitRow({
   row,
   onPress,
-  onLog,
-  onSkip,
+  onOpenLog,
 }: {
   row: DashboardRow;
   onPress: () => void;
-  onLog: () => void;
-  onSkip: (reason: SkipReason) => void;
+  onOpenLog: () => void;
 }) {
   const { colors } = useTheme();
   // Binary's floor is 1, so one row is the whole day: the control has nothing left to
-  // append and reads as completed instead (AC — 완료 후 비활성).
+  // append and reads as completed instead.
   const done = row.habit.kind === 'binary' && row.hasActivityToday;
-  /**
-   * B5's disclosure. Collapsed by default and re-collapsed once a reason is recorded,
-   * so the row returns to its resting shape. Local, not hoisted to the hook: it is
-   * "is this row's disclosure open", which no other surface and no test asserts.
-   */
-  const [skipOpen, setSkipOpen] = useState(false);
-  /**
-   * Opening the chips is announced, because activating an accessibility action and
-   * perceiving nothing is the same "this feature does not exist for me" failure the
-   * action was added to prevent — the disclosure is the only feedback either path
-   * gets, and a screen reader does not narrate a layout change.
-   */
-  function openSkip() {
-    setSkipOpen(true);
-    AccessibilityInfo.announceForAccessibility('못 한 날 사유를 고르세요');
-  }
+  // A count habit past its floor can still log more, so the button stays pressable. The
+  // pale `sel` shape says today's share is in.
+  const floorMet = row.habit.kind === 'count' && row.progress.remaining === 0;
+  const label = done ? '✓ 했어요' : '기록';
 
   return (
     <Card>
       {/* The navigating press target is the row *body* only (§6.1: tapping the row
-          opens the habit). The one-tap control is its sibling, not its child — nested
+          opens the habit). The 기록 control is its sibling, not its child — nested
           inside it, a click on web could reach both handlers and navigate away from
-          the row the user just logged into.
+          the row the user is about to log into.
 
           Both siblings are buttons, so each needs an accessible name that says what
           it *does*; the habit's name alone would give two controls one identity. An
@@ -219,64 +170,81 @@ function HabitRow({
         >
           🔥 {row.streak}
         </Text>
-        {/* B5's gesture is on the **ribbon**, not on today's individual cell. Two
-            reasons: one cell is a `TUNING.heatmapDays`-th of the strip (~15px), far
-            under `TAP_TARGET` (`src/theme/tokens.ts`); and `Heatmap` is deliberately hidden from
-            assistive tech (a ribbon is a summary of days, not 20 controls), so a
-            `Pressable` inside it would be unreachable there. The ribbon is a
-            superset of "long-press today's cell" — easier to hit, and outside the
-            hidden subtree, so this Pressable keeps its own accessible name.
-
-            `accessibilityActions` is the screen-reader equivalent: a long press is a
-            gesture assistive tech does not surface, so without it the feature would
-            not exist for those users. */}
+        {/* `Heatmap` is deliberately hidden from assistive tech (a ribbon is a summary
+            of days, not 20 controls), so the press sits on this wrapper, outside the
+            hidden subtree, with its own accessible name. */}
         <Pressable
           onPress={onPress}
-          onLongPress={row.skippable ? openSkip : undefined}
           accessibilityRole="button"
           accessibilityLabel={`${row.habit.name} 기록 보기`}
-          accessibilityActions={
-            row.skippable ? [{ name: PICK_SKIP_REASON, label: '못 한 날 사유 고르기' }] : undefined
-          }
-          onAccessibilityAction={(event) => {
-            if (event.nativeEvent.actionName === PICK_SKIP_REASON) openSkip();
-          }}
           style={styles.strip}
         >
           <Heatmap cells={row.cells} />
         </Pressable>
         <Button
-          label={oneTapLabel(row)}
-          accessibilityLabel={`${row.habit.name} ${oneTapLabel(row)}`}
-          variant={done ? 'sel' : 'pri'}
+          label={label}
+          accessibilityLabel={`${row.habit.name} ${label}`}
+          variant={done || floorMet ? 'sel' : 'pri'}
           tap
-          mono={row.habit.kind === 'count'}
           disabled={done}
-          onPress={onLog}
-          style={styles.onetap}
+          onPress={onOpenLog}
+          style={styles.logButton}
         />
       </View>
-      {/* `.skiprow` (`design/parts/RowSkip.body.html:20–25`) — inside the card, on
-          its own hairline-topped row. Recording a reason collapses it again: the
-          answer is on the ribbon now, so the question has been asked and answered.
-
-          No note field here: AC 8's optional note is satisfied by Today's composer,
-          and the ticket asks for none on this path — the two-tap fast route from a
-          row, which has no text-entry context. */}
-      {row.skippable && skipOpen && (
-        <View style={[styles.skiprow, { borderColor: colors.border }]}>
-          <SkipReasonChips
-            label="오늘 못 했어요 · 왜?"
-            habitName={row.habit.name}
-            selected={row.skipReasonToday}
-            onPick={(reason) => {
-              onSkip(reason);
-              setSkipOpen(false);
-            }}
-          />
-        </View>
-      )}
     </Card>
+  );
+}
+
+/**
+ * The row's 기록 modal (#80) — the shared `LogForm` (#79), under the same
+ * `오늘 기록 추가 · 닫기` header the habit detail's fill panel uses. A successful write
+ * closes it, and the 실행취소 toast below the modal confirms it. A failed write leaves
+ * it open with the form's own banner and the inputs staged.
+ *
+ * The caller mounts it only while open, so closing it unmounts the form: the next open
+ * starts from an empty note and the day's default amount.
+ *
+ * The backdrop is the card's sibling, not its parent. Nested inside a `Pressable`, a
+ * click on the card's plain text could reach the backdrop on web and close the form.
+ */
+function LogModal({
+  row,
+  onLog,
+  onSkip,
+  onClose,
+}: {
+  row: DashboardRow;
+  onLog: (actual: number, opts: { note: string }) => Promise<void>;
+  onSkip: (reason: SkipReason, opts: { note: string }) => Promise<void>;
+  onClose: () => void;
+}) {
+  const { colors } = useTheme();
+
+  return (
+    <Modal visible transparent animationType="fade" onRequestClose={onClose}>
+      <View style={styles.modalRoot}>
+        <Pressable
+          style={[StyleSheet.absoluteFill, { backgroundColor: colors.scrim }]}
+          onPress={onClose}
+          accessibilityRole="button"
+          accessibilityLabel="기록 닫기"
+        />
+        <Card style={styles.modalCard}>
+          <View style={styles.rowline}>
+            <Eyebrow>오늘 기록 추가</Eyebrow>
+            <Button label="닫기" variant="ghost" onPress={onClose} />
+          </View>
+          <LogForm
+            habit={row.habit}
+            affordances={row}
+            dayLabel="오늘"
+            onLog={onLog}
+            onSkip={onSkip}
+            onSaved={onClose}
+          />
+        </Card>
+      </View>
+    </Modal>
   );
 }
 
@@ -296,6 +264,12 @@ export default function Dashboard() {
     toast,
     undoLast,
   } = useDashboard();
+  /**
+   * The habit whose 기록 modal is open. An id, not the row: the form reads the row from
+   * the latest `rows`, so its affordances are never a stale snapshot.
+   */
+  const [loggingId, setLoggingId] = useState<string | null>(null);
+  const loggingRow = rows.find((row) => row.habit.id === loggingId);
 
   return (
     <View style={[styles.fill, { backgroundColor: colors.surface }]}>
@@ -357,8 +331,8 @@ export default function Dashboard() {
         <Eyebrow>오늘의 습관</Eyebrow>
 
         {/* 실패는 실패로 보여야 하고, 다시 시도할 수단이 같이 있어야 한다 — 문구도 다시
-            시도가 무엇인지도 훅의 `failure` 가 정한다 (#51). 읽기 실패와 한 번 누르기의
-            실패가 같은 자리를 쓴다: 둘 다 "이 화면이 지금 진실이 아니다" 는 같은 말이다. */}
+            시도가 무엇인지도 훅의 `failure` 가 정한다 (#51). 읽기 실패와 실행취소의
+            실패가 같은 자리를 쓴다. 기록의 실패는 모달의 폼 안에서 말한다 (#80). */}
         {failure != null && (
           <Banner trailing={<Button label={RETRY_LABEL} onPress={failure.retry} />}>
             {failure.message}
@@ -378,8 +352,7 @@ export default function Dashboard() {
                 key={row.habit.id}
                 row={row}
                 onPress={() => router.push(`/habit/${row.habit.id}`)}
-                onLog={() => void logActivity(row.habit, row.oneTapAmount)}
-                onSkip={(reason) => void logSkip(row.habit, reason)}
+                onOpenLog={() => setLoggingId(row.habit.id)}
               />
             ))}
           </View>
@@ -401,8 +374,18 @@ export default function Dashboard() {
         )}
       </ScrollView>
 
-      {/* B6 — the undo toast doubles as the "it registered" confirmation that one-tap
-          logging otherwise lacks (§6.2), so it must not scroll out of reach. */}
+      {loggingRow != null && (
+        <LogModal
+          key={loggingRow.habit.id}
+          row={loggingRow}
+          onLog={(actual, opts) => logActivity(loggingRow.habit, actual, opts)}
+          onSkip={(reason, opts) => logSkip(loggingRow.habit, reason, opts)}
+          onClose={() => setLoggingId(null)}
+        />
+      )}
+
+      {/* B6 — the undo toast doubles as the "it registered" confirmation the modal's
+          close otherwise lacks (§6.2), so it must not scroll out of reach. */}
       <ToastOverlay toast={toast} onUndo={() => void undoLast()} />
     </View>
   );
@@ -472,11 +455,12 @@ const styles = StyleSheet.create({
     fontVariant: ['tabular-nums'],
   },
   // The strip carries `.ribbon`'s `flex: 1` up to the row, so the heatmap still takes
-  // every pixel the one-tap control leaves.
+  // every pixel the 기록 control leaves.
   strip: { flex: 1, minWidth: 0 },
   // `.ribbon` already claims the slack with `flex: 1`; the control must not give up its
   // width to it on a narrow row. (`TAP_TARGET`, `src/theme/tokens.ts`, is a `minHeight`
   // only — nothing enforces a width floor here.)
-  onetap: { flexShrink: 0 },
-  skiprow: { borderTopWidth: 1, paddingTop: SPACE.sm, marginTop: SPACE.xs },
+  logButton: { flexShrink: 0 },
+  modalRoot: { flex: 1, justifyContent: 'center', padding: SPACE.xl },
+  modalCard: { width: '100%', maxWidth: 480, alignSelf: 'center' },
 });
