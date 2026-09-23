@@ -288,6 +288,7 @@ describe('useDashboard', () => {
       // Binary's floor is 1, so one row is the whole day: the control is completed.
       expect(stateOn(result.current.rows[0].cells, TODAY)).toBe('done');
       expect(result.current.rows[0].hasActivityToday).toBe(true);
+      expect(result.current.rows[0].defaultAmount).toBe(1);
       expect(result.current.toast?.detail).toBe(`✓ 완료 · +${TUNING.xpPerFloorCompletion} XP`);
     });
 
@@ -315,6 +316,24 @@ describe('useDashboard', () => {
       expect(stateOn(result.current.rows[0].cells, TODAY)).toBe('pending');
       expect(result.current.rows[0].hasActivityToday).toBe(false);
       expect(result.current.toast).toBeNull();
+    });
+
+    it("carries the log form's prefilled amount and progress, as Today's row does (#78)", async () => {
+      const result = await dashboard(new LocalRepository(await seed([habit()])));
+
+      expect(result.current.rows[0].defaultAmount).toBe(5);
+      expect(result.current.rows[0].progress).toEqual({ sum: 0, floor: 5, remaining: 5 });
+
+      await log(result, result.current.rows[0].habit, 3);
+
+      expect(result.current.rows[0].defaultAmount).toBe(3);
+      expect(result.current.rows[0].progress).toEqual({ sum: 3, floor: 5, remaining: 2 });
+
+      await log(result, result.current.rows[0].habit, 4);
+
+      // Past the floor, `remaining` stops at 0 rather than going negative.
+      expect(result.current.rows[0].defaultAmount).toBe(4);
+      expect(result.current.rows[0].progress).toEqual({ sum: 7, floor: 5, remaining: 0 });
     });
   });
   describe('the long-press skip path (§6.1 B5)', () => {

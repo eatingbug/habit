@@ -4,7 +4,7 @@ import { LIFECYCLE_LABELS, LOAD_FAILED_NOTE, SAVE_FAILED_NOTE } from '@/config/c
 import { TUNING } from '@/config/tuning';
 import { useRepository } from '@/context/RepositoryContext';
 import { isBackfillableDate, isBackfilledRow } from '@/domain/backfill';
-import { dayStates, sortDayRows, type ClassifiedDay } from '@/domain/classify';
+import { dayStates, type ClassifiedDay } from '@/domain/classify';
 import { compareDates, dateOf, daysBetween, mondayOf, windowEndingAt } from '@/domain/dates';
 import { deleteOutcome, type DeleteOutcome } from '@/domain/deleteEffect';
 import { heatCells, type HeatCell } from '@/domain/heatLevel';
@@ -552,26 +552,6 @@ function patchedText(current: string | undefined, next: string | null | undefine
   return trimmed != null && trimmed.length > 0 ? trimmed : undefined;
 }
 
-/**
- * Everything the open composer reads off its date: what the date affords, and the
- * amount the field starts prefilled with — the floor on the date's first record, the
- * date's last amount afterwards (§6.2 B2). Skip rows carry `actual: 0`, which is not a
- * legal staged amount, and the order is the domain's (`sortDayRows`), never the
- * repository's array order — `useToday.composerReadings` reads its day the same way.
- */
-function composerReadings(habit: Habit, day: ClassifiedDay) {
-  const activity = sortDayRows(
-    day.entries.filter((row) => row.actual > 0 && row.skipReason == null),
-  );
-
-  return {
-    affordances: logAffordances(habit, day),
-    // Binary has no amount: its floor is 1 and a row is always `actual: 1` (§3.3).
-    defaultAmount:
-      habit.kind === 'count' ? (activity[activity.length - 1]?.actual ?? habit.floor) : 1,
-  };
-}
-
 interface Loaded {
   habit: Habit | null;
   /** The habit's rows from its birth through today — the range `computeStreak` walks. */
@@ -663,7 +643,7 @@ export function useHabitDetail(
   const composer =
     habit == null || backfillDate == null
       ? null
-      : composerReadings(habit, dayStates(habit, entries, backfillDate, backfillDate, today)[0]);
+      : logAffordances(habit, dayStates(habit, entries, backfillDate, backfillDate, today)[0]);
 
   function openBackfill(date: string): void {
     if (habit == null || !isBackfillableDate(habit, date, today)) return;
@@ -822,7 +802,7 @@ export function useHabitDetail(
             editsAmounts: habit.kind === 'count',
           },
     backfillDate,
-    composerAffordances: composer?.affordances ?? null,
+    composerAffordances: composer,
     composerDefaultAmount: composer?.defaultAmount ?? null,
     openBackfill,
     closeBackfill: () => setBackfillDate(null),

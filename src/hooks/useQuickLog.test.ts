@@ -701,11 +701,11 @@ describe('useQuickLog', () => {
     });
   });
 
-  describe('logAffordances.skipReasonToday (D3 — the shared derivation)', () => {
-    function dayOf(entries: HabitEntry[], target = habit()) {
-      return dayStates(target, entries, TODAY, TODAY, TODAY)[0];
-    }
+  function dayOf(entries: HabitEntry[], target = habit()) {
+    return dayStates(target, entries, TODAY, TODAY, TODAY)[0];
+  }
 
+  describe('logAffordances.skipReasonToday (D3 — the shared derivation)', () => {
     it('is the reason on a day holding only a skip', () => {
       const day = dayOf([seededRow({ actual: 0, skipReason: 'floor' })]);
 
@@ -752,6 +752,63 @@ describe('useQuickLog', () => {
       expect(logAffordances(habit(), dayOf(rows)).skipReasonToday).toBe('identity');
       // Permutation-invariant, as §7.3's total order requires.
       expect(logAffordances(habit(), dayOf([...rows].reverse())).skipReasonToday).toBe('identity');
+    });
+  });
+
+  describe('logAffordances.defaultAmount / progress (#78 — the form reads one derivation)', () => {
+    it('starts the day on the floor', () => {
+      expect(logAffordances(habit(), undefined).defaultAmount).toBe(5);
+      expect(logAffordances(habit(), dayOf([])).defaultAmount).toBe(5);
+      // A skip-only day is still on its first record — its `actual: 0` is no amount.
+      expect(
+        logAffordances(habit(), dayOf([seededRow({ actual: 0, skipReason: 'cue' })])).defaultAmount,
+      ).toBe(5);
+    });
+
+    it("is the day's last activity amount afterwards, in the domain total order", () => {
+      const rows = [
+        seededRow({ id: 'b', actual: 3, timestamp: `${TODAY}T09:00:00.000Z` }),
+        seededRow({ id: 'a', actual: 2, timestamp: `${TODAY}T07:00:00.000Z` }),
+      ];
+
+      expect(logAffordances(habit(), dayOf(rows)).defaultAmount).toBe(3);
+      expect(logAffordances(habit(), dayOf([...rows].reverse())).defaultAmount).toBe(3);
+      // A later skip row is not an amount either.
+      expect(
+        logAffordances(
+          habit(),
+          dayOf([
+            ...rows,
+            seededRow({ id: 'c', actual: 0, skipReason: 'cue', timestamp: `${TODAY}T10:00:00.000Z` }),
+          ]),
+        ).defaultAmount,
+      ).toBe(3);
+    });
+
+    it('is always 1 on a binary habit', () => {
+      const binary = habit({ kind: 'binary', floor: 1 });
+
+      expect(logAffordances(binary, dayOf([], binary)).defaultAmount).toBe(1);
+      expect(logAffordances(binary, dayOf([seededRow({ actual: 1 })], binary)).defaultAmount).toBe(1);
+    });
+
+    it("is the domain's sum against the floor, with `remaining` clamped at 0", () => {
+      expect(logAffordances(habit(), undefined).progress).toEqual({ sum: 0, floor: 5, remaining: 5 });
+      expect(logAffordances(habit(), dayOf([seededRow({ actual: 2 })])).progress).toEqual({
+        sum: 2,
+        floor: 5,
+        remaining: 3,
+      });
+      expect(logAffordances(habit(), dayOf([seededRow({ actual: 5 })])).progress).toEqual({
+        sum: 5,
+        floor: 5,
+        remaining: 0,
+      });
+      expect(logAffordances(habit(), dayOf([seededRow({ actual: 9 })])).progress).toEqual({
+        sum: 9,
+        floor: 5,
+        remaining: 0,
+      });
     });
   });
 });

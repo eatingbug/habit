@@ -161,9 +161,10 @@ export interface QuickLogOptions {
 }
 
 /**
- * What a one-tap control on a habit's day should do and say it does (§6.1 B1). Both
- * `TodayHabitRow` and `DashboardRow` extend this, so these two fields are documented
- * in one place instead of drifting apart in two row types.
+ * What a one-tap control on a habit's day should do and say it does (§6.1 B1), and
+ * what the log form on that day starts from (B2, C7a). Both `TodayHabitRow` and
+ * `DashboardRow` extend this, and the habit detail's composer reads it, so these
+ * fields are documented in one place instead of drifting apart in three.
  */
 export interface LogAffordances {
   /**
@@ -206,12 +207,27 @@ export interface LogAffordances {
    * surfaces withhold their skip affordance entirely.
    */
   skippable: boolean;
+  /**
+   * What the amount field starts prefilled with (B2). The day's first record gets the
+   * habit's `floor` — "I did my minimum" is the dominant case; from the second record
+   * on it gets the day's last activity amount, because a second log is usually another
+   * helping of the same size. Binary has no amount to stage, so it is always 1 (§3.3).
+   *
+   * Distinct from `oneTapAmount` on purpose: a tap adds `+1 더`, a staged form repeats.
+   */
+  defaultAmount: number;
+  /**
+   * The day's progress-to-floor line (C7a). `sum` is the domain's (`dayStates`), never
+   * a second reduce of our own: two sums drift, and the visible failure is one line
+   * contradicting the next. `remaining` clamps at 0.
+   */
+  progress: { sum: number; floor: number; remaining: number };
 }
 
 /**
- * The one derivation behind both one-tap controls — Today's composer and the
- * Dashboard row. `day` is optional because an empty paused day has no state at all
- * (ADR-0003) and is still loggable.
+ * The one derivation behind every logging surface — Today's composer, the Dashboard
+ * row and the habit detail's composer. `day` is optional because an empty paused day
+ * has no state at all (ADR-0003) and is still loggable.
  *
  * The activity test is read off the **day's state**, which is legitimate only because
  * of §4.1's precedence: activity overrides skip, so `partial`/`done`/`over` are
@@ -222,12 +238,19 @@ export interface LogAffordances {
 export function logAffordances(habit: Habit, day: ClassifiedDay | undefined): LogAffordances {
   const hasActivityToday = day != null && (day.state === 'partial' || isFloorMet(day.state));
 
+  // Skip rows carry `actual: 0`, which is not a legal staged amount. `day.entries` is
+  // already in the domain total order (`dayStates` sorts it), never the repository's.
+  const activity = (day?.entries ?? []).filter((row) => row.actual > 0 && row.skipReason == null);
+  const sum = day?.sum ?? 0;
+
   return {
     hasActivityToday,
     // Binary has no amount: its floor is 1 and a row is always `actual: 1` (§3.3).
     oneTapAmount: habit.kind === 'count' && !hasActivityToday ? habit.floor : 1,
     skipReasonToday: day?.skipReason,
     skippable: !hasActivityToday,
+    defaultAmount: habit.kind === 'count' ? (activity[activity.length - 1]?.actual ?? habit.floor) : 1,
+    progress: { sum, floor: habit.floor, remaining: Math.max(0, habit.floor - sum) },
   };
 }
 
