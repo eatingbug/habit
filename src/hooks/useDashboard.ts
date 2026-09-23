@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 import { LOAD_FAILED_NOTE } from '@/config/copy';
 import { TUNING } from '@/config/tuning';
@@ -56,6 +56,12 @@ export interface DashboardRow extends LogAffordances {
    * in), not a rendering. The screen only chooses the glyph for it.
    */
   statusLight: StatusLight;
+  /**
+   * Does the light open the Reflection screen when pressed? 🔴 and 🟡 only (§6.1): the
+   * light is **the only entry point** to reflection, and a 🟢 or ⭐ has nothing to
+   * reflect on. Decided here so the screen's `Pressable` wraps a tested condition.
+   */
+  reflectable: boolean;
 }
 
 /**
@@ -142,6 +148,12 @@ export interface DashboardView {
   logSkip(habit: Habit, reason: SkipReason, opts?: { note?: string }): Promise<void>;
   toast: QuickLogToast | null;
   undoLast(): Promise<void>;
+  /**
+   * Read the repository again. The Dashboard stays mounted under every screen it
+   * pushes, so a write made there — a Reflection commit above all (§6.4: "status light
+   * should have updated") — reaches it only when the screen calls this on focus.
+   */
+  reload(): void;
 }
 
 function statFor(statId: string): Stat | undefined {
@@ -182,9 +194,9 @@ export function useDashboard({ today = localToday() }: { today?: string } = {}):
    */
   const [version, setVersion] = useState(0);
 
-  function reload() {
-    setVersion((current) => current + 1);
-  }
+  // Stable, so the screen can hand it to `useFocusEffect` without re-running it on
+  // every render.
+  const reload = useCallback(() => setVersion((current) => current + 1), []);
 
   useEffect(() => {
     let cancelled = false;
@@ -209,6 +221,7 @@ export function useDashboard({ today = localToday() }: { today?: string } = {}):
 
           // The rows and the stat cards read the same fetch, from two angles: the row
           // is what the habit shows, `entries` is what its stat is owed.
+          const statusLight = deriveStatusLight(habit, entries, today);
           return {
             habit,
             entries,
@@ -217,7 +230,8 @@ export function useDashboard({ today = localToday() }: { today?: string } = {}):
               stat: statFor(habit.statId),
               cells: heatCells(habit, entries, from, to, today),
               streak: computeStreak(entries, habit, today),
-              statusLight: deriveStatusLight(habit, entries, today),
+              statusLight,
+              reflectable: statusLight === 'intervention' || statusLight === 'caution',
               // The log form reads a classified day, not a heat cell: a cell is
               // a *rendering* instruction, and deriving an affordance from one is how
               // this drifted away from Today's identical derivation once already.
@@ -288,5 +302,6 @@ export function useDashboard({ today = localToday() }: { today?: string } = {}):
     logSkip: quick.logSkip,
     toast: quick.toast,
     undoLast: quick.undoLast,
+    reload,
   };
 }

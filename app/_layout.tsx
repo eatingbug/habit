@@ -22,6 +22,7 @@ function Shell() {
         <Stack.Screen name="today" options={{ title: '오늘' }} />
         <Stack.Screen name="habit/new" options={{ title: '습관 만들기' }} />
         <Stack.Screen name="habit/[id]" options={{ title: '습관' }} />
+        <Stack.Screen name="reflect/[id]" options={{ title: '회고' }} />
       </Stack>
     </>
   );
