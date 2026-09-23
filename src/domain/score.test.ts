@@ -3,6 +3,7 @@ import type { Habit, HabitEntry, SkipReason } from '@/models';
 
 import { addDays } from './dates';
 import {
+  attributeDayXP,
   computeStatLevel,
   computeStatXP,
   computeXP,
@@ -387,5 +388,114 @@ describe('§7.3 invariants that land in scoring', () => {
     expect(computeXP([], COUNT)).toBe(0);
     expect(computeXP([], BINARY)).toBe(0);
     expect(milestoneBonusXP([], BINARY)).toBe(0);
+  });
+});
+
+describe("attributeDayXP — one row's share of its day (#37)", () => {
+  /** The invariant AC 2 rests on: the deltas telescope to the day's whole XP. */
+  function telescopes(before: HabitEntry[], day: HabitEntry[], habit: Habit): void {
+    const total = attributeDayXP(before, day, habit).reduce((sum, row) => sum + row.xp, 0);
+    expect(total).toBe(computeXP([...before, ...day], habit) - computeXP(before, habit));
+  }
+
+  it("sums to the day's XP — one full row", () => {
+    telescopes(doneRun(2, 6), [activity(d(2), 9)], COUNT);
+  });
+
+  it("sums to the day's XP — several partial rows", () => {
+    const day = [1, 1, 1, 1, 1].map((n, i) => activity(d(2), n, `0${i + 1}:00:00`));
+    telescopes(doneRun(2, 6), day, COUNT);
+  });
+
+  it("sums to the day's XP — over-target, skip, under-floor, empty, binary", () => {
+    telescopes(doneRun(2, 6), [activity(d(2), 20)], COUNT);
+    telescopes(doneRun(2, 6), [skip(d(2), 'cue')], COUNT);
+    telescopes(doneRun(2, 6), [activity(d(2), 1), activity(d(2), 2, '10:00:00')], COUNT);
+    telescopes(doneRun(2, 6), [], COUNT);
+    telescopes([], [activity(d(0), 1)], BINARY);
+  });
+
+  it('gives the floor XP to the row that CROSSES the floor, not to the first row', () => {
+    const rows = [activity(d(0), 3), activity(d(0), 2, '10:00:00')];
+    expect(attributeDayXP([], rows, COUNT).map((row) => row.xp)).toEqual([
+      0,
+      TUNING.xpPerFloorCompletion,
+    ]);
+  });
+
+  it('pays a day filled 1×5 only on its fifth row', () => {
+    const rows = Array.from({ length: 5 }, (_, i) => activity(d(0), 1, `0${i + 1}:00:00`));
+    expect(attributeDayXP([], rows, COUNT).map((row) => row.xp)).toEqual([
+      0,
+      0,
+      0,
+      0,
+      TUNING.xpPerFloorCompletion,
+    ]);
+  });
+
+  it('pays a later row only its marginal contribution', () => {
+    const rows = [activity(d(0), 5), activity(d(0), 3, '10:00:00')];
+    expect(attributeDayXP([], rows, COUNT).map((row) => row.xp)).toEqual([
+      TUNING.xpPerFloorCompletion,
+      TUNING.xpBonusTargetExceed + 3 * TUNING.xpPerAboveFloorUnit,
+    ]);
+  });
+
+  it('names the crossings and the running sum of each row', () => {
+    const rows = [activity(d(0), 5), activity(d(0), 3, '10:00:00')];
+    const facts = attributeDayXP([], rows, COUNT).map(
+      ({ sum, floorMet, crossedFloor, crossedTarget }) => ({
+        sum,
+        floorMet,
+        crossedFloor,
+        crossedTarget,
+      }),
+    );
+    expect(facts).toEqual([
+      { sum: 5, floorMet: true, crossedFloor: true, crossedTarget: undefined },
+      { sum: 8, floorMet: true, crossedFloor: false, crossedTarget: COUNT.target },
+    ]);
+  });
+
+  it('leaves an under-floor day paying nothing, and still reports the running sum', () => {
+    const rows = [activity(d(0), 1), activity(d(0), 2, '10:00:00')];
+    expect(attributeDayXP([], rows, COUNT).map((row) => [row.xp, row.sum, row.floorMet])).toEqual([
+      [0, 1, false],
+      [0, 3, false],
+    ]);
+  });
+
+  it('carries a skip row too, so nothing of the day is left unattributed', () => {
+    const attributed = attributeDayXP([], [skip(d(0), 'cue')], COUNT);
+    expect(attributed).toHaveLength(1);
+    expect(attributed[0].entry.skipReason).toBe('cue');
+    expect(attributed[0].sum).toBe(0);
+  });
+
+  it('attributes in the §7.3 total order whatever order the rows arrive in', () => {
+    const rows = [activity(d(0), 3), activity(d(0), 2, '10:00:00')];
+    expect(attributeDayXP([], permuted(rows), COUNT).map((row) => row.entry.id)).toEqual(
+      rows.map((row) => row.id),
+    );
+  });
+
+  /**
+   * Why skip rows are attributed rather than assumed to be worth 0: a non-exception
+   * skip is a miss (§4.1) and can cut a run. The case that bites is a **paused** date,
+   * where the empty-day `missed` default is suppressed (ADR-0003) but a date holding
+   * rows still classifies normally — so the skip introduces a miss the empty day did
+   * not have. The delta is negative, which is also why nothing clamps it.
+   */
+  it('cuts a run when a skip lands on a paused date, so its delta is not assumed to be 0', () => {
+    const paused: Habit = { ...COUNT, pauses: [{ from: d(3), to: d(4) }] };
+    const before = [...doneRun(3, 6, 0), ...doneRun(5, 6, 4)];
+    expect(attributeDayXP(before, [skip(d(3), 'cue')], paused).map((row) => row.xp)).toEqual([
+      -TUNING.xpStreakBonus[7],
+    ]);
+  });
+
+  it('is empty for a day with no rows', () => {
+    expect(attributeDayXP(doneRun(2, 6), [], COUNT)).toEqual([]);
   });
 });
