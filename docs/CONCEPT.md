@@ -151,8 +151,8 @@ bars, muted stat chips, small status dots — not a gold RPG skin (principle 2).
 §6.0 / the mockup `mvp/habiquest-linear.html`.
 
 1. **Dashboard** — a restrained character sheet: stat levels + thin XP bars, per-habit
-   heatmap, a **one-tap log on each row** (§5), and **always-on status lights** (§7) that
-   route attention to habits needing action.
+   heatmap, a `기록` button on each row that opens the log form (§5), and **always-on
+   status lights** (§7) that route attention to habits needing action.
 2. **Today** — chronological feed of the day (habit entries + free logs) with a unified
    composer (§9), immediate log-time reward, and the never-miss-twice save banner.
 3. **Habit Detail** — a single habit's current Design (cue/floor/identity), stats, the
@@ -191,12 +191,13 @@ purpose, and is cheaper than blank-form abandonment at creation.
 
 ### Stage 2 — Perform → Record (collect data)
 
-- **Logging is one tap where you already are.** A count habit records an *actual*
-  amount; a Yes/No habit logs a single "done." The highest-frequency action — "I did my
-  minimum today" — is a **one-tap "+floor" (count) / "✓" (yes/no)** available on both the
-  Today composer (§9) *and* the Dashboard row, with **smart defaults and quick-add chips**
-  for other amounts, so logging almost never requires typing. Time is captured
-  automatically (it only affects ordering) and tucked behind a reveal.
+- **One log form wherever you are.** A count habit records an *actual* amount; a Yes/No
+  habit logs a single "done." Today (§9), Habit Detail and a modal from the Dashboard row
+  all open the same form: an amount (count only), an optional note and one primary button
+  (`기록`, or `✓ 완료` for Yes/No). The skip chips follow while the day has no activity.
+  The amount is pre-filled with the floor for the day's first entry, else the day's last
+  amount. So most logs need no typing. A new entry is stamped now, or noon on a backfill.
+  Time only affects ordering.
 - **Log as you go (incremental).** A habit can be logged **multiple times in one day** —
   "2 glasses now, 3 more tonight" — instead of pre-summing in your head. The day's outcome
   is the **sum** of that day's entries, compared to the floor/target once at the day level

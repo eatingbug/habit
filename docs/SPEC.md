@@ -938,7 +938,7 @@ restrained language; §6.5 links the reference mockup.
     "🕑 지금 HH:MM" affordance (B3)** and revealed only to override (rare — `timestamp` is
     ordering/tiebreak only, §3.3). Applies to free logs and to editing an existing
     entry. *(Revised: a new habit entry is always stamped now, or noon on a backfill.
-    The override is rare, and the log form stays simpler without it.)*
+    Reason: the override is rare, and the log form stays simpler without it.)*
   - Log button — calls `upsertEntry` or `upsertFreeLog` (always a fresh `id`; the
     composer never overwrites another day's rows — multiple per day are expected).
   - **Log-time reward feedback (C1).** On a successful log, Today shows an immediate,
@@ -1046,6 +1046,8 @@ chips, progress-to-floor, collapsed time, computed day-states incl. `partial`, t
 engagement streak, the weekly-actual growth chart, the log-time reward, and the
 never-miss-twice save banner) with gamification rendered minimally. It is the visual
 source of truth for implementation and supersedes the old demo's look.
+*(Revised: its recording UX is superseded by the one log form of §6.1 and §6.2. Reason:
+the one-tap, the quick-add chips and the new-entry time reveal are gone (#76).)*
 
 ---
 
