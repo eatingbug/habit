@@ -86,7 +86,7 @@ async function log(
   result: { current: QuickLog },
   target: Habit,
   actual: number,
-  opts?: { timestamp?: string },
+  opts?: { timestamp?: string; note?: string },
 ): Promise<void> {
   await act(async () => {
     await result.current.logActivity(target, actual, opts);
@@ -310,6 +310,59 @@ describe('useQuickLog', () => {
       expect((await rowsIn(repository)).map((row) => row.id)).toEqual([written]);
     });
   });
+  describe('logActivity — the note on an activity row (#77)', () => {
+    it('carries the note typed beside the amount', async () => {
+      const repository = await repositoryWith();
+      const { result } = quickLog(repository);
+
+      await log(result, habit(), 3, { note: '아침에 읽음' });
+
+      expect((await rowsIn(repository))[0].note).toBe('아침에 읽음');
+    });
+
+    it('trims the note, and omits the field for an empty or blank one', async () => {
+      const repository = await repositoryWith();
+      const { result } = quickLog(repository);
+
+      await log(result, habit(), 1, { note: '  점심에 조금  ' });
+      await log(result, habit(), 1, { note: '' });
+      await log(result, habit(), 1, { note: '   ' });
+      await log(result, habit(), 1);
+
+      const [trimmed, ...rest] = await rowsIn(repository);
+      expect(trimmed.note).toBe('점심에 조금');
+      for (const row of rest) {
+        expect('note' in row).toBe(false);
+      }
+    });
+
+    it('carries the note on a backfilled row too (#14)', async () => {
+      const repository = await repositoryWith();
+      const { result } = quickLog(repository, addDays(TODAY, -1));
+
+      await log(result, habit(), 5, { note: '어젯밤에 읽음' });
+
+      const rows = await rowsIn(repository);
+      expect(rows).toHaveLength(1);
+      expect(rows[0].date).toBe(addDays(TODAY, -1));
+      expect(rows[0].note).toBe('어젯밤에 읽음');
+    });
+
+    it('undoes the noted row whole — the note goes with it', async () => {
+      const repository = await repositoryWith([habit()], [seededRow()]);
+      const { result } = quickLog(repository);
+
+      await log(result, habit(), 3, { note: '아침에 읽음' });
+      await act(async () => {
+        await result.current.undoLast();
+      });
+
+      const rows = await rowsIn(repository);
+      expect(rows.map((row) => row.id)).toEqual(['seeded']);
+      expect(rows.some((row) => row.note != null)).toBe(false);
+    });
+  });
+
   describe('logSkip — the reason-tagged skip row (§6.2 B5)', () => {
     it('writes one zero-amount row carrying the reason', async () => {
       const repository = await repositoryWith();

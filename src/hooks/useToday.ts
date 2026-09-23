@@ -361,9 +361,13 @@ export interface TodayView {
    * the state that means "didn't do it" is a skip row, which carries a reason.
    *
    * `opts.timestamp` is the B3 time reveal: it overrides the default "now" for
-   * ordering only — `date` is still today (§3.3).
+   * ordering only — `date` is still today (§3.3). `opts.note` is the row's note (#77).
    */
-  logActivity(habitId: string, actual: number, opts?: { timestamp?: string }): Promise<void>;
+  logActivity(
+    habitId: string,
+    actual: number,
+    opts?: { timestamp?: string; note?: string },
+  ): Promise<void>;
   /**
    * Append one skip row for today — a reason chip's whole action (§6.2 B5), with the
    * note the user may have typed above the chips.
@@ -727,7 +731,7 @@ export function useToday({
   async function logActivity(
     habitId: string,
     actual: number,
-    opts?: { timestamp?: string },
+    opts?: { timestamp?: string; note?: string },
   ): Promise<void> {
     const row = rowFor(habitId);
     // Deliberately not user-facing Korean: the selector's options *are* `rows`, so a
