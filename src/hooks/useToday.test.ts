@@ -100,7 +100,7 @@ async function log(
   result: { current: TodayView },
   habitId: string,
   actual: number,
-  opts?: { timestamp?: string },
+  opts?: { timestamp?: string; note?: string },
 ): Promise<void> {
   await act(async () => {
     await result.current.logActivity(habitId, actual, opts);
@@ -621,6 +621,14 @@ describe('useToday', () => {
 
       expect(habitFeed(result.current)[0].entry.note).toBe('너무 피곤했어요');
       expect(dayOf(result.current, 'h1')?.state).toBe('skip');
+    });
+
+    it('carries the note typed beside an activity amount (#77)', async () => {
+      const result = await todayScreen(new LocalRepository(await seed([habit()])));
+
+      await log(result, 'h1', 3, { note: '아침에 읽음' });
+
+      expect(habitFeed(result.current)[0].entry.note).toBe('아침에 읽음');
     });
 
     it('leaves the composer offering the whole minimum, since a skip is not activity', async () => {

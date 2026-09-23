@@ -407,7 +407,7 @@ function Composer({
   /** Is this a past date? Then the row is noon-pinned and B3's override does nothing. */
   isBackfill: boolean;
   previewOf: (staged: number) => { sum: number; state: DayState } | null;
-  onLog: (actual: number, opts?: { timestamp?: string }) => Promise<void>;
+  onLog: (actual: number, opts?: { timestamp?: string; note?: string }) => Promise<void>;
   onSkip: (reason: SkipReason, opts?: { note?: string }) => Promise<void>;
 }) {
   const { colors } = useTheme();
@@ -423,7 +423,10 @@ function Composer({
   const [minute, setMinute] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  /** The optional note a skip carries — filled in *before* a chip is tapped (B5). */
+  /**
+   * The row's optional note — one field for every write this card makes, activity and
+   * skip alike, because a note belongs to the row it is saved with (#77).
+   */
   const [note, setNote] = useState('');
 
   const isCount = row.habit.kind === 'count';
@@ -473,10 +476,12 @@ function Composer({
     setSaving(true);
     setError(null);
     try {
-      await onLog(actual, { timestamp });
-      // Only the amount resets. An open time reveal is an explicit override the user
-      // chose, and a second log of the same session belongs at the same time.
+      await onLog(actual, { timestamp, note });
+      // The amount and the note reset — the next row must not inherit this one's note.
+      // An open time reveal is an explicit override the user chose, and a second log
+      // of the same session belongs at the same time.
       setStaged(null);
+      setNote('');
     } catch {
       setError('기록하지 못했어요. 잠시 뒤 다시 눌러 주세요.');
     } finally {
@@ -600,6 +605,20 @@ function Composer({
         </>
       )}
 
+      {/* The row's note (#77) — one field for every write on this card. It is filled in
+          before the button or chip that saves it, so it comes after the amount and
+          before both. `메모 (선택)` is the front half of
+          `design/parts/Today.body.html:56`; the trailing `— 오늘 무슨 일이 있었나요`
+          belongs to the free-log (일기) field. `Composer` is keyed on
+          `${habit.id}:${date}`, so a note typed for one habit or day never follows the
+          user to another. */}
+      <TextField
+        accessibilityLabel="메모"
+        value={note}
+        onChangeText={setNote}
+        placeholder="메모 (선택)"
+      />
+
       {/* B3 — the time picker is collapsed behind "🕑 지금 HH:MM" and revealed only to
           override. `timestamp` is ordering and tiebreak only (§3.3), so this is rare.
 
@@ -634,44 +653,11 @@ function Composer({
         />
       )}
 
-      {/* B5 — the skip affordance, as **one bounded group**: the note box and the
-          chips inside a single hairline-topped block, note first because it is filled
-          in before a chip is tapped (AC — 총 두 탭).
-
-          The note belongs to the skip path, so it lives inside the skip group: within
-          this block, this habit's skip is the only thing it can be a note *for*, and
-          one left staged here and picked up by a later chip tap is what the user
-          wrote it for. (`note` is deliberately **not** wired into `logActivity`:
-          SPEC §6.2 does put an optional note on the activity path, but that is #13's
-          edit surface, not this ticket's.)
-
-          The guarantee is scoped to the habit, to the skip path **and to the date** —
-          `Composer` is keyed on `${habit.id}:${date}`, so switching habits or
-          stepping the date remounts, and a note typed for one day can never be picked
-          up by a chip tapped on another.
-
-          Two deviations from the canvas, both deliberate:
-          - **Copy.** `메모 (선택)` is the front half of
-            `design/parts/Today.body.html:56`. Its trailing
-            `— 오늘 무슨 일이 있었나요` is shed: that question belongs to the free-log
-            (일기) field, which asks what happened today, whereas this box answers
-            why not. The front half asserts nothing about the occasion, so it is true
-            in either field.
-          - **Arrangement.** `:63–68` puts the chips on the 🕑 row. That layout has no
-            note field to place — the canvas never planned one on the habit path — so
-            it offers no arrangement for this element, and the misreading above is the
-            cost of following it anyway.
-
-          Withheld whole on a day activity covers (`row.skippable`, §4.1): chips,
-          note and all. */}
+      {/* B5 — the skip affordance: the reason chips, withheld whole on a day activity
+          covers (`row.skippable`, §4.1). The note is not in this group: it sits above,
+          shared with the activity path, and a chip tap saves it with the skip row. */}
       {row.skippable && (
         <View style={[styles.skipGroup, { borderColor: colors.border }]}>
-          <TextField
-            accessibilityLabel="못 한 이유 메모"
-            value={note}
-            onChangeText={setNote}
-            placeholder="메모 (선택)"
-          />
           <SkipReasonChips
             label="건너뛰기"
             habitName={row.habit.name}

@@ -598,7 +598,7 @@ function DayComposer({
    * disagreement: the field stages another helping, the button appends one.
    */
   defaultAmount: number;
-  onFill: (actual?: number) => Promise<void>;
+  onFill: (actual?: number, opts?: { note?: string }) => Promise<void>;
   onSkip: (reason: SkipReason, opts?: { note?: string }) => Promise<void>;
   onClose: () => void;
 }) {
@@ -662,7 +662,7 @@ function DayComposer({
         variant="pri"
         block
         disabled={saving}
-        onPress={() => void run(() => onFill(affordances.oneTapAmount))}
+        onPress={() => void run(() => onFill(affordances.oneTapAmount, { note }))}
       />
 
       {isCount && (
@@ -680,28 +680,29 @@ function DayComposer({
           <Button
             label="기록"
             disabled={!canLog || saving}
-            onPress={() => void run(() => onFill(parsed))}
+            onPress={() => void run(() => onFill(parsed, { note }))}
             tap
             style={styles.grow}
           />
         </View>
       )}
 
-      {/* B5 — the note is filled in before a chip is tapped, so it comes first, inside
-          the same bounded block as the chips it belongs to.
+      {/* The row's note (#77) — one field for every write this composer makes. Placed
+          before the reason chips, because it is filled in before the write that saves
+          it, and outside their block, because it belongs to activity rows too. */}
+      <TextField
+        accessibilityLabel="메모"
+        value={note}
+        onChangeText={setNote}
+        placeholder="메모 (선택)"
+      />
 
-          The whole block is withheld once the date holds an activity row: §4.1's
-          precedence means a skip written there changes no state, no miss and no
-          diagnosis, so offering it would promise something untrue. The condition is
+      {/* B5 — the reason chips. The block is withheld once the date holds an activity
+          row: §4.1's precedence means a skip written there changes no state, no miss and
+          no diagnosis, so offering it would promise something untrue. The condition is
           the hook's `skippable`, the same field Today and the Dashboard read. */}
       {affordances.skippable && (
         <View style={[styles.skipGroup, { borderColor: colors.border }]}>
-          <TextField
-            accessibilityLabel="못 한 이유 메모"
-            value={note}
-            onChangeText={setNote}
-            placeholder="메모 (선택)"
-          />
           <SkipReasonChips
             label="못 했어요"
             habitName={habit.name}

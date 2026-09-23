@@ -655,6 +655,20 @@ describe('useHabitDetail — backfill (D10, D14)', () => {
     expect(day.rows[0].entry.note).toBe('깜빡');
   });
 
+  it('carries the note typed beside a fill amount onto the past day (#77)', async () => {
+    const past = addDays(TODAY, -5);
+    const result = await detail(await seed(habit()));
+
+    act(() => result.current.openBackfill(past));
+    await act(async () => {
+      await result.current.fillDay(3, { note: '저녁에 읽음' });
+    });
+
+    const day = dayOf(result.current, past);
+    expect(day.rows[0].entry.actual).toBe(3);
+    expect(day.rows[0].entry.note).toBe('저녁에 읽음');
+  });
+
   it('marks a binary fill done with a single row of 1', async () => {
     const past = addDays(TODAY, -5);
     const result = await detail(await seed(binary()), 'b1');

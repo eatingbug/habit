@@ -86,12 +86,17 @@ export interface QuickLog {
   /**
    * Append one activity row. `opts.timestamp` overrides the default "now" — the B3
    * time reveal. `date` is always the day being recorded; `timestamp` only orders
-   * within it (§3.3).
+   * within it (§3.3). `opts.note` is the optional note typed beside the amount — it
+   * belongs to this row, exactly as a skip's note belongs to its row (#77).
    *
    * Rejects `actual <= 0` — §3.3's invariant. A zero amount is not an activity row;
    * the state that means "didn't do it" is a skip row, which carries a reason.
    */
-  logActivity(habit: Habit, actual: number, opts?: { timestamp?: string }): Promise<void>;
+  logActivity(
+    habit: Habit,
+    actual: number,
+    opts?: { timestamp?: string; note?: string },
+  ): Promise<void>;
   /**
    * Append one **skip** row for today: `actual: 0` plus a reason (§3.3's row
    * discriminator, §6.2 B5). One chip tap is the whole gesture, so this takes the
@@ -315,7 +320,7 @@ export function useQuickLog({
   async function logActivity(
     habit: Habit,
     actual: number,
-    opts: { timestamp?: string } = {},
+    opts: { timestamp?: string; note?: string } = {},
   ): Promise<void> {
     if (!(actual > 0)) {
       throw new RangeError('활동 기록의 양은 0보다 커야 합니다 — 0은 건너뛰기입니다 (§3.3).');
@@ -324,13 +329,14 @@ export function useQuickLog({
     // Minted here, not by the repository: the toast has to name the row before the
     // write so undo can never resolve to a different one.
     const entryId = newId();
+    const note = opts.note?.trim();
     // Read **before** the write: `describeLogEffect` identifies the new row by the
     // id-set difference between the two snapshots, so a `before` taken afterwards
     // would contain the row and report that nothing happened.
     const before = await fullHistory(habit);
 
-    await repository.upsertEntry(
-      isBackfill
+    await repository.upsertEntry({
+      ...(isBackfill
         ? {
             // The builder's own `actual` is the habit's floor — the amount its one-tap
             // fill writes. The composer may have staged another, and the amount is the
@@ -353,8 +359,10 @@ export function useQuickLog({
             date,
             timestamp: opts.timestamp ?? now().toISOString(),
             actual,
-          },
-    );
+          }),
+      // Absent, not empty — the same rule as `logSkip`.
+      note: note != null && note.length > 0 ? note : undefined,
+    });
 
     /**
      * Re-read rather than compose `[...before, row]`: this hook does no optimistic
