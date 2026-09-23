@@ -605,9 +605,10 @@ function Composer({
         </>
       )}
 
-      {/* The row's note (#77) — one field for every write on this card. It is filled in
-          before the button or chip that saves it, so it comes after the amount and
-          before both. `메모 (선택)` is the front half of
+      {/* The row's note (#77) — one field for every write on this card: the one-tap,
+          기록 and the reason chips all save it with their row. It sits between the
+          activity controls and the chips until #79 reorders the card around a single
+          기록 button. `메모 (선택)` is the front half of
           `design/parts/Today.body.html:56`; the trailing `— 오늘 무슨 일이 있었나요`
           belongs to the free-log (일기) field. `Composer` is keyed on
           `${habit.id}:${date}`, so a note typed for one habit or day never follows the
@@ -1006,11 +1007,10 @@ function EntryEditor({
             onPick={setReason}
           />}
 
-      {/* AC 3 — the note, editable here. Placeholder reused from the composer's
-          skip note (`design/parts/Today.body.html:56`, front half), which is where the
-          only note field the canvas draws lives. Shown for both row kinds: SPEC §6.2
-          puts an optional note on the activity path too, and the composer's own comment
-          parked that field here. */}
+      {/* AC 3 — the note, editable here. Placeholder reused from the composer's note
+          (`design/parts/Today.body.html:56`, front half), which is where the only note
+          field the canvas draws lives. Shown for both row kinds: a note belongs to the
+          row, whichever kind it is (#77). */}
       <TextField
         accessibilityLabel="메모"
         value={note}
@@ -1435,7 +1435,7 @@ export default function Today() {
             ) : selectedHabit != null ? (
               <Composer
                 // The date is part of the identity: stepping it must not leave
-                // an amount, a time or a skip note staged for the day before.
+                // an amount, a time or a note staged for the day before.
                 key={`${selectedHabit.habit.id}:${date}`}
                 row={selectedHabit}
                 date={date}
@@ -1521,10 +1521,8 @@ const styles = StyleSheet.create({
     fontFamily: FONT_FAMILY.mono,
     fontVariant: ['tabular-nums'],
   },
-  // The note and the chips as one bounded block, so the note cannot be read as
-  // belonging to the log control above it. No canvas selector is cited: this
-  // arrangement is the documented deviation above, and `.skiprow` is the chip row's
-  // own class (see `SkipReasonChips`).
+  // The reason chips as one hairline-topped block. No canvas selector is cited:
+  // `.skiprow` is the chip row's own class (see `SkipReasonChips`).
   skipGroup: { borderTopWidth: 1, paddingTop: SPACE.md, gap: SPACE.md - 2 },
   time: { alignSelf: 'flex-start' },
   editActions: { flexDirection: 'row', alignItems: 'center', gap: SPACE.md - 2 },
