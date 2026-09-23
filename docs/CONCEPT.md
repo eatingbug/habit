@@ -193,7 +193,8 @@ purpose, and is cheaper than blank-form abandonment at creation.
 
 - **One log form wherever you are.** A count habit records an *actual* amount; a Yes/No
   habit logs a single "done." Today (§9), Habit Detail and a modal from the Dashboard row
-  all open the same form: amount, optional note, one primary `기록`, then the skip chips.
+  all open the same form: an amount (count only), an optional note and one primary button
+  (`기록`, or `✓ 완료` for Yes/No). The skip chips follow while the day has no activity.
   The amount is pre-filled with the floor for the day's first entry, else the day's last
   amount. So most logs need no typing. A new entry is stamped now, or noon on a backfill.
   Time only affects ordering.

@@ -21,7 +21,7 @@ import { useFailure, type Failure } from './failure';
  *
  * **Scope: every write to a `HabitEntry`** — the appends (`logActivity`, `logSkip`),
  * the undo (`undoLast`) and the corrections (`editEntry`, `removeEntry`). Wider than
- * one-tap logging alone, and deliberately so: `repository.upsertEntry`/`deleteEntry`
+ * the log form's appends alone, and deliberately so: `repository.upsertEntry`/`deleteEntry`
  * have exactly one caller in the app, and the toast invariant below is a
  * *cross-cutting* rule between appends and corrections (see `retireToastFor`) that a
  * second module writing rows could not honour. #15's journal needs the same two

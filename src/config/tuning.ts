@@ -114,7 +114,7 @@ export const TUNING = {
   heatmapDays: 20,
 
   /**
-   * How long the 실행취소 toast stays live after a one-tap append (§6.2 B6).
+   * How long the 실행취소 toast stays live after a new row from the log form (§6.2 B6).
    * TODO §12.x: tune the duration empirically.
    *
    * The **number** is a placeholder; the **mechanism** is not. Without a window the

@@ -13,10 +13,10 @@ export interface ToastOverlayProps {
 /**
  * B6's undo toast, pinned above a scrolling screen rather than scrolling with it.
  *
- * Mounted inside a `ScrollView`, a one-tap on content below the fold produces a
+ * Mounted inside a `ScrollView`, a save on content below the fold produces a
  * confirmation the user never sees and an 실행취소 unreachable inside
  * `TUNING.undoToastMs` — which defeats the toast's whole job (§6.2: it *is* the "it
- * registered" confirmation one-tap logging otherwise lacks). Its appearing and
+ * registered" confirmation a save otherwise lacks). Its appearing and
  * disappearing also shifts whatever button sat under the user's thumb.
  *
  * Positioning lives here rather than in `Toast`, which is a shared primitive and must
