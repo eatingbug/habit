@@ -169,10 +169,11 @@ describe('읽기 실패 — 무한 스피너도, 빈 상태라는 거짓말도 �
 
 describe('쓰기 실패 — 삼켜지지 않는다 (#51)', () => {
   /**
-   * 대시보드의 한 번 누르기. 이 화면의 행 버튼은 `void logActivity(...)` 라 훅이 잡지
-   * 않으면 실패가 어디에도 닿지 않는다 — 티켓이 "최악의 버그" 라고 부르는 그 모양이다.
+   * 대시보드의 기록 모달(#80). 쓰기는 reject 한다. 모달 안의 `LogForm` 이 그것을 받아
+   * 폼 안에서 말하고, 모달은 닫히지 않는다. 훅이 또 잡으면 한 실패에 배너가 둘이 뜨고,
+   * 폼은 성공으로 읽어 모달을 닫는다.
    */
-  it('한 번 누르기가 실패하면 토스트도 재로드도 없고 실패만 남는다', async () => {
+  it('기록이 실패하면 reject 하고 토스트도 화면 배너도 없다', async () => {
     const repository = await flakyWith();
     repository.failing = false;
     const { result } = renderHook(() => useDashboard({ today: TODAY }), {
@@ -181,33 +182,16 @@ describe('쓰기 실패 — 삼켜지지 않는다 (#51)', () => {
     await waitFor(() => expect(result.current.rows).toHaveLength(1));
 
     repository.failing = true;
-    await act(() => result.current.logActivity(habit(), 5));
+    await act(async () => {
+      await expect(result.current.logActivity(habit(), 5, { note: '메모' })).rejects.toThrow(
+        'network',
+      );
+    });
 
-    expect(result.current.failure?.message).toBe(WRITE_FAILED_NOTE);
+    expect(result.current.failure).toBeNull();
     // **기록됐다고 말하지 않는다.** 실패한 쓰기 뒤의 `기록됨` 토스트가 이 앱이 낼 수 있는
     // 최악의 버그다 — 사용자는 기록했다고 믿고 연속은 끊긴다.
     expect(result.current.toast).toBeNull();
-  });
-
-  it('한 번 누르기의 다시 시도가 통하면 기록이 남고 실패는 사라진다', async () => {
-    const repository = await flakyWith();
-    repository.failing = false;
-    const { result } = renderHook(() => useDashboard({ today: TODAY }), {
-      wrapper: wrapperFor(repository),
-    });
-    await waitFor(() => expect(result.current.rows).toHaveLength(1));
-
-    repository.failing = true;
-    await act(() => result.current.logActivity(habit(), 5));
-    expect(result.current.failure).not.toBeNull();
-
-    repository.failing = false;
-    await act(async () => {
-      result.current.failure?.retry();
-    });
-
-    await waitFor(() => expect(result.current.failure).toBeNull());
-    expect(result.current.toast?.message).toBe('기록됨');
   });
 
   it('건너뛰기가 실패해도 같다', async () => {
@@ -219,9 +203,11 @@ describe('쓰기 실패 — 삼켜지지 않는다 (#51)', () => {
     await waitFor(() => expect(result.current.rows).toHaveLength(1));
 
     repository.failing = true;
-    await act(() => result.current.logSkip(habit(), 'cue'));
+    await act(async () => {
+      await expect(result.current.logSkip(habit(), 'cue')).rejects.toThrow('network');
+    });
 
-    expect(result.current.failure?.message).toBe(WRITE_FAILED_NOTE);
+    expect(result.current.failure).toBeNull();
     expect(result.current.toast).toBeNull();
   });
 

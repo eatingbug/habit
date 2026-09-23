@@ -7,7 +7,7 @@ import {
 } from 'react-native';
 
 import { useTheme } from '@/theme/ThemeProvider';
-import { FONT_FAMILY, FONT_SIZE, RADIUS, SPACE, TAP_TARGET } from '@/theme/tokens';
+import { FONT_SIZE, RADIUS, SPACE, TAP_TARGET } from '@/theme/tokens';
 
 /** `.btn` variants: default, `.btn.pri`, `.btn.ghost`, `.btn.sel`. */
 export type ButtonVariant = 'default' | 'pri' | 'ghost' | 'sel';
@@ -21,11 +21,9 @@ export interface ButtonProps {
   disabled?: boolean;
   /** `.btn.tap` — force the 44px minimum on a non-primary control that logs. */
   tap?: boolean;
-  /** Counts read in mono (§6.0) — e.g. the "+5" one-tap chips. */
-  mono?: boolean;
   /**
    * Overrides the accessible name when `label` alone is ambiguous out of context —
-   * several rows each offering "+최소" need to say *which* habit. Defaults to `label`.
+   * several rows each offering "기록" need to say *which* habit. Defaults to `label`.
    */
   accessibilityLabel?: string;
   style?: StyleProp<ViewStyle>;
@@ -45,7 +43,6 @@ export function Button({
   block,
   disabled,
   tap,
-  mono,
   accessibilityLabel,
   style,
 }: ButtonProps) {
@@ -98,7 +95,6 @@ export function Button({
           styles.label,
           { color: fg },
           variant === 'ghost' && styles.ghostLabel,
-          mono && styles.mono,
         ]}
       >
         {label}
@@ -125,5 +121,4 @@ const styles = StyleSheet.create({
   disabled: { opacity: 0.4 },
   label: { fontSize: FONT_SIZE.base, fontWeight: '600' },
   ghostLabel: { fontSize: FONT_SIZE.sm + 0.5, fontWeight: '500' },
-  mono: { fontFamily: FONT_FAMILY.mono, fontVariant: ['tabular-nums'] },
 });

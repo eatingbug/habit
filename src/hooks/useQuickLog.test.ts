@@ -715,7 +715,7 @@ describe('useQuickLog', () => {
     });
 
     it('withholds the skip affordance once activity covers the day, and not before', () => {
-      // The shared gate behind both screens' chips, note field and long-press (D7).
+      // The shared gate behind every log form's chips (D7).
       expect(logAffordances(habit(), undefined).skippable).toBe(true);
       expect(logAffordances(habit(), dayOf([])).skippable).toBe(true);
       // A skip-only day is still skippable — it is still on its first record.

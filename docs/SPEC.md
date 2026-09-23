@@ -28,8 +28,8 @@ the first real implementation of Habiquest.
   `pending / missed / partial / done / over / skip` is **computed** from the day's summed
   `actual` (§4.1). **Low-friction logging:** one log form with a primary `기록` (B1), a
   smart-default amount (B2), a collapsed time picker for free logs and edits (B3), a
-  "yesterday" fast-path (B4), one-tap skip-reason chips (B5), undo-toast for one-tap
-  appends (B6). skip-with-reason (4 categories, now diagnostic — Part D); per-entry edit &
+  "yesterday" fast-path (B4), one-tap skip-reason chips (B5), undo-toast for new
+  rows (B6). skip-with-reason (4 categories, now diagnostic — Part D); per-entry edit &
   delete; backfill (bounded by `createdAt`); heatmap; never-miss-twice detection **plus a
   proactive `atRiskToday` save (C2)**; immediate attributed log-time reward
   (`describeLogEffect`, C1); within-day progress-to-floor (C7a).
@@ -888,14 +888,16 @@ restrained language; §6.5 links the reference mockup.
   (each cell a computed day-state — `pending`/`missed`/`partial`/`done`/`over`/`skip`;
   `pending` neutral, `missed` the miss color as an **outline**, `skip` the miss color
   **filled**, `partial` its own shade), **status light** (🟢 / 🟡 / 🔴).
-  - **One-tap log on the row (B1).** A primary log affordance so the highest-frequency
-    action is the cheapest, right where the user lands: binary → a "✓" appending
-    `actual: 1` for today; count → a **"+floor"** appending one `actual = floor` activity
-    row (guaranteed `done` + base XP, zero typing). If today already has activity the
-    control reads **"+1 더"** (append, not re-log). Writes are optimistic and update the
-    row's heatmap/streak/light in place, with the B6 undo toast.
-  - **Long-press → skip chips (B5).** Long-pressing today's heatmap cell reveals the
-    four reason chips, so a miss can be reason-tagged without opening the composer.
+  - **`기록` on the row (B1).** One button per row opens today's log form (§6.2) in a
+    modal: amount, optional note, `기록`, and the skip chips (B5). A successful save
+    closes the modal and updates the row's heatmap/streak/light in place, with the B6
+    undo toast. A failed save keeps the modal open, with the inputs and an error banner.
+    Closing without saving discards the inputs. The button reads `기록`; on a count
+    habit whose floor is met today it takes the pale selected shape and stays pressable;
+    on a binary habit done today it reads `✓ 했어요` and is disabled.
+    *(Revised: the one-tap "+floor" / "+1 더" / "✓" and the long-press skip chips are
+    gone. Reason: a Dashboard log now takes two taps instead of one, but there is one
+    path to record (#80).)*
   - Tapping a 🔴 (or 🟡) navigates to `reflect/[habitId]`; tapping the row navigates to
     `habit/[habitId]`.
 - Aggregate status count ("shaky habits · N").
@@ -949,11 +951,13 @@ restrained language; §6.5 links the reference mockup.
     (edits that one row only; never spawns a duplicate).
   - Editable fields: `actual` (count), `timestamp` (via the reveal), `note`, and
     skip↔activity mode (incl. `skipReason`); free logs additionally allow `type`.
-  - **Undo, not confirm, for one-tap appends (B6).** Every one-tap / quick-add append
-    (the Dashboard's `+floor` / `✓` §6.1, and Today's log form) shows a
+  - **Undo, not confirm, for new rows (B6).** Every new row saved through the log form
+    (the Dashboard's modal §6.1, Today, and Habit Detail) shows a
     transient **undo toast** ("기록됨 +N {unit} · 실행취소"); Undo deletes the
     just-appended row by `id` (append-only → a clean single-row delete). The toast also
-    serves as the "it registered" confirmation one-tap logging otherwise lacks.
+    serves as the "it registered" confirmation a save otherwise lacks.
+    *(Revised: B6 covered one-tap appends only. Reason: the one-tap is gone, and every
+    new row now comes from the log form (#80).)*
   - **Deliberate deletes** (edit-form / swipe) are **immediate** for an ordinary row
     (undo = re-log; append-only keeps this low-stakes). The one guarded case is deleting
     the **last remaining row of a date** or a **miss-bearing skip**: show a
@@ -961,7 +965,7 @@ restrained language; §6.5 links the reference mockup.
     the day to `missed` — a miss — and can break a streak or erase a recorded miss. There
     is no "clear whole day" action.
   - *(This revises the earlier blanket "native Alert on every delete, no undo-toast"
-    rule — scoped now: undo-toast for the new frequent one-tap creates, a
+    rule — scoped now: undo-toast for new rows saved through the log form, a
     consequence-aware confirm only for the destructive edge cases.)*
 
 ### 6.3 Habit Detail (`app/habit/[id].tsx`)
