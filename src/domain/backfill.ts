@@ -8,9 +8,9 @@ import { compareDates, dateOf } from './dates';
  * A pure range query plus two row constructors. Persistence, ids and the clock all
  * belong to the caller.
  *
- * ADR-0002's bulk prompt (`backfillPrompt`) is deliberately **not** here: it is the
- * reflection surface's question, and it lands with #22. This module is only what the
- * §6.2 B4 date stepper needs to write a row on a past day.
+ * ADR-0002's bulk prompt is deliberately **not** here: it is the reflection surface's
+ * question, and lives in `./backfillPrompt`. This module is only the rows a past day
+ * is written with — by the §6.2 B4 date stepper and by that prompt's answers alike.
  */
 
 /**

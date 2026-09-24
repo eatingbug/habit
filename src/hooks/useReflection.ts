@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import {
   COMPONENT_LABELS,
@@ -9,8 +9,10 @@ import {
   REFLECTION_ACTION_LABELS,
   REFLECTION_ACTION_REASONS,
   SAVE_FAILED_NOTE,
+  WRITE_FAILED_NOTE,
 } from '@/config/copy';
 import { useRepository } from '@/context/RepositoryContext';
+import { backfillPrompt } from '@/domain/backfillPrompt';
 import { dayStates } from '@/domain/classify';
 import { dateOf, mondayOf, weekdayOf, windowEndingAt } from '@/domain/dates';
 import { diagnose } from '@/domain/diagnose';
@@ -26,10 +28,12 @@ import type {
   HabitEntry,
   ReflectionAction,
   Severity,
+  SkipReason,
 } from '@/models';
 
 import { useFailure, type Failure } from './failure';
 import { designErrors, growthChart, type GrowthChart } from './useHabitDetail';
+import { useQuickLog, type QuickLogToast } from './useQuickLog';
 
 /**
  * The Reflection screen's data path — SPEC §6.4, issue #21.
@@ -41,8 +45,9 @@ import { designErrors, growthChart, type GrowthChart } from './useHabitDetail';
  *
  * The diagnosis itself is not re-derived: `diagnose` (#20) names the flags,
  * `suggestAction` picks the prescription, and `decliningWeeks` supplies the one 🔴 that
- * has no flag. A `missed` day therefore reaches no card here (ADR-0002); the bulk
- * backfill question such a history asks instead is #22's.
+ * has no flag. A `missed` day therefore reaches no card here (ADR-0002): such a
+ * history is asked about instead, by `recover` (#22), and its answers are written
+ * through `useQuickLog` like every other row.
  */
 
 const WEEKDAY_SHORT = ['일', '월', '화', '수', '목', '금', '토'];
@@ -114,9 +119,17 @@ export interface ActionOption {
   current: string;
 }
 
+/** ADR-0002's question as the screen asks it (`Reflection.body.html:9–20`). */
+export interface RecoverPrompt {
+  /** `이 N일, 하셨나요?` — N counts the dates still listed. */
+  question: string;
+  /** The `missed` dates still unanswered, ascending. */
+  dates: string[];
+}
+
 export interface ReflectionView {
   loading: boolean;
-  /** A failed read or a failed commit, or `null` (`useFailure`). */
+  /** A failed read, commit, answer or undo, or `null` (`useFailure`). */
   failure: Failure | null;
   /** `null` when the id names no stored habit. */
   habit: Habit | null;
@@ -146,6 +159,31 @@ export interface ReflectionView {
   commit(value: string): Promise<string | null>;
   /** True once the commit's two writes have both landed — the screen then leaves. */
   committed: boolean;
+  /**
+   * The recover-first prompt, or `null`. Whether it opens is decided **once**, on the
+   * visit's first load (`backfillPrompt.shouldPrompt`): one answer can break the run
+   * that triggered it, and the rest of the question must not vanish mid-answer. What
+   * it lists is re-read after every write, so an answered date drops out and an undone
+   * one comes back. `null` again once nothing is left to ask.
+   */
+  recover: RecoverPrompt | null;
+  /** "했어요": appends one activity row at the floor, noon-pinned (§6.3). */
+  fill(date: string): Promise<void>;
+  /** "안 했어요": opens the reason chips under `date`. Writes nothing yet. */
+  askWhy(date: string): void;
+  /** The date whose reason chips are open, or `null`. */
+  asking: string | null;
+  /** The chip tap: appends the skip row carrying `reason`, and closes the chips. */
+  skip(date: string, reason: SkipReason): Promise<void>;
+  /**
+   * An answer is being written. `fill` and `skip` ignore a second call until the list
+   * that reflects the first has loaded — two taps would otherwise both read the date
+   * empty and write it twice.
+   */
+  answering: boolean;
+  /** The answer's undo toast (`useQuickLog`). */
+  toast: QuickLogToast | null;
+  undoLast(): Promise<void>;
 }
 
 const FIELDS: Partial<Record<ReflectionAction, ActionField>> = {
@@ -284,6 +322,12 @@ export function useReflection(
   const [picked, setPicked] = useState<ReflectionAction | null>(null);
   const [committed, setCommitted] = useState(false);
   const [version, setVersion] = useState(0);
+  const [prompting, setPrompting] = useState<boolean | null>(null);
+  const [asking, setAsking] = useState<string | null>(null);
+  const [answering, setAnswering] = useState(false);
+  // The guard itself: two taps in one render share one `answering` value.
+  const inFlight = useRef(false);
+  const quick = useQuickLog({ today, now, onChange: () => setVersion((current) => current + 1) });
 
   useEffect(() => {
     let cancelled = false;
@@ -296,6 +340,11 @@ export function useReflection(
         habit == null ? [] : await repository.getEntries(habit.id, dateOf(habit.createdAt), today);
       if (!cancelled) {
         setLoaded({ habit, entries });
+        if (habit != null) {
+          setPrompting((latched) => latched ?? backfillPrompt(habit, entries, today).shouldPrompt);
+        }
+        inFlight.current = false;
+        setAnswering(false);
         clear();
         setLoading(false);
       }
@@ -318,6 +367,23 @@ export function useReflection(
   const offered = habit == null ? [] : offeredActions(habit);
   const chosen = picked != null && offered.includes(picked) ? picked : suggested;
   const decline = habit == null ? null : declineFor(habit, entries, today);
+  const prompt = habit == null || !prompting ? null : backfillPrompt(habit, entries, today);
+
+  /** One answer. The guard lifts when the reload lands, or here if the write failed. */
+  async function answer(write: (subject: Habit) => Promise<void>): Promise<void> {
+    if (habit == null || inFlight.current) return;
+    inFlight.current = true;
+    setAnswering(true);
+    let wrote = false;
+    await attempt(WRITE_FAILED_NOTE, async () => {
+      await write(habit);
+      wrote = true;
+    });
+    if (!wrote) {
+      inFlight.current = false;
+      setAnswering(false);
+    }
+  }
 
   async function commit(value: string): Promise<string | null> {
     if (habit == null) throw new Error('useReflection.commit: 습관을 아직 불러오지 못했습니다');
@@ -349,7 +415,8 @@ export function useReflection(
 
   return {
     loading,
-    failure,
+    // 실행취소의 실패는 `useQuickLog` 가 들고 있다 — 한 배너 자리를 둘이 나눠 쓴다.
+    failure: failure ?? quick.failure,
     habit,
     mirror: habit == null ? [] : mirrorFor(habit, entries, today),
     notes: habit == null ? [] : notesFor(entries, today),
@@ -383,5 +450,20 @@ export function useReflection(
     },
     commit,
     committed,
+    recover:
+      prompt == null || prompt.dates.length === 0
+        ? null
+        : { question: prompt.question, dates: prompt.dates },
+    fill: (date) => answer((subject) => quick.logActivity(subject, subject.floor, { date })),
+    askWhy: setAsking,
+    asking,
+    skip: (date, reason) =>
+      answer(async (subject) => {
+        await quick.logSkip(subject, reason, { date });
+        setAsking(null);
+      }),
+    answering,
+    toast: quick.toast,
+    undoLast: quick.undoLast,
   };
 }

@@ -431,6 +431,161 @@ describe('commit (§6.4, AC 8, AC 10)', () => {
   });
 });
 
+/**
+ * ADR-0002's recover-first prompt (#22). Asserted rows are read back as properties of
+ * the local clock, never as `Z` literals.
+ */
+describe('the recover-first prompt (#22, ADR-0002)', () => {
+  /** Every day of the habit's life done, except the given dates and today. */
+  function doneExcept(gap: string[]): HabitEntry[] {
+    return daysEndingAt(addDays(TODAY, -1), 40)
+      .filter((date) => !gap.includes(date))
+      .map((date) => activity(date, 6));
+  }
+  const GAP = [addDays(TODAY, -4), addDays(TODAY, -3), addDays(TODAY, -2)];
+
+  async function settle(run: () => Promise<void> | void) {
+    await act(async () => {
+      await run();
+    });
+  }
+
+  it('opens with the question on a run of missed days at the threshold (AC 1)', async () => {
+    const { result } = await render(await seed(habit(), doneExcept(GAP)));
+
+    expect(result.current.recover).toEqual({ question: '이 3일, 하셨나요?', dates: GAP });
+  });
+
+  it('does not open one day short of the threshold (AC 1)', async () => {
+    const { result } = await render(await seed(habit(), doneExcept(GAP.slice(1))));
+
+    expect(result.current.recover).toBeNull();
+  });
+
+  it('opens on the 14-day missed rate with no run at the threshold (AC 2)', async () => {
+    // Every other day of the last 14: seven `missed` days, 7/13 decided days, no run over 1.
+    const gap = daysEndingAt(addDays(TODAY, -1), 14).filter((_, i) => i % 2 === 1);
+    const { result } = await render(await seed(habit(), doneExcept(gap)));
+
+    expect(result.current.recover?.dates).toEqual(gap);
+  });
+
+  it('lists only missed dates on or after the habit’s birth (AC 4)', async () => {
+    const born = addDays(TODAY, -3);
+    const { result } = await render(
+      await seed(habit({ createdAt: `${born}T00:00:00.000Z` }), [skip(addDays(TODAY, -1), 'cue')]),
+    );
+
+    expect(result.current.recover?.dates).toEqual([born, addDays(TODAY, -2)]);
+  });
+
+  it('fills a date with one activity row at the floor, at local noon — no day-state row (AC 5, AC 8)', async () => {
+    const repository = await seed(habit(), doneExcept(GAP));
+    const { result } = await render(repository);
+
+    await settle(() => result.current.fill(GAP[1]));
+
+    const rows = await repository.getEntries('h1', GAP[1], GAP[1]);
+    expect(rows).toHaveLength(1);
+    expect(Object.keys(rows[0]).sort()).toEqual(['actual', 'date', 'habitId', 'id', 'timestamp']);
+    expect(rows[0].actual).toBe(habit().floor);
+    expect(new Date(rows[0].timestamp).getHours()).toBe(12);
+    await waitFor(() => expect(result.current.mirror[3].state).toBe('done'));
+  });
+
+  it('re-runs the streak once the listed dates are filled (AC 5, ADR-0001)', async () => {
+    const repository = await seed(habit(), doneExcept(GAP));
+    const streak = async () => {
+      const dashboard = renderHook(() => useDashboard({ today: TODAY }), {
+        wrapper: wrapperFor(repository),
+      });
+      await waitFor(() => expect(dashboard.result.current.loading).toBe(false));
+      const { streak: value } = dashboard.result.current.rows[0];
+      dashboard.unmount();
+      return value;
+    };
+    expect(await streak()).toBe(1);
+
+    const { result } = await render(repository);
+    for (const date of GAP) await settle(() => result.current.fill(date));
+
+    expect(await streak()).toBe(40);
+  });
+
+  it('stays open for the rest of the visit once the run is broken, listing what is left', async () => {
+    const { result } = await render(await seed(habit(), doneExcept(GAP)));
+
+    await settle(() => result.current.fill(GAP[1]));
+
+    // The domain alone would no longer prompt: the run is 1 and the rate is 2/13.
+    await waitFor(() =>
+      expect(result.current.recover).toEqual({
+        question: '이 2일, 하셨나요?',
+        dates: [GAP[0], GAP[2]],
+      }),
+    );
+  });
+
+  it('closes once every listed date is answered', async () => {
+    const { result } = await render(await seed(habit(), doneExcept(GAP)));
+
+    for (const date of GAP) await settle(() => result.current.fill(date));
+
+    await waitFor(() => expect(result.current.recover).toBeNull());
+  });
+
+  it('asks why on 안 했어요, and writes the skip only once a reason is picked (AC 6)', async () => {
+    const repository = await seed(habit(), doneExcept(GAP));
+    const { result } = await render(repository);
+
+    act(() => result.current.askWhy(GAP[0]));
+    expect(result.current.asking).toBe(GAP[0]);
+    expect(await repository.getEntries('h1', GAP[0], GAP[0])).toEqual([]);
+
+    await settle(() => result.current.skip(GAP[0], 'floor'));
+
+    const rows = await repository.getEntries('h1', GAP[0], GAP[0]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ actual: 0, skipReason: 'floor' });
+    expect(Object.keys(rows[0])).not.toContain('state');
+    expect(result.current.asking).toBeNull();
+    await waitFor(() => expect(result.current.recover?.dates).toEqual(GAP.slice(1)));
+  });
+
+  it('brings an undone fill back onto the list', async () => {
+    const { result } = await render(await seed(habit(), doneExcept(GAP)));
+
+    await settle(() => result.current.fill(GAP[1]));
+    await waitFor(() => expect(result.current.recover?.dates).toHaveLength(2));
+    await settle(() => result.current.undoLast());
+
+    await waitFor(() => expect(result.current.recover?.dates).toEqual(GAP));
+  });
+
+  it('writes one row for two taps before the first write lands', async () => {
+    const repository = await seed(habit(), doneExcept(GAP));
+    const { result } = await render(repository);
+
+    await settle(async () => {
+      await Promise.all([result.current.fill(GAP[1]), result.current.fill(GAP[1])]);
+    });
+
+    expect(await repository.getEntries('h1', GAP[1], GAP[1])).toHaveLength(1);
+  });
+
+  it('reports a failed write and keeps the date listed and answerable', async () => {
+    const repository = await seed(habit(), doneExcept(GAP));
+    const { result } = await render(repository);
+    jest.spyOn(repository, 'upsertEntry').mockRejectedValueOnce(new Error('offline'));
+
+    await settle(() => result.current.fill(GAP[1]));
+
+    expect(result.current.failure).not.toBeNull();
+    expect(result.current.answering).toBe(false);
+    expect(result.current.recover?.dates).toEqual(GAP);
+  });
+});
+
 describe('loading', () => {
   it('reports a habit that does not exist as null', async () => {
     const { result } = await render(await seed(habit()), 'nope');
