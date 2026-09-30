@@ -104,6 +104,10 @@ describe('Established 🔴 — declining weekly actual with the floor-guard (§4
     expect(deriveStatusLight(habit, weeklyTotals([9, 8, 7, 6]), TODAY)).toBe('intervention');
   });
 
+  it('fires when the latest week lands exactly on target — the guard is <=, not < (10,9,8 · target 8)', () => {
+    expect(deriveStatusLight(habit, weeklyTotals([10, 9, 8]), TODAY)).toBe('intervention');
+  });
+
   it('does NOT fire on a decline that stays above target — 12,11,10,9 · target 8 (C5)', () => {
     expect(deriveStatusLight(habit, weeklyTotals([12, 11, 10, 9]), TODAY)).not.toBe('intervention');
   });
@@ -310,6 +314,18 @@ describe('scoped fairness — missed → partial never worsens a 🔴 (§7.3)', 
   it('flipping any single unrecorded day to floor-met never introduces a Forming 🔴', () => {
     for (const date of unrecorded) {
       expect(deriveStatusLight(habit, [...base, activity(date, 6)], TODAY)).not.toBe(
+        'intervention',
+      );
+    }
+  });
+
+  it('a partial on either of the two misses the count reads clears the Forming 🔴', () => {
+    // The flips above sit behind the latest done run, which `consecutiveMissCount`
+    // never reaches. Here the two days before today are the miss run itself.
+    const red = dates.slice(0, 11).map((d) => activity(d, 6));
+    expect(deriveStatusLight(habit, red, TODAY)).toBe('intervention');
+    for (const date of [dates[11], dates[12]]) {
+      expect(deriveStatusLight(habit, [...red, activity(date, 2)], TODAY)).not.toBe(
         'intervention',
       );
     }

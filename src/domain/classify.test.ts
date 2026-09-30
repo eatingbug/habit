@@ -5,6 +5,7 @@ import {
   dayStates,
   effectiveSkipReason,
   isDateInScope,
+  isFloorMet,
   isMissDay,
   sortDayRows,
 } from './classify';
@@ -136,10 +137,17 @@ describe('classifyDay — activity rows classify by the day SUM', () => {
     expect(sum).toBeGreaterThanOrEqual(COUNT.floor);
   });
 
+  it('isFloorMet reads over as floor-met, like done', () => {
+    expect(isFloorMet('over')).toBe(true);
+    expect(isFloorMet('done')).toBe(true);
+    expect(isFloorMet('partial')).toBe(false);
+  });
+
   it('is invariant under any permutation of a day’s rows', () => {
     const rows = [activity('2026-03-09', 2), activity('2026-03-09', 4, '18:00:00'), skip('2026-03-09', 'cue', '07:00:00')];
     const forward = classifyDay(rows, COUNT, '2026-03-09', '2026-03-10');
     const reversed = classifyDay([...rows].reverse(), COUNT, '2026-03-09', '2026-03-10');
+    expect(forward).toBe('done');
     expect(reversed).toBe(forward);
   });
 
@@ -278,5 +286,72 @@ describe('sortDayRows — the domain total order', () => {
     const ids = (rows: HabitEntry[]) => sortDayRows(rows).map((r) => r.id);
     expect(ids([a, b, c])).toEqual([c.id, 'id-a', 'id-b']);
     expect(ids([b, c, a])).toEqual([c.id, 'id-a', 'id-b']);
+  });
+});
+
+describe('SPEC §7.3 — scenarios and invariants read through the classifier', () => {
+  const D = '2026-03-09';
+  const TODAY = '2026-03-10';
+
+  it('reports the day sum next to the state (done 6, over 9)', () => {
+    const done = [activity(D, 2), activity(D, 4)];
+    const over = [activity(D, 5), activity(D, 4)];
+    expect(dayStates(COUNT, done, D, D, TODAY)[0]).toMatchObject({ state: 'done', sum: 6 });
+    expect(dayStates(COUNT, over, D, D, TODAY)[0]).toMatchObject({ state: 'over', sum: 9 });
+  });
+
+  it('is done, not over, when the target equals the floor (target <= floor ignored)', () => {
+    const atFloor: Habit = { ...COUNT, target: 5 };
+    expect(classifyDay([activity(D, 5)], atFloor, D, TODAY)).toBe('done');
+    const below: Habit = { ...COUNT, target: 3 };
+    expect(classifyDay([activity(D, 6)], below, D, TODAY)).toBe('done');
+  });
+
+  it('never emits over on a binary habit, even with a target above the floor', () => {
+    const corrupt: Habit = { ...BINARY, target: 2 };
+    const rows = [
+      { ...activity(D, 1), habitId: 'h2' },
+      { ...activity(D, 1, '18:00:00'), habitId: 'h2' },
+    ];
+    expect(classifyDay(rows, corrupt, D, TODAY)).toBe('done');
+  });
+
+  it('classifies a two-skip day as skip with the latest reason, including same-noon offsets', () => {
+    const evening = [skip(D, 'cue', '09:00:00'), skip(D, 'floor', '21:00:00')];
+    const noon = [skip(D, 'cue', '12:00:00'), skip(D, 'floor', '12:00:01')];
+    for (const rows of [evening, noon, [...evening].reverse(), [...noon].reverse()]) {
+      expect(dayStates(COUNT, rows, D, D, TODAY)[0]).toMatchObject({
+        state: 'skip',
+        skipReason: 'floor',
+        isMiss: true,
+      });
+    }
+  });
+
+  it('never classifies a day with an activity row as skip, even a sub-floor one before a later skip', () => {
+    const rows = [activity(D, 2, '09:00:00'), skip(D, 'cue', '21:00:00')];
+    for (const order of [rows, [...rows].reverse()]) {
+      const [day] = dayStates(COUNT, order, D, D, TODAY);
+      expect(day.state).toBe('partial');
+      expect(day.skipReason).toBeUndefined();
+      expect(day.isMiss).toBe(false);
+    }
+  });
+
+  it('moving a timestamp within the same date reorders the rows but never moves them to another day', () => {
+    const x = skip(D, 'cue', '09:00:00', 'x');
+    const y = skip(D, 'floor', '21:00:00', 'y');
+    const moved = { ...x, timestamp: `${D}T22:00:00.000Z` };
+
+    const before = dayStates(COUNT, [x, y], D, TODAY, TODAY);
+    const after = dayStates(COUNT, [moved, y], D, TODAY, TODAY);
+
+    expect(before.map((d) => [d.date, d.state, d.sum])).toEqual(
+      after.map((d) => [d.date, d.state, d.sum]),
+    );
+    expect(sortDayRows([x, y]).map((r) => r.id)).toEqual(['x', 'y']);
+    expect(sortDayRows([moved, y]).map((r) => r.id)).toEqual(['y', 'x']);
+    expect(before[0].skipReason).toBe('floor');
+    expect(after[0].skipReason).toBe('cue');
   });
 });

@@ -5,6 +5,8 @@ import { TUNING } from '@/config/tuning';
 import { buildBackfillActivity, buildBackfillSkip } from './backfill';
 import { backfillPrompt } from './backfillPrompt';
 import { addDays } from './dates';
+import { diagnose } from './diagnose';
+import { computeStreak } from './streak';
 
 const TODAY = '2026-03-01';
 
@@ -188,5 +190,27 @@ describe('backfillPrompt — after an answer', () => {
     ];
 
     expect(backfillPrompt(COUNT, entries, TODAY).dates).toEqual([ago(4), ago(2)]);
+  });
+});
+
+describe('backfillPrompt — what a fill does downstream (§7.1)', () => {
+  it('re-runs the streak across the filled date', () => {
+    const before = without(fullWindow(), [ago(2)]);
+    expect(computeStreak(before, COUNT, TODAY)).toBe(1);
+
+    const filled = [
+      ...before,
+      buildBackfillActivity(COUNT, ago(2), atLocal(ago(2), 12), [], 'fill', TODAY),
+    ];
+    expect(computeStreak(filled, COUNT, TODAY)).toBe(TUNING.windows.missedRate);
+  });
+
+  it('adds no diagnosis flag for the missed days the prompt lists (ADR-0002)', () => {
+    const gap = [ago(2), ago(3), ago(4)];
+    const withGap = without(fullWindow(), gap);
+    expect(backfillPrompt(COUNT, withGap, TODAY).shouldPrompt).toBe(true);
+    // Compared against the gap-free history, not `[]`: this fixture logs exactly the floor
+    // with no cue, so other rules speak either way — the missed days must add nothing.
+    expect(diagnose(COUNT, withGap, TODAY)).toEqual(diagnose(COUNT, fullWindow(), TODAY));
   });
 });
