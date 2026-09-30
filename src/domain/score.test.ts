@@ -377,6 +377,25 @@ describe('§7.3 invariants that land in scoring', () => {
     expect(computeXP(entries, paused)).toBe(computeXP(entries, COUNT));
   });
 
+  it('never lowers XP when the added pause covers days that hold rows (count and binary)', () => {
+    // In the pause: a done day, a partial day and a reasoned skip — rows, not empty days.
+    const entries = [
+      ...doneRun(3, 6),
+      activity(d(3), 7),
+      activity(d(4), 3),
+      skip(d(5), 'cue'),
+      ...doneRun(4, 6, 6),
+    ];
+    const pauses = [{ from: d(3), to: d(6) }];
+    expect(computeXP(entries, { ...COUNT, pauses })).toBeGreaterThanOrEqual(computeXP(entries, COUNT));
+
+    const binary = entries.map((e) => ({ ...e, habitId: BINARY.id, actual: e.actual > 0 ? 1 : 0 }));
+    expect(computeXP(binary, { ...BINARY, pauses })).toBeGreaterThanOrEqual(computeXP(binary, BINARY));
+    expect(milestoneBonusXP(binary, { ...BINARY, pauses })).toBeGreaterThanOrEqual(
+      milestoneBonusXP(binary, BINARY),
+    );
+  });
+
   it('keeps a logged in-pause day earning its XP (pause suppresses only the empty-day default)', () => {
     const paused: Habit = { ...COUNT, pauses: [{ from: d(3), to: d(17) }] };
     expect(computeXP([activity(d(9), 6)], paused)).toBe(

@@ -118,6 +118,16 @@ describe('min-sample guard — Rules 1 and 4 stay silent below minEngagedDaysFor
     expect(componentsOf(diagnose(bare, entries, AS_OF))).toContain('floor');
     expect(componentsOf(diagnose(bare, entries, AS_OF))).toContain('cue');
   });
+
+  it('stays silent one engaged day short of minEngagedDaysForRate', () => {
+    const bare: Habit = { ...COUNT, cue: undefined, identity: undefined };
+    const entries = daysEndingAt(AS_OF, 7)
+      .slice(0, TUNING.diagnosis.minEngagedDaysForRate - 1)
+      .map((d) => activity(d, 2));
+
+    expect(floorCompletionRate(entries, bare, AS_OF, 28)).toBeNull();
+    expect(diagnose(bare, entries, AS_OF)).toEqual([]);
+  });
 });
 
 describe('Rule 2 — cue clustering, non-exception skip days only (§4.4)', () => {
@@ -175,6 +185,30 @@ describe('Rule 2 — cue clustering, non-exception skip days only (§4.4)', () =
   it('raises the cue warning once those same days are converted to skip rows (§7.3)', () => {
     const entries = TUESDAYS.map((d) => skip(d, 'cue'));
     expect(componentsOf(diagnose(COUNT, entries, AS_OF))).toContain('cue');
+  });
+
+  it('stays silent on missed Tuesdays when every other day of the window is logged', () => {
+    // The discriminating shape: the three Tuesdays are the ONLY unrecorded days, so a
+    // Rule 2 that counted `missed` would see a one-weekday cluster and fire.
+    const entries = daysEndingAt(AS_OF, 28)
+      .filter((d) => !TUESDAYS.includes(d))
+      .map((d) => activity(d, 6));
+    expect(diagnose(COUNT, entries, AS_OF)).toEqual([]);
+  });
+
+  it('attributes the converted Tuesdays to Rule 2 itself, not only to Rule 5', () => {
+    const entries = TUESDAYS.map((d) => skip(d, 'cue'));
+    const cue = ofComponent(diagnose(COUNT, entries, AS_OF), 'cue');
+    expect(cue.some((flag) => flag.message.includes('화요일'))).toBe(true);
+  });
+
+  it('fires at exactly two skip days on one weekday', () => {
+    // Two different reasons, so no Rule 5 count reaches its threshold of 2.
+    const entries = [skip(TUESDAYS[0], 'cue'), skip(TUESDAYS[1], 'floor')];
+    const flags = diagnose(COUNT, entries, AS_OF);
+    expect(flags).toHaveLength(1);
+    expect(flags[0].component).toBe('cue');
+    expect(flags[0].message).toContain('화요일');
   });
 });
 

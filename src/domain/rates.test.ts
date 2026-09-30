@@ -179,3 +179,23 @@ describe('3주 정지는 두 비율을 바꾸지 않는다 (ADR-0003, #19 성공
     expect(floorCompletionRate(inPause, paused, AS_OF, window)).toBeCloseTo(6 / 8);
   });
 });
+
+describe('adding a pause never lowers a rate, even over days that hold rows (§7.3, ADR-0003)', () => {
+  it('keeps both rates at least as high when the pause covers logged, partial and empty days', () => {
+    const days = daysEndingAt(AS_OF, 28);
+    const entries = [
+      ...days.slice(0, 10).map((d) => activity(d, 6)),
+      activity(days[10], 2),
+      activity(days[12], 6),
+      ...days.slice(20).map((d) => activity(d, 6)),
+    ];
+    const paused: Habit = { ...COUNT, pauses: [{ from: days[10], to: days[20] }] };
+
+    expect(successRate(entries, paused, AS_OF, 28)!).toBeGreaterThanOrEqual(
+      successRate(entries, COUNT, AS_OF, 28)!,
+    );
+    expect(floorCompletionRate(entries, paused, AS_OF, 28)!).toBeGreaterThanOrEqual(
+      floorCompletionRate(entries, COUNT, AS_OF, 28)!,
+    );
+  });
+});

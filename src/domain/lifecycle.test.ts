@@ -295,12 +295,14 @@ describe('established → forming demotion uses the partial-excluded rate (§4.7
         'established',
       );
     }
-    // …and from a demoting baseline, a single backfill can only help.
-    const demoting = mix(20, 0);
+    // …and from a baseline one backfill short (22 / 28 ≈ 79%; today is `pending` and
+    // out of the rate), flipping any one past unrecorded day repairs it (22 / 27 ≈ 81%).
+    const demoting = mix(22, 1);
     expect(evaluateLifecycle(established, demoting, TODAY)).toBe('forming');
-    for (const date of WINDOW_DATES.slice(20)) {
-      const after = evaluateLifecycle(established, [...demoting, activity(date, 2)], TODAY);
-      expect(['established', 'forming']).toContain(after);
+    for (const date of WINDOW_DATES.slice(23, -1)) {
+      expect(evaluateLifecycle(established, [...demoting, activity(date, 2)], TODAY)).toBe(
+        'established',
+      );
     }
   });
 });

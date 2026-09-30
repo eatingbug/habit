@@ -104,6 +104,10 @@ describe('Established 🔴 — declining weekly actual with the floor-guard (§4
     expect(deriveStatusLight(habit, weeklyTotals([9, 8, 7, 6]), TODAY)).toBe('intervention');
   });
 
+  it('fires when the latest week lands exactly on target — the guard is <=, not < (10,9,8 · target 8)', () => {
+    expect(deriveStatusLight(habit, weeklyTotals([10, 9, 8]), TODAY)).toBe('intervention');
+  });
+
   it('does NOT fire on a decline that stays above target — 12,11,10,9 · target 8 (C5)', () => {
     expect(deriveStatusLight(habit, weeklyTotals([12, 11, 10, 9]), TODAY)).not.toBe('intervention');
   });

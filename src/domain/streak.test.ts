@@ -137,6 +137,15 @@ describe('out-of-scope days are transparent (ADR-0003)', () => {
     );
   });
 
+  it('never lowers either streak when the added pause covers days that hold rows', () => {
+    const entries = [...doneRun(3), activity(d(3), 3), skip(d(4), 'cue'), activity(d(5), 6), ...doneRun(2, 7)];
+    const over: Habit = { ...COUNT, pauses: [{ from: d(3), to: d(7) }] };
+    expect(computeStreak(entries, over, d(8))).toBeGreaterThanOrEqual(computeStreak(entries, COUNT, d(8)));
+    expect(engagementStreak(entries, over, d(8))).toBeGreaterThanOrEqual(
+      engagementStreak(entries, COUNT, d(8)),
+    );
+  });
+
   it('ignores dates before createdAt', () => {
     const entries = [activity(addDays(START, -1), 6), ...doneRun(2)];
     expect(computeStreak(entries, COUNT, d(1))).toBe(2);
@@ -154,6 +163,15 @@ describe('out-of-scope days are transparent (ADR-0003)', () => {
     const openPause: Habit = { ...COUNT, pauses: [{ from: d(1) }] };
     const entries = [activity(d(0), 6), skip(d(2), 'cue')];
     expect(atRiskToday(entries, openPause, d(3))).toBe(false);
+  });
+
+  it('fires nothing on the resume day of a closed pause, whose yesterday was an empty paused day', () => {
+    const closed: Habit = { ...COUNT, pauses: [{ from: d(3), to: d(17) }] };
+    const entries = doneRun(3);
+    expect(atRiskToday(entries, closed, d(17))).toBe(false);
+    expect(consecutiveMissCount(entries, closed, d(17))).toBe(0);
+    expect(needsNeverMissTwiceIntervention(entries, closed, d(17))).toBe(false);
+    expect(computeStreak(entries, closed, d(17))).toBe(3);
   });
 });
 
@@ -235,6 +253,11 @@ describe('atRiskToday — the open save window (§4.3 C2)', () => {
 
   it('is false on the creation date, whose previous day is out of scope', () => {
     expect(atRiskToday([], COUNT, d(0))).toBe(false);
+  });
+
+  it('is false when yesterday was a miss but today is already a skip or over', () => {
+    expect(atRiskToday([...doneRun(2), skip(d(3), 'cue')], COUNT, d(3))).toBe(false);
+    expect(atRiskToday([...doneRun(2), activity(d(3), 9)], COUNT, d(3))).toBe(false);
   });
 });
 
@@ -345,5 +368,36 @@ describe('longestStreak — the longest floor run in the whole history', () => {
     const entries = [d(0), d(1), d(2), d(4)].map((date) => activity(date, 1));
 
     expect(longestStreak(entries, BINARY)).toBe(3);
+  });
+});
+
+describe('total order — streak consumers are invariant under row permutation (§7.3)', () => {
+  // Two skips on d(1) with the SAME timestamp: only the id tiebreak decides which
+  // reason is effective, so a consumer that read rows in array order would flip.
+  const cue = (id: string) => ({ ...skip(d(1), 'cue', '12:00:00'), id });
+  const exception = (id: string) => ({ ...skip(d(1), 'exception', '12:00:00'), id });
+  const both = <T,>(rows: T[]) => [rows, [...rows].reverse()];
+
+  it('reads an exception-effective day as transparent in every order', () => {
+    const tie = [cue('id-a'), exception('id-b')];
+    for (const rows of both([activity(d(0), 6), ...tie, activity(d(2), 6)])) {
+      expect(computeStreak(rows, COUNT, d(2))).toBe(2);
+      expect(engagementStreak(rows, COUNT, d(2))).toBe(2);
+    }
+    for (const rows of both([activity(d(0), 6), ...tie])) {
+      expect(consecutiveMissCount(rows, COUNT, d(2))).toBe(0);
+      expect(atRiskToday(rows, COUNT, d(2))).toBe(false);
+    }
+  });
+
+  it('reads a cue-effective day as a miss in every order', () => {
+    const tie = [exception('id-a'), cue('id-b')];
+    for (const rows of both([activity(d(0), 6), ...tie, activity(d(2), 6)])) {
+      expect(computeStreak(rows, COUNT, d(2))).toBe(1);
+    }
+    for (const rows of both([activity(d(0), 6), ...tie])) {
+      expect(consecutiveMissCount(rows, COUNT, d(2))).toBe(1);
+      expect(atRiskToday(rows, COUNT, d(2))).toBe(true);
+    }
   });
 });
