@@ -86,7 +86,7 @@ async function log(
   result: { current: QuickLog },
   target: Habit,
   actual: number,
-  opts?: { note?: string },
+  opts?: { note?: string; date?: string },
 ): Promise<void> {
   await act(async () => {
     await result.current.logActivity(target, actual, opts);
@@ -97,7 +97,7 @@ async function skip(
   result: { current: QuickLog },
   target: Habit,
   reason: SkipReason,
-  opts?: { note?: string },
+  opts?: { note?: string; date?: string },
 ): Promise<void> {
   await act(async () => {
     await result.current.logSkip(target, reason, opts);
@@ -799,5 +799,53 @@ describe('useQuickLog', () => {
         remaining: 0,
       });
     });
+  });
+});
+
+/**
+ * #22's recover-first prompt answers several past dates from one hook, so an append
+ * may name its own date instead of the hook's. Asserted as properties of the local
+ * clock, never as `Z` literals: the pin is local noon, and a literal would pass in one
+ * timezone only.
+ */
+describe('a per-call date on the appends (#22)', () => {
+  const past = addDays(TODAY, -2);
+
+  it('writes a fill to the named date at local noon, and the next one a second later', async () => {
+    const repository = await repositoryWith();
+    const { result } = quickLog(repository);
+
+    await log(result, habit(), 5, { date: past });
+    await log(result, habit(), 5, { date: past });
+
+    const rows = (await rowsIn(repository)).sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+    expect(rows.map((row) => row.date)).toEqual([past, past]);
+    const [first, second] = rows.map((row) => new Date(row.timestamp));
+    expect([first.getHours(), first.getMinutes(), first.getSeconds()]).toEqual([12, 0, 0]);
+    expect(second.getTime() - first.getTime()).toBe(1_000);
+  });
+
+  it('writes a reasoned skip to the named date at local noon', async () => {
+    const repository = await repositoryWith();
+    const { result } = quickLog(repository);
+
+    await skip(result, habit(), 'cue', { date: past });
+
+    const rows = await rowsIn(repository);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ date: past, actual: 0, skipReason: 'cue' });
+    expect(new Date(rows[0].timestamp).getHours()).toBe(12);
+  });
+
+  it('treats a per-call today as an ordinary log, even on a hook stepped back', async () => {
+    const repository = await repositoryWith();
+    const { result } = quickLog(repository, past);
+
+    await log(result, habit(), 3, { date: TODAY });
+    expect(result.current.toast?.sub).toBe('오늘 나타났어요');
+    await skip(result, habit(), 'cue', { date: TODAY });
+
+    const rows = await rowsIn(repository);
+    expect(rows.map((row) => row.date)).toEqual([TODAY, TODAY]);
   });
 });

@@ -32,8 +32,8 @@ import { useFailure, type Failure } from './failure';
  * computed identically in two hooks, and "does today already hold activity?" ended up
  * with two different implementations whose equivalence nothing named.
  *
- * Every logging surface goes through this hook: Today's composer, the Dashboard modal
- * and the habit detail's composer.
+ * Every logging surface goes through this hook: Today's composer, the Dashboard modal,
+ * the habit detail's composer and the Reflection screen's recover-first prompt (#22).
  * There is deliberately **one** append/undo implementation, because the undo rule is
  * subtle enough that a second copy would eventually get it wrong — the id is minted
  * here, *before* the write, and carried on the toast, so 실행취소 deletes exactly the
@@ -87,12 +87,13 @@ export interface QuickLog {
   /**
    * Append one activity row, stamped now — or noon-pinned on a backfill (§6.3).
    * `opts.note` is the optional note typed beside the amount — it belongs to this row,
-   * exactly as a skip's note belongs to its row (#77).
+   * exactly as a skip's note belongs to its row (#77). `opts.date` names the day for
+   * this one call, overriding the hook's `date` (see `logSkip`).
    *
    * Rejects `actual <= 0` — §3.3's invariant. A zero amount is not an activity row;
    * the state that means "didn't do it" is a skip row, which carries a reason.
    */
-  logActivity(habit: Habit, actual: number, opts?: { note?: string }): Promise<void>;
+  logActivity(habit: Habit, actual: number, opts?: { note?: string; date?: string }): Promise<void>;
   /**
    * Append one **skip** row for today: `actual: 0` plus a reason (§3.3's row
    * discriminator, §6.2 B5). One chip tap is the whole gesture, so this takes the
@@ -106,11 +107,17 @@ export interface QuickLog {
    * §2).
    *
    * `opts.note` is the optional free-text note the user fills in *before* tapping a
-   * chip, so the gesture stays two taps. The day it writes to is the hook's `date`,
-   * which is `today` unless the caller stepped the date control back (§6.2 B4) — so
-   * reason-tagging a past day is this same chip, on a backfilled row (#14).
+   * chip, so the gesture stays two taps. The day it writes to is `opts.date` when
+   * given, else the hook's `date`, which is `today` unless the caller stepped the date
+   * control back (§6.2 B4) — so reason-tagging a past day is this same chip, on a
+   * backfilled row (#14). `opts.date` is for a surface that answers several past days
+   * at once — #22's recover-first prompt — and so has no single date to bind.
    */
-  logSkip(habit: Habit, reason: SkipReason, opts?: { note?: string }): Promise<void>;
+  logSkip(
+    habit: Habit,
+    reason: SkipReason,
+    opts?: { note?: string; date?: string },
+  ): Promise<void>;
   /**
    * Rewrite one **existing** row, keyed on `entry.id` (#13). The repository upserts by
    * id, so this can never produce a duplicate row — and it *replaces* the stored
@@ -251,7 +258,7 @@ export function useQuickLog({
   const [toast, setToast] = useState<QuickLogToast | null>(null);
 
   /**
-   * Is this write a backfill? Every write to a date other than `today` is,
+   * Is a write to `day` a backfill? Every write to a date other than `today` is,
    * and every one of them is stamped by `src/domain/backfill.ts` rather than by
    * `now()`.
    *
@@ -264,16 +271,18 @@ export function useQuickLog({
    * `localNoonOn` — the domain may not read a timezone (SPEC §2.2), and a UTC-noon
    * stamp would come back out of the feed as 21:00 in Seoul.
    */
-  const isBackfill = date !== today;
+  function isBackfillOn(day: string): boolean {
+    return day !== today;
+  }
 
   /**
-   * The date's rows, read from the **repository** rather than taken from the caller's
+   * The day's rows, read from the **repository** rather than taken from the caller's
    * loaded snapshot: `nextBackfillTimestamp` has to see every row already on the date,
    * or two backfills in one render both compute `T12:00:00` and the offsets stop being
    * strictly increasing.
    */
-  function rowsOnDate(habitId: string): Promise<HabitEntry[]> {
-    return repository.getEntries(habitId, date, date);
+  function rowsOnDate(habitId: string, day: string): Promise<HabitEntry[]> {
+    return repository.getEntries(habitId, day, day);
   }
 
   /**
@@ -326,7 +335,7 @@ export function useQuickLog({
   async function logActivity(
     habit: Habit,
     actual: number,
-    opts: { note?: string } = {},
+    opts: { note?: string; date?: string } = {},
   ): Promise<void> {
     if (!(actual > 0)) {
       throw new RangeError('활동 기록의 양은 0보다 커야 합니다 — 0은 건너뛰기입니다 (§3.3).');
@@ -336,6 +345,8 @@ export function useQuickLog({
     // write so undo can never resolve to a different one.
     const entryId = newId();
     const note = opts.note?.trim();
+    const day = opts.date ?? date;
+    const isBackfill = isBackfillOn(day);
     // Read **before** the write: `describeLogEffect` identifies the new row by the
     // id-set difference between the two snapshots, so a `before` taken afterwards
     // would contain the row and report that nothing happened.
@@ -350,9 +361,9 @@ export function useQuickLog({
             // range assertion, which is why it is called either way.
             ...buildBackfillActivity(
               habit,
-              date,
-              localNoonOn(date),
-              await rowsOnDate(habit.id),
+              day,
+              localNoonOn(day),
+              await rowsOnDate(habit.id, day),
               entryId,
               today,
             ),
@@ -362,7 +373,7 @@ export function useQuickLog({
             id: entryId,
             habitId: habit.id,
             // `date` is the authoritative day (§3.3); `timestamp` only orders within it.
-            date,
+            date: day,
             timestamp: now().toISOString(),
             actual,
           }),
@@ -410,20 +421,21 @@ export function useQuickLog({
   async function logSkip(
     habit: Habit,
     reason: SkipReason,
-    opts: { note?: string } = {},
+    opts: { note?: string; date?: string } = {},
   ): Promise<void> {
     // Same shape as `logActivity`: minted before the write, so the toast names the
     // row undo will delete and can never resolve to a different one.
     const entryId = newId();
     const note = opts.note?.trim();
+    const day = opts.date ?? date;
 
     await repository.upsertEntry({
-      ...(isBackfill
+      ...(isBackfillOn(day)
         ? buildBackfillSkip(
             habit,
-            date,
-            localNoonOn(date),
-            await rowsOnDate(habit.id),
+            day,
+            localNoonOn(day),
+            await rowsOnDate(habit.id, day),
             entryId,
             reason,
             today,
@@ -431,7 +443,7 @@ export function useQuickLog({
         : {
             id: entryId,
             habitId: habit.id,
-            date,
+            date: day,
             timestamp: now().toISOString(),
             actual: 0,
             skipReason: reason,
