@@ -2,7 +2,7 @@
 <!--
   PROTOTYPE — 버려질 코드. 톤 시안 비교 (#90).
   오늘 화면 하나를 구조가 다른 세 가지 톤으로 그린다. ?variant=A|B|C 또는 아래 바/←→ 키로 전환.
-  원칙: 화면에는 핵심 정보만, 설명은 ? 버튼 → 모달. 데이터는 메모리에만 있다(새로고침하면 초기화).
+  원칙: 화면에는 핵심 정보만, 설명은 ? 버튼 → 툴팁. A안 채택 뒤 A에만 하단 탭 바(오늘/대시보드) 추가. 데이터는 메모리에만 있다(새로고침하면 초기화).
 -->
 <html lang="ko">
 <head>
@@ -27,12 +27,20 @@
   .modal .cancel{width:100%;padding:12px;font-size:15px;color:#777}
   .toast{position:fixed;left:50%;bottom:96px;transform:translateX(-50%);background:#1E1F26;color:#fff;padding:14px 20px;border-radius:16px;font-size:16px;font-weight:600;z-index:40;white-space:nowrap;animation:pop .3s}
   @keyframes pop{from{transform:translate(-50%,20px);opacity:0}to{transform:translate(-50%,0);opacity:1}}
-  .switcher{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);display:flex;align-items:center;gap:6px;background:#111;color:#fff;border-radius:999px;padding:6px;z-index:60;box-shadow:0 6px 20px rgba(0,0,0,.35);font-size:14px}
+  .switcher{position:fixed;left:50%;top:12px;transform:translateX(-50%);display:flex;align-items:center;gap:6px;background:#111;color:#fff;border-radius:999px;padding:6px;z-index:60;box-shadow:0 6px 20px rgba(0,0,0,.35);font-size:14px}
   .switcher button{color:#fff;width:36px;height:36px;border-radius:50%;font-size:18px}
   .switcher button:hover{background:#333}
   .switcher span{min-width:190px;text-align:center;font-weight:600}
   .switcher small{display:block;font-size:10px;opacity:.6;font-weight:500;letter-spacing:.08em}
 
+  .tip{position:fixed;z-index:70;max-width:260px;background:#1E1F26;color:#fff;padding:10px 12px;border-radius:12px;font-size:14px;line-height:1.5;box-shadow:0 8px 24px rgba(0,0,0,.25);pointer-events:none;display:none}
+  .tip b{display:block;margin-bottom:2px;font-size:14px}
+  .tabbar{position:sticky;bottom:0;display:flex;background:#fff;border-top:1px solid #E6E8EF;padding:4px 0 8px}
+  .tabbar button{flex:1;min-height:56px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:13px;font-weight:700;color:#9AA0AE}
+  .tabbar button span{font-size:24px;filter:grayscale(1);opacity:.6}
+  .tabbar button.on{color:#2F6BFF}
+  .tabbar button.on span{filter:none;opacity:1}
+  .vA .dashnote{margin-top:16px;padding:14px;border-radius:16px;border:2px dashed #D5D9E4;color:#8A90A0;font-size:15px;font-weight:600;text-align:center}
   /* ───── A · 체크리스트 (깨끗한 컬러) ───── */
   .vA{background:#F4F6FB;padding:28px 20px 40px;color:#15171F}
   .vA .date{font-size:15px;color:#6B7080;font-weight:600}
@@ -129,6 +137,7 @@
 </head>
 <body>
 <div id="root"></div>
+<div id="tip" class="tip" role="tooltip"></div>
 <script>
 // ── 데이터 (기존 아트보드 Today.logic.js 의 예시) ──────────────────────────
 const COLORS = { read:'#3B82F6', pullup:'#F97316', meditate:'#8B5CF6' };
@@ -146,7 +155,7 @@ let S = {
     { t:'08:25', name:'🌤 기분', amt:'아침 공기가 좋았다' },
     { t:'07:10', name:'💪 턱걸이', amt:'+5회' },
   ],
-  modal: null, sheet: null, toast: null, party: null, feedOpen: false, focus: null, stage: 0, clock: 14*60+20,
+  tab: 'today', modal: null, sheet: null, toast: null, party: null, feedOpen: false, focus: null, stage: 0, clock: 14*60+20,
 };
 const H = id => S.habits.find(h => h.id === id);
 const state = h => h.skipped ? 'skip' : h.done >= (h.target ?? Infinity) ? 'over' : h.done >= h.floor ? 'done' : h.done > 0 ? 'partial' : 'todo';
@@ -207,6 +216,13 @@ function A(){
     </div>`;
   }).join('');
   const med = H('meditate');
+  if (S.tab === 'dash') return `<div class="vA">
+    <div class="date">7월 8일 화요일</div>
+    <h1>대시보드</h1>
+    ${S.habits.map(h => `<div class="card ${ok(h) ? 'ok' : ''}"><div class="ico" style="background:${COLORS[h.id]}1F">${h.em}</div>
+      <div class="mid"><div class="name">${h.name}</div><div class="meta">🔥 ${h.streak}일 연속 ${q('streak')}</div></div></div>`).join('')}
+    <div class="dashnote">PROTOTYPE · 대시보드 구성은 '대시보드에 남길 정보' 티켓에서 정해요</div>
+  </div>${tabbar()}`;
   return `<div class="vA">
     <div class="date">7월 8일 화요일</div>
     <h1>오늘 할 일</h1>
@@ -218,7 +234,11 @@ function A(){
     ${cards}
     <button class="feedtoggle" data-feed>오늘 기록 ${S.feed.length}개 <span>${S.feedOpen ? '▴' : '▾'}</span></button>
     ${S.feedOpen ? `<div class="feed">${S.feed.map(f => `<div class="frow"><span class="t">${f.t}</span><span>${f.name}</span><span class="amt">${f.amt}</span></div>`).join('')}</div>` : ''}
-  </div>`;
+  </div>${tabbar()}`;
+}
+function tabbar(){
+  return `<nav class="tabbar">${[['today','📅','오늘'],['dash','📊','대시보드']].map(([k, em, label]) =>
+    `<button class="${S.tab === k ? 'on' : ''}" data-tab="${k}"><span>${em}</span>${label}</button>`).join('')}</nav>`;
 }
 function ASheet(){
   const h = H(S.sheet.id), c = COLORS[h.id];
@@ -322,7 +342,22 @@ function modal(){
   const [t, p] = HELP[S.modal.help];
   return `<div class="scrim" data-close><div class="modal" onclick="event.stopPropagation()"><h3>${t}</h3><p>${p}</p><button class="ok" data-close>알겠어요</button></div></div>`;
 }
+// ── 툴팁: ? 에 마우스를 올리거나 탭하면 뜬다. 다시 탭하거나 바깥을 누르면 닫힌다.
+let tipFor = null;
+function showTip(btn){
+  const [t, p] = HELP[btn.dataset.help], el = document.getElementById('tip');
+  el.innerHTML = `<b>${t}</b>${p}`; el.style.display = 'block';
+  const r = btn.getBoundingClientRect(), w = el.offsetWidth, h = el.offsetHeight;
+  el.style.left = Math.max(8, Math.min(innerWidth - w - 8, r.left + r.width / 2 - w / 2)) + 'px';
+  el.style.top = (r.bottom + 8 + h > innerHeight ? r.top - h - 8 : r.bottom + 8) + 'px';
+  tipFor = btn;
+}
+function hideTip(){ document.getElementById('tip').style.display = 'none'; tipFor = null; }
+document.addEventListener('mouseover', e => { const b = e.target.closest('[data-help]'); if (b && b !== tipFor) showTip(b); });
+document.addEventListener('mouseout', e => { const b = e.target.closest('[data-help]'); if (b && !b.contains(e.relatedTarget)) hideTip(); });
+addEventListener('scroll', hideTip, true);
 function render(){
+  hideTip();
   const v = variant();
   document.getElementById('root').innerHTML =
     `<div class="phone">${v === 'A' ? A() : v === 'B' ? B() : C()}</div>`
@@ -332,10 +367,11 @@ function render(){
     + `<div class="switcher"><button data-cycle="-1" aria-label="이전 시안">‹</button><span><small>PROTOTYPE · ←/→</small>${v} · ${VARIANTS[v]}</span><button data-cycle="1" aria-label="다음 시안">›</button></div>`;
 }
 document.addEventListener('click', e => {
-  const t = e.target.closest('button,[data-close],[data-party]'); if (!t) return;
+  const t = e.target.closest('button,[data-close],[data-party]'); if (!t?.dataset.help) hideTip(); if (!t) return;
   const d = t.dataset;
   if (d.cycle) return cycle(+d.cycle);
-  if (d.help) S.modal = { help: d.help };
+  if (d.help) return showTip(t);
+  if (d.tab) S.tab = d.tab;
   else if (d.skipask) { S.sheet = null; S.modal = { skip: d.skipask }; }
   else if (d.skip) skip(d.skip, d.reason);
   else if (d.open) { const h = H(d.open); S.sheet = { id: h.id, n: h.binary ? 1 : Math.max(1, h.floor - h.done) }; }
@@ -352,7 +388,7 @@ document.addEventListener('keydown', e => {
   if (e.target.closest('input,textarea,[contenteditable]')) return;
   if (e.key === 'ArrowLeft') cycle(-1);
   if (e.key === 'ArrowRight') cycle(1);
-  if (e.key === 'Escape') { S.modal = S.sheet = S.party = null; render(); }
+  if (e.key === 'Escape') { hideTip(); S.modal = S.sheet = S.party = null; render(); }
 });
 render();
 </script>
