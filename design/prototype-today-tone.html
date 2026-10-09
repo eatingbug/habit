@@ -43,17 +43,17 @@
   .tabbar button.on span{filter:none;opacity:1}
   .vA .dashnote{margin-top:16px;padding:14px;border-radius:16px;border:2px dashed #D5D9E4;color:#8A90A0;font-size:15px;font-weight:600;text-align:center}
   /* 연속 축하 (듀오링고식): 오늘 몫을 처음 넘긴 순간에만 뜬다 */
-  .cele{position:fixed;inset:0;z-index:65;background:linear-gradient(180deg,#FFF7E8,#FFE3C2);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px;text-align:center;animation:fade .25s}
+  .cele{position:fixed;inset:0;z-index:65;background:linear-gradient(180deg,#FFF7E8,#FFE3C2);display:flex;flex-direction:column;align-items:center;justify-content:safe center;padding:24px;text-align:center;animation:fade .25s;overflow-y:auto;cursor:pointer}
   @keyframes fade{from{opacity:0}to{opacity:1}}
-  .cele .flame{font-size:120px;line-height:1;animation:flame .7s cubic-bezier(.2,1.6,.4,1) both, flicker 1.2s .7s ease-in-out infinite}
+  .cele .flame{font-size:clamp(64px,14vh,120px);line-height:1;animation:flame .7s cubic-bezier(.2,1.6,.4,1) both, flicker 1.2s .7s ease-in-out infinite}
   @keyframes flame{from{transform:scale(0) rotate(-20deg)}to{transform:scale(1) rotate(0)}}
   @keyframes flicker{0%,100%{transform:scale(1) rotate(0)}50%{transform:scale(1.06) rotate(2deg)}}
-  .cele .num{font-size:84px;font-weight:900;color:#FF8A00;line-height:1;margin-top:8px;font-variant-numeric:tabular-nums}
+  .cele .num{font-size:clamp(52px,10vh,84px);font-weight:900;color:#FF8A00;line-height:1;margin-top:8px;font-variant-numeric:tabular-nums}
   .cele .num.bump{animation:bump .4s}
   @keyframes bump{50%{transform:scale(1.35)}}
   .cele .lbl{font-size:24px;font-weight:900;color:#3A2A10;margin-top:6px}
   .cele .sub{font-size:17px;font-weight:600;color:#7A6040;margin-top:10px}
-  .cele .week{display:flex;gap:8px;margin:28px 0 36px;background:#fff;border-radius:20px;padding:14px 16px;box-shadow:0 6px 20px rgba(160,90,0,.12)}
+  .cele .week{display:flex;gap:8px;margin:clamp(12px,3vh,28px) 0 clamp(16px,4vh,36px);background:#fff;border-radius:20px;padding:14px 16px;box-shadow:0 6px 20px rgba(160,90,0,.12)}
   .cele .wd{display:flex;flex-direction:column;align-items:center;gap:6px;font-size:13px;font-weight:800;color:#B0A08A}
   .cele .wd i{width:32px;height:32px;border-radius:50%;background:#F1EBE2;display:flex;align-items:center;justify-content:center;font-style:normal;font-size:16px;color:#fff}
   .cele .wd.on i{background:#FF9600}
@@ -395,6 +395,7 @@ function celebrate(){
     <div class="sub">${c.h.em} ${c.h.name} 오늘 몫 완료</div>
     <div class="week">${week}</div>
     <button class="go" data-cele>계속하기</button>
+    <div class="sub" style="font-size:14px">아무 곳이나 눌러도 닫혀요</div>
   </div>`;
 }
 function render(){
@@ -409,6 +410,7 @@ function render(){
     + `<div class="switcher"><button data-cycle="-1" aria-label="이전 시안">‹</button><span><small>PROTOTYPE · ←/→</small>${v} · ${VARIANTS[v]}</span><button data-cycle="1" aria-label="다음 시안">›</button></div>`;
 }
 document.addEventListener('click', e => {
+  if (S.celebrate && e.target.closest('.cele')) { S.celebrate = null; return render(); }
   const t = e.target.closest('button,[data-close],[data-party]'); if (!t?.dataset.help) hideTip(); if (!t) return;
   const d = t.dataset;
   if (d.cycle) return cycle(+d.cycle);
@@ -431,7 +433,7 @@ document.addEventListener('keydown', e => {
   if (e.target.closest('input,textarea,[contenteditable]')) return;
   if (e.key === 'ArrowLeft') cycle(-1);
   if (e.key === 'ArrowRight') cycle(1);
-  if (e.key === 'Escape') { hideTip(); S.modal = S.sheet = S.party = null; render(); }
+  if (e.key === 'Escape') { hideTip(); S.celebrate = null; S.modal = S.sheet = S.party = null; render(); }
 });
 render();
 </script>
