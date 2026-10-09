@@ -1,0 +1,359 @@
+<!doctype html>
+<!--
+  PROTOTYPE — 버려질 코드. 습관 상세에 남길 정보 (#94).
+  질문: 습관 상세의 첫 화면에 무엇을 어떤 구조로 둘까. 화면의 질문은 "이 습관, 지금 어떻게 되고 있나".
+  전환: ?layout=1|2|3 (아래 전환 바, ← → 키), ?state=forming|established|red
+    1 카드 세로 쌓기 — 추천안. 주인공 카드, pill 3개, 히트맵, 설계 카드, 접힌 저널.
+    2 요약 + 탭 — 위에 상태등과 큰 연속 숫자. 아래는 [흐름 | 설계 | 저널] 탭 중 하나만.
+    3 달력 중심 — 이번 달 달력이 주인공. 숫자는 한 문장. 설계는 아래 시트.
+  고정: #93 문구(해요체, 별, 하루 상태 라벨, ? 툴팁), A 톤, 상태등 모양 병기, ⋯ 메뉴에 잠깐 쉬기·보관하기.
+-->
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PROTOTYPE · 습관 상세</title>
+<style>
+  *{box-sizing:border-box}
+  html,body{margin:0;background:#E9EAEF;font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Noto Sans KR",sans-serif;-webkit-font-smoothing:antialiased;color:#15171F}
+  button{font-family:inherit;cursor:pointer;border:0;background:none;color:inherit;padding:0}
+  .phone{width:390px;max-width:100%;min-height:780px;margin:24px auto 90px;border-radius:32px;overflow:hidden;position:relative;box-shadow:0 20px 60px rgba(0,0,0,.15);background:#F4F6FB}
+  .page{padding:20px 20px 32px}
+  .nav{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+  .nav button{min-width:48px;min-height:48px;font-size:22px;font-weight:700;color:#4A4F60;border-radius:14px}
+  .head{display:flex;align-items:center;gap:12px;margin-bottom:6px}
+  .ico{width:56px;height:56px;border-radius:18px;display:flex;align-items:center;justify-content:center;font-size:30px;background:#E8F0FF;flex:none}
+  h1{font-size:28px;margin:0;letter-spacing:-.02em;flex:1}
+  .chip{font-size:14px;font-weight:700;padding:4px 10px;border-radius:999px;background:#EFEAFF;color:#5B3FD0}
+  .q{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;font-size:13px;font-weight:800;background:rgba(0,0,0,.08);color:rgba(0,0,0,.55);vertical-align:middle;margin-left:4px;flex:none;cursor:help}
+  .light{display:inline-flex;align-items:center;gap:6px;font-size:15px;font-weight:800;padding:6px 12px;border-radius:999px}
+  .light.stable{background:#E3F6EC;color:#1E8A55}
+  .light.intervention{background:#FDE5E2;color:#C2392E}
+  .reflect{width:100%;min-height:52px;border-radius:16px;background:#E5534B;color:#fff;font-size:17px;font-weight:800;margin:10px 0 4px}
+  .card{background:#fff;border-radius:22px;padding:16px;margin-top:12px;box-shadow:0 2px 8px rgba(30,40,80,.06)}
+  .eyebrow{font-size:15px;font-weight:800;color:#4A4F60;display:flex;align-items:center;justify-content:space-between}
+  .muted{color:#6B7080;font-size:15px;font-weight:600}
+  /* 주인공 카드 */
+  .hero{display:flex;align-items:center;gap:18px}
+  .ring{width:112px;height:112px;flex:none;position:relative}
+  .ring .in{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+  .ring .in b{font-size:26px;font-weight:900}
+  .ring .in span{font-size:13px;font-weight:700;color:#6B7080}
+  .big{font-size:44px;font-weight:900;color:#FF8A00;line-height:1}
+  .big small{font-size:18px;font-weight:800;color:#4A4F60;margin-left:2px}
+  .bars{display:flex;align-items:flex-end;gap:6px;height:120px;margin-top:12px;position:relative}
+  .bars i{flex:1;border-radius:6px 6px 0 0;background:#9DB8FF}
+  .bars i.now{background:#2F6BFF}
+  .bars .ln{position:absolute;left:0;right:0;border-top:2px dashed;font-size:12px;font-weight:700}
+  .wk{display:flex;gap:6px;font-size:12px;color:#9AA0AE;font-weight:700;margin-top:4px}
+  .wk span{flex:1;text-align:center}
+  /* pill */
+  .pills{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px}
+  .pills.four{grid-template-columns:repeat(2,1fr)}
+  .pill{background:#fff;border-radius:18px;padding:12px;box-shadow:0 1px 3px rgba(0,0,0,.05)}
+  .pill .l{font-size:14px;font-weight:700;color:#6B7080;display:flex;align-items:center}
+  .pill .v{font-size:26px;font-weight:900;margin-top:2px}
+  .pill .v small{font-size:15px;font-weight:700;color:#6B7080;margin-left:2px}
+  /* 히트맵 */
+  .heat{display:grid;grid-template-columns:repeat(10,1fr);gap:6px;margin-top:12px}
+  .cell{aspect-ratio:1;border-radius:10px;min-height:28px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;cursor:pointer}
+  .s-done{background:#2DBE7A;color:#fff}
+  .s-over{background:#16935A;color:#fff}
+  .s-partial{background:#fff;border:2px solid #2DBE7A;color:#2DBE7A}
+  .s-skip{background:#EEF0F5;color:#8A90A0}
+  .s-missed{background:#fff;border:2px solid #E5534B;color:#E5534B}
+  .s-pending{background:#fff;border:2px dashed #C9CEDA;color:#9AA0AE}
+  .s-none{background:transparent;cursor:default}
+  .legend{display:flex;flex-wrap:wrap;gap:10px;margin-top:10px;font-size:13px;font-weight:700;color:#6B7080}
+  .legend span{display:flex;align-items:center;gap:4px}
+  .legend i{width:14px;height:14px;border-radius:4px;display:inline-block}
+  /* 설계 */
+  .drow{display:flex;gap:12px;padding:12px 0;border-bottom:1px solid #F0F1F5;font-size:17px}
+  .drow:last-child{border:0}
+  .drow .k{width:64px;color:#6B7080;font-weight:700;flex:none;display:flex;align-items:center}
+  .drow .v{font-weight:700}
+  .drow .empty{color:#C2392E;font-weight:700}
+  .edit{min-height:48px;padding:0 14px;border-radius:14px;background:#F0F2F7;font-size:15px;font-weight:800;color:#4A4F60}
+  .more{width:100%;min-height:48px;margin-top:6px;border-radius:14px;background:#F4F6FB;font-size:15px;font-weight:800;color:#4A4F60}
+  /* 저널 */
+  .jday{padding:12px 0;border-bottom:1px solid #F0F1F5}
+  .jday:last-child{border:0}
+  .jday .top{display:flex;align-items:center;justify-content:space-between;font-size:16px;font-weight:800}
+  .st{font-size:13px;font-weight:800;padding:3px 9px;border-radius:999px}
+  .jrow{display:flex;gap:10px;font-size:15px;color:#4A4F60;margin-top:6px}
+  .jrow .t{color:#9AA0AE;width:46px;font-variant-numeric:tabular-nums}
+  .jrow .memo{color:#6B7080;font-style:italic}
+  .addpast{width:100%;min-height:48px;margin-top:8px;border-radius:14px;border:2px dashed #D5D9E4;font-size:15px;font-weight:700;color:#6B7080}
+  /* 2: 탭 */
+  .sum{background:#fff;border-radius:24px;padding:18px;margin-top:10px;box-shadow:0 2px 8px rgba(30,40,80,.06)}
+  .sum .row{display:flex;align-items:flex-end;justify-content:space-between}
+  .sum .sub{display:flex;gap:16px;margin-top:12px;font-size:15px;font-weight:700;color:#4A4F60}
+  .seg{display:flex;background:#E6E9F1;border-radius:16px;padding:4px;margin-top:16px}
+  .seg button{flex:1;min-height:48px;border-radius:12px;font-size:16px;font-weight:800;color:#6B7080}
+  .seg button.on{background:#fff;color:#15171F;box-shadow:0 1px 4px rgba(0,0,0,.08)}
+  /* 3: 달력 */
+  .sentence{font-size:19px;font-weight:700;line-height:1.55;margin:8px 0 4px}
+  .sentence b{color:#FF8A00}
+  .cal{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-top:10px}
+  .cal .dow{font-size:13px;font-weight:800;color:#9AA0AE;text-align:center}
+  .cal .cell{min-height:44px;font-size:14px}
+  .monthnav{display:flex;align-items:center;justify-content:space-between}
+  .monthnav button{min-width:48px;min-height:48px;font-size:20px;color:#6B7080}
+  .bottombar{display:flex;gap:8px;margin-top:14px}
+  .bottombar button{flex:1;min-height:52px;border-radius:16px;background:#fff;font-size:16px;font-weight:800;color:#4A4F60;box-shadow:0 2px 8px rgba(30,40,80,.06)}
+  /* 공통 오버레이 */
+  .scrim{position:fixed;inset:0;background:rgba(20,20,30,.45);z-index:50}
+  .sheet{position:fixed;left:50%;transform:translateX(-50%);bottom:0;width:390px;max-width:100%;background:#fff;border-radius:28px 28px 0 0;padding:24px 20px 40px;z-index:51;max-height:80vh;overflow:auto}
+  .sheet h3{margin:0 0 6px;font-size:21px}
+  .menu{position:absolute;right:16px;top:64px;background:#fff;border-radius:16px;box-shadow:0 10px 30px rgba(0,0,0,.18);padding:6px;z-index:30;width:200px}
+  .menu button{display:block;width:100%;text-align:left;min-height:48px;padding:0 14px;font-size:16px;font-weight:700;border-radius:10px}
+  .menu button:hover{background:#F4F6FB}
+  .menu .danger{color:#C2392E}
+  .toast{position:fixed;left:50%;bottom:80px;transform:translateX(-50%);background:#1E1F26;color:#fff;padding:14px 20px;border-radius:16px;font-size:15px;font-weight:600;z-index:60;max-width:360px;text-align:center}
+  .tip{position:fixed;z-index:70;max-width:260px;background:#1E1F26;color:#fff;padding:10px 12px;border-radius:12px;font-size:14px;line-height:1.5;box-shadow:0 8px 24px rgba(0,0,0,.25);pointer-events:none;display:none}
+  /* 전환 바 (시안 아님) */
+  .switch{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);display:flex;align-items:center;gap:6px;background:#111;color:#fff;border-radius:999px;padding:6px;box-shadow:0 8px 24px rgba(0,0,0,.35);z-index:80;font-size:13px;font-weight:700}
+  .switch button{color:#fff;min-width:36px;height:36px;border-radius:999px;padding:0 10px}
+  .switch button:hover{background:#333}
+  .switch .lbl{padding:0 6px;white-space:nowrap}
+  .switch .sep{width:1px;height:22px;background:#444;margin:0 2px}
+  .switch .on{background:#2F6BFF}
+</style>
+</head>
+<body>
+<div class="phone" id="phone"></div>
+<div class="tip" id="tip"></div>
+<div id="overlay"></div>
+<div class="switch" id="switch"></div>
+
+<script>
+const LAYOUTS = { 1: '카드 세로 쌓기 (추천안)', 2: '요약 + 탭', 3: '달력 중심' };
+const STATES = { forming: '자리 잡는 중', established: '자리 잡은 뒤', red: '🔴 손봐야 해요' };
+const params = new URLSearchParams(location.search);
+let layout = LAYOUTS[params.get('layout')] ? params.get('layout') : '1';
+let state = STATES[params.get('state')] ? params.get('state') : 'forming';
+let ui = { menu: false, journalOpen: false, reasonOpen: false, tab: 'flow' };
+
+// #93에서 정한 툴팁 문구
+const TIPS = {
+  streak: '최소량을 채운 날이 이어진 날수예요. 기록 없이 지나간 날이나 이유를 골라 못 했다고 찍은 날이 있으면 0부터 다시 세요.',
+  engaged: '최소량에 못 미쳐도 조금이라도 한 날까지 세요. 기록 없는 날이나 이유를 골라 못 했다고 찍은 날이 있으면 0부터 다시 세요.',
+  rate: '최근 28일 중 최소량을 채운 날의 비율이에요. 예외로 찍은 날은 빼고, 5일이 쌓이기 전에는 —로 보여요.',
+  light: '최근 기록을 보고 습관이 잘 굴러가는지 알려 줘요. 손봐야 해요가 뜨면 회고하기로 원인을 찾아요.',
+  heat: '칸을 누르면 그날 기록을 채울 수 있어요. 테두리만 있는 칸은 기록 없는 날이고, 실패로 세요.',
+  forming: '날짜가 아니라 실제로 한 날로 세요. 보통 두 달쯤 걸리니 더뎌도 괜찮아요.',
+  chart: '자리 잡은 뒤에는 응원 대신 양이 늘고 있는지를 봐요. 점선은 주마다의 최소량과 목표예요.',
+  floor: '아무리 바빠도 할 수 있는 양이에요. 이만큼 하면 그날 몫을 한 거예요.',
+  target: '최소량보다 큰 선택 목표예요. 넘기면 별을 더 받지만 안 해도 괜찮아요.',
+  best: '최소량을 채운 날이 가장 길게 이어졌던 날수예요.',
+};
+const LABEL = { done: '했어요', over: '목표까지 했어요', partial: '조금 했어요', skip: '못 했어요', missed: '기록 없음', pending: '아직이에요' };
+const STCOLOR = { done: ['#E3F6EC', '#1E8A55'], over: ['#D5F0E2', '#0F6E43'], partial: ['#EAF8F1', '#1E8A55'], skip: ['#EEF0F5', '#6B7080'], missed: ['#FDE5E2', '#C2392E'], pending: ['#F4F6FB', '#6B7080'] };
+const MARK = { done: '✓', over: '★', partial: '½', skip: '−', missed: '!', pending: '' };
+
+function data() {
+  const red = state === 'red';
+  // 최근 20일, 오래된 날 → 오늘
+  const heat = red
+    ? ['done','done','partial','done','skip','missed','done','missed','missed','skip','done','missed','partial','missed','skip','missed','done','missed','missed','pending']
+    : ['done','done','over','done','partial','done','done','skip','done','done','done','over','done','done','partial','done','done','done','done','pending'];
+  return {
+    name: '독서', emoji: '📖', stat: '지능',
+    red,
+    streak: red ? 0 : 12, best: 20, engaged: red ? 0 : 15, rate: red ? 41 : 86,
+    heat,
+    formingDays: 34, expected: 66,
+    weeks: [62, 70, 58, 75, 80, 77, 90, 85, 96, 102, 99, 110],
+    cue: red ? '' : '자기 전, 침대 옆에서', floor: '하루 10쪽', target: '하루 30쪽', identity: '책을 읽는 사람',
+    journal: [
+      { d: '10월 10일 (오늘)', s: 'pending', rows: [] },
+      { d: '10월 9일', s: red ? 'missed' : 'done', rows: red ? [] : [['22:40', '+12쪽', '']] },
+      { d: '10월 8일', s: red ? 'missed' : 'done', rows: red ? [] : [['07:10', '+4쪽', ''], ['23:05', '+8쪽', '출근길에 조금']] },
+      { d: '10월 7일', s: red ? 'done' : 'done', rows: [['22:15', '+10쪽', '']] },
+      { d: '10월 6일', s: red ? 'skip' : 'partial', rows: red ? [['—', '못 했어요 · 깜빡함', '']] : [['21:30', '+5쪽', '피곤했음']] },
+    ],
+  };
+}
+
+const q = (k) => `<span class="q" data-tip="${k}">?</span>`;
+const light = (d) => d.red
+  ? `<span class="light intervention">▲ 손봐야 해요</span>${q('light')}`
+  : `<span class="light stable">● 괜찮아요</span>${q('light')}`;
+
+function nav() {
+  return `<div class="nav"><button onclick="toast('대시보드로 돌아가요')">‹</button>
+    <button onclick="ui.menu=!ui.menu;render()">⋯</button></div>
+    ${ui.menu ? `<div class="menu"><button onclick="confirmLife('잠깐 쉬기')">⏸ 잠깐 쉬기</button><button class="danger" onclick="confirmLife('보관하기')">🗄 보관하기</button></div>` : ''}`;
+}
+function head(d, withLight = true) {
+  return `<div class="head"><div class="ico">${d.emoji}</div><h1>${d.name}</h1><span class="chip">${d.stat}</span></div>
+    ${withLight ? `<div style="display:flex;align-items:center">${light(d)}</div>` : ''}
+    ${d.red ? `<button class="reflect" onclick="toast('회고 화면으로 가요')">회고하기</button>` : ''}`;
+}
+function ring(d) {
+  const p = Math.min(1, d.formingDays / d.expected), C = 2 * Math.PI * 48;
+  return `<div class="ring"><svg width="112" height="112" viewBox="0 0 112 112"><circle cx="56" cy="56" r="48" stroke="#EEF0F5" stroke-width="12" fill="none"/>
+    <circle cx="56" cy="56" r="48" stroke="#2DBE7A" stroke-width="12" fill="none" stroke-linecap="round" stroke-dasharray="${C * p} ${C}" transform="rotate(-90 56 56)"/></svg>
+    <div class="in"><b>${d.formingDays}일</b><span>/ 보통 ${d.expected}일</span></div></div>`;
+}
+function heroCard(d) {
+  if (state === 'established') return chartCard(d, true);
+  return `<div class="card"><div class="eyebrow"><span>자리 잡는 중 ${q('forming')}</span></div>
+    <div class="hero" style="margin-top:10px">${ring(d)}
+      <div><div class="muted">연속 ${q('streak')}</div><div class="big">${d.streak}<small>일</small></div>
+      <div class="muted" style="margin-top:6px">${d.red ? '다시 시작하면 돼요' : '오늘도 하면 13일'}</div></div></div></div>`;
+}
+function chartCard(d, primary) {
+  const max = 130, w = d.weeks;
+  return `<div class="card"><div class="eyebrow"><span>주마다 한 양 ${q('chart')}</span><span class="muted">이번 주 ${w[w.length - 1]}쪽</span></div>
+    <div class="bars">${w.map((v, i) => `<i class="${i === w.length - 1 ? 'now' : ''}" style="height:${v / max * 100}%"></i>`).join('')}
+      <div class="ln" style="bottom:${70 / max * 100}%;border-color:#C9CEDA;color:#9AA0AE">최소 70</div>
+      <div class="ln" style="bottom:${105 / max * 100}%;border-color:#16935A;color:#16935A">목표 105</div></div>
+    <div class="wk">${w.map((_, i) => `<span>${i === w.length - 1 ? '이번' : w.length - 1 - i}</span>`).join('')}</div></div>`;
+}
+function pills(d) {
+  const showEngaged = d.engaged > d.streak;
+  const items = [
+    ['연속', d.streak, '일', 'streak'], ['최고 연속', d.best, '일', 'best'], ['성공률', d.rate, '%', 'rate'],
+    ...(showEngaged ? [['조금이라도 한 날', d.engaged, '일', 'engaged']] : []),
+  ];
+  return `<div class="pills ${items.length === 4 ? 'four' : ''}">${items.map(([l, v, u, k]) =>
+    `<div class="pill"><div class="l">${l}${q(k)}</div><div class="v">${v}<small>${u}</small></div></div>`).join('')}</div>`;
+}
+function heatCard(d, title = '최근 20일') {
+  return `<div class="card"><div class="eyebrow"><span>${title} ${q('heat')}</span></div>
+    <div class="heat">${d.heat.map((s, i) => cell(s, 20 - i)).join('')}</div>${legend()}</div>`;
+}
+function cell(s, ago, label) {
+  if (s === 'none') return `<div class="cell s-none"></div>`;
+  return `<div class="cell s-${s}" title="${LABEL[s]}" onclick="fill('${s}', ${ago})">${label ?? MARK[s]}</div>`;
+}
+function legend() {
+  return `<div class="legend">${['done', 'partial', 'skip', 'missed'].map((s) => `<span><i class="s-${s}"></i>${LABEL[s]}</span>`).join('')}</div>`;
+}
+function designCard(d) {
+  return `<div class="card"><div class="eyebrow"><span>지금 이렇게 하기로 했어요</span><button class="edit" onclick="toast('설계 수정 폼이 열려요')">수정</button></div>
+    <div class="drow"><span class="k">언제</span>${d.cue ? `<span class="v">${d.cue}</span>` : `<span class="empty">아직 안 정했어요. 이것부터 정해 보세요</span>`}</div>
+    <div class="drow"><span class="k">최소량${q('floor')}</span><span class="v">${d.floor}</span></div>
+    <div class="drow"><span class="k">목표${q('target')}</span><span class="v">${d.target}</span></div>
+    ${ui.reasonOpen ? `<div class="drow"><span class="k">이유</span><span class="v">${d.identity}</span></div>` : ''}
+    <button class="more" onclick="ui.reasonOpen=!ui.reasonOpen;render()">${ui.reasonOpen ? '이유 접기' : '이유 보기'}</button></div>`;
+}
+function journalCard(d, alwaysOpen = false) {
+  const open = alwaysOpen || ui.journalOpen;
+  const days = open ? d.journal : d.journal.slice(0, 3);
+  return `<div class="card"><div class="eyebrow"><span>저널</span></div>
+    ${days.map((j) => `<div class="jday"><div class="top"><span>${j.d}</span>
+      <span class="st" style="background:${STCOLOR[j.s][0]};color:${STCOLOR[j.s][1]}">${LABEL[j.s]}</span></div>
+      ${j.rows.map(([t, a, m]) => `<div class="jrow"><span class="t">${t}</span><span>${a}</span>${m ? `<span class="memo">${m}</span>` : ''}</div>`).join('')}</div>`).join('')}
+    ${alwaysOpen ? '' : `<button class="more" onclick="ui.journalOpen=!ui.journalOpen;render()">${open ? '접기' : '더 보기'}</button>`}
+    ${open ? `<button class="addpast" onclick="toast('20일보다 더 지난 날을 골라 채워요')">+ 지난 날 기록 추가</button>` : ''}</div>`;
+}
+
+// 1: 카드 세로 쌓기
+function layout1(d) {
+  return nav() + head(d) + heroCard(d) + pills(d) + heatCard(d) + designCard(d) + journalCard(d);
+}
+
+// 2: 요약 + 탭
+function layout2(d) {
+  const tabs = { flow: '흐름', design: '설계', journal: '저널' };
+  let body = '';
+  if (ui.tab === 'flow') body = (state === 'established' ? chartCard(d) : `<div class="card"><div class="eyebrow"><span>자리 잡는 중 ${q('forming')}</span></div><div class="hero" style="margin-top:10px">${ring(d)}<div class="muted">실제로 한 날 ${d.formingDays}일.<br>보통 ${d.expected}일쯤 걸려요.</div></div></div>`) + heatCard(d);
+  if (ui.tab === 'design') body = designCard(d);
+  if (ui.tab === 'journal') body = journalCard(d, true);
+  const showEngaged = d.engaged > d.streak;
+  return nav() + head(d, false) +
+    `<div class="sum"><div class="row"><div><div class="muted">연속 ${q('streak')}</div><div class="big">${d.streak}<small>일</small></div></div>
+      <div style="text-align:right">${light(d)}</div></div>
+      <div class="sub"><span>최고 ${d.best}일${q('best')}</span><span>성공률 ${d.rate}%${q('rate')}</span>${showEngaged ? `<span>조금이라도 ${d.engaged}일${q('engaged')}</span>` : ''}</div></div>` +
+    `<div class="seg">${Object.entries(tabs).map(([k, v]) => `<button class="${ui.tab === k ? 'on' : ''}" onclick="ui.tab='${k}';render()">${v}</button>`).join('')}</div>` + body;
+}
+
+// 3: 달력 중심
+function layout3(d) {
+  // 10월 달력. 10/1 = 목요일. 최근 20일 = 9/21~10/10 → 10월 1~10일만 heat 뒤쪽 10칸
+  const oct = d.heat.slice(10);
+  const cells = [];
+  for (let i = 0; i < 3; i++) cells.push(cell('none'));
+  for (let day = 1; day <= 31; day++) cells.push(day <= 10 ? cell(oct[day - 1], 11 - day, day) : `<div class="cell" style="color:#C9CEDA;cursor:default">${day}</div>`);
+  const showEngaged = d.engaged > d.streak;
+  const sentence = d.red
+    ? `요즘 <b>자주 빠지고 있어요.</b> 최근 28일 성공률은 ${d.rate}%${q('rate')}예요.`
+    : `<b>${d.streak}일째</b>${q('streak')} 이어 가고 있어요. 가장 길게는 ${d.best}일${q('best')}, 성공률은 ${d.rate}%${q('rate')}예요.${showEngaged ? ` 조금이라도 한 날은 ${d.engaged}일${q('engaged')}이에요.` : ''}`;
+  const extra = state === 'established' ? chartCard(d) : `<div class="card" style="display:flex;align-items:center;gap:14px"><div style="transform:scale(.7);margin:-16px">${ring(d)}</div><div><div class="eyebrow">자리 잡는 중 ${q('forming')}</div><div class="muted">보통 두 달쯤 걸려요</div></div></div>`;
+  return nav() + head(d) +
+    `<p class="sentence">${sentence}</p>` +
+    `<div class="card"><div class="monthnav"><button onclick="toast('9월로 가요')">‹</button><b style="font-size:18px">10월 ${q('heat')}</b><button style="opacity:.3">›</button></div>
+      <div class="cal">${['일', '월', '화', '수', '목', '금', '토'].map((w) => `<div class="dow">${w}</div>`).join('')}${cells.join('')}</div>${legend()}</div>` +
+    extra +
+    `<div class="bottombar"><button onclick="openSheet('design')">📝 설계 보기</button><button onclick="openSheet('journal')">📒 저널</button></div>`;
+}
+
+function openSheet(kind) {
+  const d = data();
+  overlay(`<div class="scrim" onclick="closeOverlay()"></div><div class="sheet">${kind === 'design' ? designCard(d) : journalCard(d, true)}</div>`);
+}
+function confirmLife(what) {
+  ui.menu = false; render();
+  overlay(`<div class="scrim" onclick="closeOverlay()"></div><div class="sheet"><h3>${what}할까요?</h3>
+    <p class="muted">지우는 게 아니에요. 쉬는 동안은 실패로 세지 않고, 기록도 이어 온 날수도 그대로 남아 있어요.</p>
+    <button class="reflect" style="background:#2F6BFF" onclick="closeOverlay();toast('${what} 했어요')">${what}</button>
+    <button class="more" onclick="closeOverlay()">취소</button></div>`);
+}
+function fill(s, ago) {
+  if (s === 'pending') return toast('오늘 기록은 오늘 탭에서 해요');
+  toast(`${ago}일 전 · ${LABEL[s]} — 그날 기록 시트가 열려요`);
+}
+function overlay(html) { document.getElementById('overlay').innerHTML = html; bindTips(document.getElementById('overlay')); }
+function closeOverlay() { document.getElementById('overlay').innerHTML = ''; }
+let tt;
+function toast(msg) {
+  clearTimeout(tt);
+  const el = document.querySelector('.toast') || Object.assign(document.body.appendChild(document.createElement('div')), { className: 'toast' });
+  el.textContent = msg; el.style.display = 'block';
+  tt = setTimeout(() => (el.style.display = 'none'), 2000);
+}
+
+const tip = document.getElementById('tip');
+function showTip(el) {
+  tip.textContent = TIPS[el.dataset.tip]; tip.style.display = 'block';
+  const r = el.getBoundingClientRect();
+  tip.style.left = Math.min(window.innerWidth - 270, Math.max(10, r.left - 120)) + 'px';
+  tip.style.top = (r.bottom + 8) + 'px';
+}
+function bindTips(root) {
+  root.querySelectorAll('[data-tip]').forEach((el) => {
+    el.onmouseenter = () => showTip(el);
+    el.onmouseleave = () => (tip.style.display = 'none');
+    el.onclick = (e) => { e.stopPropagation(); tip.style.display === 'block' ? (tip.style.display = 'none') : showTip(el); };
+  });
+}
+document.addEventListener('click', () => (tip.style.display = 'none'));
+
+function setParam() {
+  const p = new URLSearchParams({ layout, state });
+  history.replaceState(null, '', '?' + p);
+}
+function cycle(dir) {
+  const keys = Object.keys(LAYOUTS), i = keys.indexOf(layout);
+  layout = keys[(i + dir + keys.length) % keys.length]; ui = { ...ui, menu: false }; render();
+}
+function render() {
+  const d = data();
+  document.getElementById('phone').innerHTML = `<div class="page">${{ 1: layout1, 2: layout2, 3: layout3 }[layout](d)}</div>`;
+  bindTips(document.getElementById('phone'));
+  document.getElementById('switch').innerHTML =
+    `<button onclick="cycle(-1)">←</button><span class="lbl">${layout} · ${LAYOUTS[layout]}</span><button onclick="cycle(1)">→</button><span class="sep"></span>` +
+    Object.entries(STATES).map(([k, v]) => `<button class="${state === k ? 'on' : ''}" onclick="state='${k}';render()">${v}</button>`).join('');
+  setParam();
+}
+document.addEventListener('keydown', (e) => {
+  if (e.target.closest('input,textarea,[contenteditable]')) return;
+  if (e.key === 'ArrowLeft') cycle(-1);
+  if (e.key === 'ArrowRight') cycle(1);
+});
+render();
+</script>
+</body>
+</html>
