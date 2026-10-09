@@ -2,6 +2,7 @@
 <!--
   PROTOTYPE — 버려질 코드. 톤 시안 비교 (#90).
   오늘 화면 하나를 구조가 다른 세 가지 톤으로 그린다. ?variant=A|B|C 또는 아래 바/←→ 키로 전환.
+  결정(#97): 평소엔 3 배너, 기념일(5일째, 그 뒤 10일마다)엔 1 팝업(?fx=c, 기본값). 독서=5일째, 명상=1일째로 둘 다 확인 가능.
   오늘 몫(성공 기준)을 처음 넘기면 A에서 연속 축하 효과가 뜬다. 효과 시안은 ?fx=1..4, 위 바/←→ 로 전환.
   톤 시안은 ?variant=A|B|C 로만 바꾼다(A 채택).
   원칙: 화면에는 핵심 정보만, 설명은 ? 버튼 → 툴팁. A안 채택 뒤 A에만 하단 탭 바(오늘/대시보드) 추가. 데이터는 메모리에만 있다(새로고침하면 초기화).
@@ -195,7 +196,7 @@ const C_BG = { read:'#DCEBFF', pullup:'#FFE6D2', meditate:'#EDE3FF' };
 let S = {
   xp: 180,
   habits: [
-    { id:'read', name:'독서', em:'📖', unit:'쪽', floor:10, target:15, done:6, streak:12 },
+    { id:'read', name:'독서', em:'📖', unit:'쪽', floor:10, target:15, done:6, streak:4 },
     { id:'pullup', name:'턱걸이', em:'💪', unit:'회', floor:5, target:10, done:5, streak:4 },
     { id:'meditate', name:'명상', em:'🧘', binary:true, floor:1, done:0, streak:0, missedYesterday:true },
   ],
@@ -407,9 +408,9 @@ document.addEventListener('mouseover', e => { const b = e.target.closest('[data-
 document.addEventListener('mouseout', e => { const b = e.target.closest('[data-help]'); if (b && !b.contains(e.relatedTarget)) hideTip(); });
 addEventListener('scroll', hideTip, true);
 // ── 연속 축하 효과 시안 ────────────────────────────────────────────
-const FX = { 1:'팝업 카드 + 색종이', 2:'카드 제자리 배지', 3:'위에서 내려오는 배너', 4:'불꽃 떠오르기' };
+const FX = { c:'평소 배너 · 기념일 팝업', 1:'팝업 카드 + 색종이', 2:'카드 제자리 배지', 3:'위에서 내려오는 배너', 4:'불꽃 떠오르기' };
 const FXK = Object.keys(FX);
-function fx(){ const v = new URLSearchParams(location.search).get('fx'); return FXK.includes(v) ? v : '1'; }
+function fx(){ const v = new URLSearchParams(location.search).get('fx'); return FXK.includes(v) ? v : 'c'; }
 // 오늘은 화요일. 이번 주 월~일 중 연속에 든 날을 칠한다(예시 데이터라 연속 일수로 거꾸로 채운다).
 function week(from){
   return `<div class="wk">${['월','화','수','목','금','토','일'].map((d, i) =>
@@ -431,7 +432,9 @@ function playFx(c){
   const r = (card ?? document.body).getBoundingClientRect(), br = (btn ?? card).getBoundingClientRect();
   const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
   const CONF = ['🎉','✨','🟧','🟨','🔥','⭐'];
-  const k = fx();
+  // c: 결정된 조합. 기념일(5일째, 그 뒤 10일마다)엔 1(팝업), 나머지는 3(배너).
+  const milestone = c.to === 5 || c.to % 10 === 0;
+  const k = fx() === 'c' ? (milestone ? '1' : '3') : fx();
   if (k === '1') {
     const el = add(`<div class="fx1 click"><div class="card">
       <div class="fl">🔥</div><div><span class="n">${c.from}</span></div>
