@@ -4,7 +4,9 @@
   원칙: 탭마다 질문 하나. 오늘 = "지금 무엇을 하면 되나?", 대시보드 = "잘 되고 있나? 무엇을 손봐야 하나?"
   Q1 오늘 한 줄 = 이모지·이름, 계기, 오늘 진행, 큰 버튼. 위쪽은 날짜와 "n개 중 m개 성공"만. 시각·못 한 이유는 시트 안. XP는 토스트·축하에서만.
   Q2 지난 날 채우기 = 어제를 놓친 날에만 뜨는 배너의 "어제 채우기". 더 지난 날은 습관 상세.
-  Q3 한 줄 일기 = 오늘 탭 맨 아래 작은 버튼.
+  Q3 끄적이기(자유 기록) = 오늘 탭 맨 아래 작은 버튼. 떠오른 생각이나 방금 한 일. 종류 칩은 고르지 않아도 된다(기본 떠오른 생각).
+  Q2' 지난 날 채우기 = 대시보드의 최근 7일 점을 눌러서. 오늘 탭엔 7일 띠를 두지 않는다.
+  Q3' 탭은 두 개. 설정은 대시보드 오른쪽 위 ⚙️.
   Q4 대시보드 한 줄 = 상태등(모양 병기), 이름, 🔥 연속, 최근 7일 점, 🔴이면 "회고하기". 🔴가 맨 위.
   Q5 별·레벨·능력치 = 대시보드 맨 위 작은 카드 하나.
   Q6 자리 잡기 링·히트맵·최고 연속 = 습관 상세(한 줄을 누르면 이동. 여기선 토스트로 대신).
@@ -70,13 +72,14 @@
   .light.personal_best{background:#FFF3C4;color:#8A6A00}
   .hrow .nm{font-size:18px;font-weight:800;flex:1;min-width:0}
   .hrow .st{font-size:15px;font-weight:800;color:#FF8A00}
-  .dots{display:flex;gap:6px;align-items:center}
-  .dots i{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-style:normal;font-size:12px;font-weight:800}
+  .dots{display:flex;gap:5px;align-items:center}
+  .dots i{width:36px;height:36px;cursor:pointer;border-radius:50%;display:flex;align-items:center;justify-content:center;font-style:normal;font-size:12px;font-weight:800}
   .dots .ok{color:#fff}
   .dots .partial{border:2px solid;background:#fff}
   .dots .missed{background:#FBE9E7;color:#D0574C}
   .dots .skip{background:#EEF0F5;color:#8A90A0}
-  .dots .pending{border:2px dashed #C9CEDA}
+  .dots .pending{border:2px dashed #C9CEDA;font-size:11px;color:#9AA0AE}
+  .dots .partial{font-size:13px}
   .dots .lbl{font-size:12px;color:#9AA0AE;font-weight:700;margin-right:2px}
   .reflect{width:100%;padding:12px;border-radius:14px;background:#E5534B;color:#fff;font-size:16px;font-weight:800}
   .newh{width:100%;margin-top:6px;padding:14px;border-radius:16px;border:2px dashed #D5D9E4;font-size:16px;font-weight:700;color:#6B7080}
@@ -195,10 +198,10 @@ const ORDER = { intervention: 0, caution: 1, stable: 2, personal_best: 3 };
 const HELP = {
   floor: ['성공 기준', '이만큼만 하면 그날은 성공이에요. 일부러 아주 작게 잡아요.'],
   save: ['어제를 놓쳤을 때', '하루 놓치는 건 괜찮아요. 이틀 연속 놓치지 않는 게 중요해요. 어제 했는데 기록만 못 했다면 지금 채우세요.'],
-  diary: ['한 줄 일기', '오늘 있었던 일을 적는 칸이에요. 점수나 연속과는 상관없어요.'],
+  diary: ['끄적이기', '떠오른 생각이나 방금 한 일을 가볍게 적어요. 점수나 연속과는 상관없어요.'],
   lv: ['레벨과 별', '기록하면 별을 받아요. 별이 쌓이면 레벨이 올라요.'],
   light: ['상태등', '최근 기록을 보고 습관 상태를 알려 줘요. 🔴이면 설계를 다시 볼 때예요. 회고에서 무엇이 막혔는지 같이 찾아요.'],
-  dots: ['최근 7일', '색이 찬 동그라미는 성공, 테두리만 있으면 조금 함, ✕는 기록 없음, –는 쉰 날이에요.'],
+  dots: ['최근 7일', '색이 찬 동그라미는 성공, 테두리만 있으면 조금 함, ✕는 기록 없음, –는 쉰 날이에요. 눌러서 그날 기록을 채울 수 있어요.'],
 };
 const q = k => `<button class="q" data-help="${k}" aria-label="설명 보기">?</button>`;
 let tipFor = null;
@@ -225,7 +228,7 @@ function log(id, i, amount, time){
   if (i === TODAY) S.feed.unshift({ t: time ?? hhmm(S.clock), name: `${h.em} ${h.name}`, amt: h.binary ? '했음' : `+${amount}${h.unit}` });
   S.sheet = null;
   if (crossed && i === TODAY) return { h, from, to: streak(h) };
-  toast(i === TODAY ? `기록했어요${xp ? ` · +${xp} ⭐` : ` · ${after}/${h.floor}${h.unit}`}` : `어제 기록을 채웠어요 · 🔥 ${streak(h)}일 연속`);
+  toast(i === TODAY ? `기록했어요${xp ? ` · +${xp} ⭐` : ` · ${after}/${h.floor}${h.unit}`}` : `${i === YESTERDAY ? '어제' : `${DAYS[i]}요일`} 기록을 채웠어요${streak(h) ? ` · 🔥 ${streak(h)}일 연속` : ''}`);
 }
 function skip(id, i, reason){ const h = H(id); h.days[i] = { amt: 0, skip: reason }; S.modal = null; toast('괜찮아요. 내일 다시 해요'); }
 function toast(m){ S.toast = m; clearTimeout(toast.t); toast.t = setTimeout(() => { S.toast = null; render(); }, 2200); }
@@ -248,21 +251,21 @@ function today(){
       <button class="act" style="background:${ok(h, TODAY) ? '#2DBE7A' : c}" data-open="${h.id}" data-day="${TODAY}" aria-label="${h.name} 기록">${ok(h, TODAY) ? '✓' : '+'}</button></div>`; }).join('')}
   <button class="feedtoggle" data-feed>오늘 기록 ${S.feed.length}개 <span>${S.feedOpen ? '▴' : '▾'}</span></button>
   ${S.feedOpen ? `<div class="feed">${S.feed.map(f => `<div class="frow"><span class="t">${f.t}</span><span>${f.name}</span><span class="amt">${f.amt}</span></div>`).join('')}</div>` : ''}
-  <button class="diary" data-diary>✏️ 한 줄 일기</button>`;
+  <button class="diary" data-diary>✏️ 끄적이기</button>`;
 }
 
 // ── 대시보드 탭 ──────────────────────────────────────────────────
 function dots(h){
-  return `<div class="dots"><span class="lbl">7일 ${q('dots')}</span>${h.days.map((d, i) => { const s = st(h, i), c = COLORS[h.id];
+  return `<div class="dots">${h.days.map((d, i) => { const s = st(h, i), c = COLORS[h.id];
     const cls = ok(h, i) ? 'ok' : s;
     const style = ok(h, i) ? `background:${c}` : s === 'partial' ? `border-color:${c}` : '';
     const lab = ok(h, i) ? '✓' : s === 'missed' ? '✕' : s === 'skip' ? '–' : '';
-    return `<i class="${cls}" style="${style}" title="${DAYS[i]}">${lab}</i>`; }).join('')}</div>`;
+    return `<button style="padding:0" data-open="${h.id}" data-day="${i}" aria-label="${h.name} ${DAYS[i]}요일"><i class="${cls}" style="${style}">${lab || (i === TODAY ? '오늘' : DAYS[i])}</i></button>`; }).join('')}${q('dots')}</div>`;
 }
 function dash(){
   const sorted = [...S.habits].sort((a, b) => ORDER[a.light] - ORDER[b.light]);
   const red = sorted.filter(h => h.light === 'intervention').length;
-  return `<div class="date">7월 8일 화요일</div><h1>대시보드</h1>
+  return `<div style="display:flex;justify-content:space-between;align-items:flex-start"><div><div class="date">7월 8일 화요일</div><h1>대시보드</h1></div><button data-settings aria-label="설정" style="font-size:26px;width:48px;height:48px">⚙️</button></div>
   <div class="me"><div class="lv">Lv.${S.lv}</div><div style="flex:1"><div class="xp">⭐ ${S.xp} / ${S.lvNext}</div><div class="lvbar"><i style="width:${S.xp / S.lvNext * 100}%"></i></div></div>${q('lv')}</div>
   <h2>${red ? `손볼 습관 ${red}개` : '모두 괜찮아요'} ${q('light')}</h2>
   ${sorted.map(h => { const [g, w] = LIGHT[h.light];
@@ -277,18 +280,19 @@ function dash(){
 function sheet(){
   if (!S.sheet) return '';
   if (S.sheet.diary) {
-    const types = ['🌤 기분','💭 생각','🍽 식사','📝 그냥'];
-    return `<div class="scrim" data-close></div><div class="sheet"><h3>✏️ 한 줄 일기 ${q('diary')}</h3>
+    const types = ['💭 떠오른 생각','👍 잘한 일','🌤 기분','📝 메모'];
+    return `<div class="scrim" data-close></div><div class="sheet"><h3>✏️ 끄적이기 ${q('diary')}</h3>
       <div class="types">${types.map(t => `<button class="${S.sheet.type === t ? 'on' : ''}" data-dtype="${t}">${t}</button>`).join('')}</div>
-      <textarea id="dtext" placeholder="오늘 무슨 일이 있었나요?"></textarea>
-      <button class="go" style="background:#2F6BFF" data-dsave>남기기</button></div>`;
+      <textarea id="dtext" placeholder="떠오른 생각이나 방금 한 일을 적어요"></textarea>
+      <button class="go" style="background:#2F6BFF" data-dsave>적기</button></div>`;
   }
   const h = H(S.sheet.id), i = S.sheet.day, c = COLORS[h.id], d = h.days[i], past = i !== TODAY;
-  const when = past ? `<span class="when">어제(${DAYS[i]}요일) 기록 채우기</span>` : '';
+  const dayName = i === YESTERDAY ? '어제' : `${DAYS[i]}요일`;
+  const when = past ? `<span class="when">${dayName} 기록 채우기</span>` : '';
   const time = past ? '' : `<div class="timechip">${S.sheet.editTime ? `<input type="time" id="tm" value="${hhmm(S.clock)}">` : `<button data-time>🕑 지금 ${hhmm(S.clock)} · 바꾸기</button>`}</div>`;
-  const skipB = `<button class="skipb" data-skipask="${h.id}" data-day="${i}">${past ? '어제는' : '오늘은'} 못 했어요</button>`;
+  const skipB = `<button class="skipb" data-skipask="${h.id}" data-day="${i}">${past ? '그날은' : '오늘은'} 못 했어요</button>`;
   if (h.binary) return `<div class="scrim" data-close></div><div class="sheet"><h3>${h.em} ${h.name}</h3>${when}
-    <div class="hintline" style="margin:22px 0 14px">${past ? '어제' : '오늘'} 했나요?</div>${time}
+    <div class="hintline" style="margin:22px 0 14px">${past ? `${dayName}` : '오늘'} 했나요?</div>${time}
     <button class="go" style="background:${c}" data-log="${h.id}" data-day="${i}" data-n="1">네, 했어요!</button>${skipB}</div>`;
   const n = S.sheet.n, after = d.amt + n;
   const line = h.target && after >= h.target ? '보너스 목표까지 넘어요 ⭐' : after >= h.floor ? '이걸로 성공이에요 ✓' : `성공까지 ${h.floor - after}${h.unit} 남아요`;
@@ -362,13 +366,14 @@ document.addEventListener('click', e => {
   else if (d.skipask) { S.modal = { id: d.skipask, day: +d.day }; S.sheet = null; }
   else if (d.skip) skip(d.skip, +d.day, d.reason);
   else if (d.feed !== undefined) S.feedOpen = !S.feedOpen;
-  else if (d.diary !== undefined) S.sheet = { diary: true, type: '🌤 기분' };
+  else if (d.diary !== undefined) S.sheet = { diary: true, type: '💭 떠오른 생각' };
   else if (d.dtype) { S.sheet.type = d.dtype; const v = document.getElementById('dtext').value; render(); document.getElementById('dtext').value = v; return; }
   else if (d.dsave !== undefined) { const v = document.getElementById('dtext').value.trim();
-    S.feed.unshift({ t: hhmm(S.clock), name: S.sheet.type, amt: v || '(내용 없음)' }); S.sheet = null; toast('일기를 남겼어요'); }
+    S.feed.unshift({ t: hhmm(S.clock), name: S.sheet.type, amt: v || '(내용 없음)' }); S.sheet = null; toast('적어 뒀어요'); }
   else if (d.detail) toast(`PROTOTYPE · ${H(d.detail).name} 상세로 이동`);
   else if (d.reflect) toast(`PROTOTYPE · ${H(d.reflect).name} 회고 화면으로`);
   else if (d.new !== undefined) toast('PROTOTYPE · 습관 만들기로 이동');
+  else if (d.settings !== undefined) toast('PROTOTYPE · 설정(테마, 로그아웃)');
   else if (d.close !== undefined) { S.modal = null; S.sheet = null; }
   render();
 });
