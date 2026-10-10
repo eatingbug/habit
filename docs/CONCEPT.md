@@ -1,7 +1,7 @@
 # Habit System — Product Specification
 
 **Tagline:** Build the Habit, Grow yourself
-**Status:** Draft v3.5 (MVP scope) · updated 2026-09-01 (ADR-0001: an unlogged past day now counts as a miss and backfill repairs it; ADR-0002: a run of unlogged days asks before it diagnoses; plus v3.3's scoped fairness + engagement streak, log-time reward, proactive never-miss-twice save, visible weekly growth, skip-reasons drive diagnosis; minimal adaptive Linear/Notion visual language)
+**Status:** Draft v3.6 (MVP scope) · updated 2026-10-10 (ADR-0007: the easy, bright redesign replaces the minimal visual language) · Draft v3.5 · updated 2026-09-01 (ADR-0001: an unlogged past day now counts as a miss and backfill repairs it; ADR-0002: a run of unlogged days asks before it diagnoses; plus v3.3's scoped fairness + engagement streak, log-time reward, proactive never-miss-twice save, visible weekly growth, skip-reasons drive diagnosis; minimal adaptive Linear/Notion visual language)
 **Working name:** Habiquest (candidate, not final)
 
 ---
@@ -145,10 +145,10 @@ Paused; Established → Forming (demotion if it starts slipping).
 
 ## 4. Product Surfaces (UI map)
 
-**Visual language:** clean, minimal, adaptive light + dark (Linear/Notion family). The
-game layer (XP, levels, streaks, lights) stays but is rendered *quietly* — thin progress
-bars, muted stat chips, small status dots — not a gold RPG skin (principle 2). See SPEC
-§6.0 / the mockup `mvp/habiquest-linear.html`.
+**Visual language:** easy and bright, light + dark (ADR-0007). Each screen shows only
+its core information, and explanations move to `?` tooltips. State is told by color
+together with a shape and words. The game layer (별, streaks, lights) is drawn clearly.
+See SPEC §6.0 and the redesign artboards in `design/`.
 
 1. **Dashboard** — a restrained character sheet: stat levels + thin XP bars, per-habit
    heatmap, a `기록` button on each row that opens the log form (§5), and **always-on

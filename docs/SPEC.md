@@ -1,6 +1,6 @@
 # Habiquest — Implementation Specification
 
-**Status:** Draft v3.1 · 2026-07-08 (recording review pass — correctness A1–A6; easier logging B1–B6; gradual-growth C1–C7; skip-reasons load-bearing D; adaptive Linear/Notion visual language §6.0)
+**Status:** Draft v3.2 · 2026-10-10 (§6 rewritten to the redesign artboards, ADR-0007) · Draft v3.1 · 2026-07-08 (recording review pass — correctness A1–A6; easier logging B1–B6; gradual-growth C1–C7; skip-reasons load-bearing D; adaptive Linear/Notion visual language §6.0)
 **Companion document:** [`CONCEPT.md`](./CONCEPT.md) (product spec — read this first)
 **Scope of this document:** Engineering decisions, architecture, data model, domain
 engine contract, surface definitions, acceptance criteria, and project layout for
@@ -48,9 +48,8 @@ the first real implementation of Habiquest.
   growth chart** that makes gradual growth visible (C4).
 - **Lifecycle (§3.3):** `forming` → `established` → `paused`; demotion path.
 - **All 4 surfaces:** Dashboard, Today, Habit Detail, Reflection.
-- Visual reference: **`mvp/habiquest-linear.html`** (new Linear/Notion adaptive mockup —
-  §6.0 / §6.5). The old dark-gold RPG demo has been deleted; this is now the only
-  mockup. Replace seeded data with real domain + repository.
+- Visual reference: the redesign artboards in `design/` and the tokens in
+  `design/_tokens.redesign.css` (§6.0, ADR-0007).
 
 ### 1.3 Explicitly deferred (named here so they are not forgotten)
 
@@ -159,7 +158,7 @@ export const TUNING = {
     floorSkipThreshold:        2,     // ≥ this many floor-skips in window → reinforce floor flag
     identitySkipThreshold:     2,     // ≥ this many identity-skips in window → identity flag
 
-    // ADR-0002 — a run of `missed` days asks before it diagnoses (§4.4 / §6.4)
+    // ADR-0002 — a run of `missed` days asks before it diagnoses (§4.4 / §6.7)
     missedRunForBackfillPrompt:  3,    // consecutive `missed` days → show the bulk-backfill prompt
     missedRateForBackfillPrompt: 0.40, // or this share of the last 14 days being `missed`
   },
@@ -362,7 +361,7 @@ function classifyDay(
 > **Scope lives in one predicate, not in the classifier's return type.** `classifyDay`
 > stays **total** — it always returns a `DayState`. Everything that walks a date range
 > (`computeStreak`, `engagementStreak`, `milestoneBonusXP`, `successRate`,
-> `floorCompletionRate`, `consecutiveMissCount`, `atRiskToday`, the heatmap, the §6.4
+> `floorCompletionRate`, `consecutiveMissCount`, `atRiskToday`, the heatmap, the §6.7
 > backfill prompt) calls `isDateInScope` **first** and simply skips out-of-scope dates.
 > The alternative — a `DayState | undefined` return — would copy the same transparency
 > rule into eight call sites; a fourth `'out_of_scope'` union member would push a value
@@ -408,7 +407,7 @@ For an only-skip day with differing reasons, the **most recent skip row's** reas
 represents the day — "latest intent wins." "Most recent" is defined by the domain's
 **total order `(timestamp ASC, then id ASC)`** (§7.3 invariant), *not* by array or
 storage read order — so the result is deterministic even when same-day backfilled rows
-share the noon timestamp (§6.3 gives them strictly increasing sub-noon offsets, with
+share the noon timestamp (§6.5 gives them strictly increasing sub-noon offsets, with
 `id ASC` as the final tiebreak).
 
 > **`partial` (new state) — exactly three engine effects.** Removing the per-row
@@ -553,7 +552,7 @@ this to show the 🔴 status light and the "don't miss twice" nudge.
   — distinct from the floor-`computeStreak` (which counts `done`/`over` only). This makes a
   `partial` day **strictly better than an unrecorded one** (satisfying the scoped fairness
   rule §3.2) **without granting XP** — `partial` stays 0 XP (§4.2).
-  Foregrounded in Forming (Habit Detail §6.3; the C1 log acknowledgment reads
+  Foregrounded in Forming (Habit Detail §6.5; the C1 log acknowledgment reads
   "나타남 · 7일째"), because in formation the decisive quantity is repetitions-in-context
   (Lally: early reps move the automaticity curve most), not perfect floor days.
 
@@ -593,7 +592,7 @@ old blank-exclusion rule existed to prevent.
 > A `missed` day conflates two opposite worlds — *doing it but not logging* (the
 > **record** loop is broken) and *quietly stopped* (the **design** or the **load** is)
 > — and the data cannot tell them apart, so any flag built on it would be a guess.
-> Instead, a run of them triggers the **bulk-backfill prompt** (§6.4): the system asks
+> Instead, a run of them triggers the **bulk-backfill prompt** (§6.7): the system asks
 > before it diagnoses, and the answer separates the two worlds. Once the days are
 > filled in — or marked not-done, which attaches a reason — the four rules below
 > diagnose correctly on their own. This was a missing-**data** problem, not a
@@ -643,7 +642,7 @@ if (non-exception `skip` days cluster on the same weekday in the last 28 days
 > manufacture exactly the false signal ADR-0001 names by example — *"you keep missing
 > Tuesdays"* read off days that say nothing about **why**. Rule 2 therefore reads the same
 > population as `floorCompletionRate`'s reason-bearing side: non-`exception` `skip` days.
-> A weekday cluster of unrecorded days is handled by the bulk-backfill prompt (§6.4), and
+> A weekday cluster of unrecorded days is handled by the bulk-backfill prompt (§6.7), and
 > once those days are resolved into `skip` rows they enter this rule normally.
 
 **Rule 3 — Stagnation** *(count habits only)*
@@ -720,7 +719,7 @@ Priority order (first matching rule wins):
 ```typescript
 type StatusLight = 'stable' | 'caution' | 'intervention' | 'personal_best';
 
-// C4/C5 — day-summed actual per ISO week, most-recent last; also drives the §6.3 growth chart
+// C4/C5 — day-summed actual per ISO week, most-recent last; also drives the §6.5 growth chart
 function weeklyActualTotals(entries: HabitEntry[], weeks: number): number[]
 function deriveStatusLight(
   habit:   Habit,
@@ -848,66 +847,213 @@ that costs nothing; corrections are edit/delete of a specific row, §6.2).
 
 ## 6. UI Surfaces
 
-### 6.0 Visual language — adaptive, minimal (Linear / Notion)
+### 6.0 Visual baseline and principles
 
-The visual language is a **clean, minimal, typographic system in the Linear/Notion
-family** — *not* a dark-gold RPG treatment. `mvp/habiquest-linear.html` (§6.5) is the
-single visual source of truth; the earlier RPG demo has been deleted. Principles:
+Visual baseline:
 
-- **Adaptive light + dark.** One token set, both themes first-class (follow the OS
-  setting; a manual toggle is optional). Neither theme is an afterthought.
-- **Restrained, content-first.** Generous whitespace, a clear type hierarchy, hairline
-  1px borders and subtle surfaces instead of heavy cards; one functional accent used
-  sparingly. Depth via border + faint shadow, never gradients or glows.
-- **Gamification, minimally rendered (principle 2 — the game is a scaffold).** XP, stat
-  levels, streaks, and status lights **stay**, but read as *quiet UI*: a thin progress
-  bar (not a glowing gold bar), a small muted stat chip (not a badge), a compact numeric
-  level, small semantic status dots. Emoji appear sparingly as small status glyphs, not
-  decoration. The RPG feel comes from clarity and momentum, not gold and sparkle.
-- **Design tokens** (CSS/JS constants; concrete values live with the mockup §6.5 and the
-  theme module `src/theme/`):
-  - *Color:* a neutral scale (bg / surface / border / text-primary / text-muted), one
-    **accent** (interactive/brand), and **semantic** hues for day-states and lights
-    (`done` / `over` / `partial` / `skip` / `caution` / `intervention` / `positive`) —
-    muted, and distinct in **both** themes (the heatmap must keep pending ≠ missed ≠
-    partial ≠ skip legible in light *and* dark; `missed` and `skip` share the miss hue
-    and are told apart by outline vs. fill).
-  - *Type:* a system / Inter-like sans; a small modular scale (≈ 12 / 14 / 16 / 20 / 28);
-    tabular numerals for counts and XP.
-  - *Space & shape:* an 8px spacing rhythm; small radii (6–10px); hairline borders.
-- **Motion:** brief and functional (150–200ms) — the log-time reward (C1), the undo
-  toast (B6), and the save banner (C2) fade/slide subtly; no confetti.
+- The visual source of truth is the redesign artboards in `design/` (ADR-0007).
+- Templates live in `design/parts/redesign/`. `node design/build.mjs` builds each one twice: `<Name>.dc.html` (light) and `<Name>.dark.dc.html` (dark).
+- The canvas page `리디자인 (#89)` in `design/canvas.json` lays them out.
+- Concrete values (colors, type sizes, radii, touch areas) live in `design/_tokens.redesign.css`. This section names roles and rules only.
+- The artboards are static drawings. A board that shows a tooltip shows its `?` pressed.
+- `mvp/habiquest-linear.html` and the earlier boards were deleted. They are no longer a reference.
 
-Replace the demo's seeded arrays with live data from the repository; all business logic
-stays in the domain layer. Each surface below notes how its gamification reads in this
-restrained language; §6.5 links the reference mockup.
+Principles:
 
-### 6.1 Dashboard (`app/index.tsx` or `app/(tabs)/dashboard.tsx`)
-- Stat cards: level (from cumulative XP), XP bar, "to next level" label.
-- Quest Log: per-habit row with name, stat tag, cue summary, streak, 20-day heatmap
-  (each cell a computed day-state — `pending`/`missed`/`partial`/`done`/`over`/`skip`;
-  `pending` neutral, `missed` the miss color as an **outline**, `skip` the miss color
-  **filled**, `partial` its own shade), **status light** (🟢 / 🟡 / 🔴).
-  - **`기록` on the row (B1).** One button per row opens today's log form (§6.2) in a
-    modal: amount, optional note, `기록`, and the skip chips (B5). A successful save
-    closes the modal and updates the row's heatmap/streak/light in place, with the B6
-    undo toast. A failed save keeps the modal open, with the inputs and an error banner.
-    Closing without saving discards the inputs. The button reads `기록`; on a count
-    habit whose floor is met today it takes the pale selected shape and stays pressable;
-    on a binary habit done today it reads `✓ 했어요` and is disabled.
-    *(Revised: the one-tap "+floor" / "+1 더" / "✓" and the long-press skip chips are
-    gone. Reason: a Dashboard log now takes two taps instead of one, but there is one
-    path to record (#80).)*
-  - Tapping a 🔴 (or 🟡) navigates to `reflect/[habitId]`; tapping the row navigates to
-    `habit/[habitId]`.
-- Aggregate status count ("shaky habits · N").
+- Clarity: a grade-school child can read each screen at a glance. Users are still adults.
+- Each screen answers one question. Only the core information for that question is on screen.
+- Explanations move to `?` tooltips (§6.8).
+- A feature may be hidden or moved behind a tap. No feature is deleted.
+- Domain rules do not change. `CONTEXT.md` terms do not change.
+- Colors are bright and many. Each color has a `fill`, an `ink` and a `tint`.
+- State is never told by color alone. A shape and words go with the color.
+- Game elements (별, 연속, status lights) are drawn clearly.
+- Light and dark are both first-class themes.
+
+Readability (#92):
+
+- Body text is 17 or larger. Label text is 14 or larger. There is no smaller step.
+- Text contrast is at least 4.5:1. The target is 7:1. Large text is at least 3:1.
+- Status marks and control borders are at least 3:1 against their background.
+- `allowFontScaling` stays on.
+
+Color tokens (#96, #98):
+
+- `fill` is for dots, buttons and large areas. A status mark in `fill` is at least 3:1. White text on `fill` is at least 4.5:1.
+- `ink` is for text and icons. It is at least 4.5:1.
+- `tint` is for chip and banner backgrounds. Only `ink` goes on a `tint`.
+- Colors: `accent`, `done`, `over`, `crit`, `warn`, `streak`, `stat`. `warn` `fill` is decoration only. `stat` has no `fill`.
+- Neutrals: `bg`, `surface`, `surface2`, `inset`, `text`, `muted`, `faint`, `border`, `borderStrong`, `scrim`.
+- `faint` is never used for text.
+- No gradients. The level card is a solid `accent` `fill` in both themes.
+
+Type scale and shape (#96):
+
+| Token | Size | Weight | Use |
+|---|---|---|---|
+| `label` | 14 | 700 | chips, pill names, legends, tab labels, tooltips |
+| `body` | 17 | 400, 600 | body text, 언제·어디서, journal rows, buttons |
+| `title` | 20 | 800 | habit names, card titles, sheet titles |
+| `headline` | 24 | 800 | section heads, modal titles, pill numbers |
+| `display` | 30 | 800 | screen titles |
+| `number` | 44 | 900 | hero numbers, the stepper |
+
+- Line height is 1.5 for body text and 1.25 for titles.
+- Numbers use the regular font with `tabular-nums`. No monospace font.
+- Radii: `sm`, `md`, `lg` and `pill`. `TAP_TARGET` is 48.
+
+Dark theme (#98):
+
+- The background is a dark grey with a blue cast.
+- `fill` values are shared by both themes. Only neutrals, `ink` and `tint` have dark values.
+- Dark contrast is measured against `surface`.
+- A pair under 7:1 is used for short labels only.
+- Dark uses no shadows. Depth comes from surface steps and borders.
+
+Day-state marks (#93, #96):
+
+| State | Mark | Screen word |
+|---|---|---|
+| `done` | `done` `fill`, white ✓ | 했어요 |
+| `over` | `over` `fill`, white ★ | 목표까지 했어요 |
+| `partial` | white face, `done` `fill` border, ½ | 조금 했어요 |
+| `skip` | `inset` face, `muted` − | 못 했어요 |
+| `missed` | white face, `crit` `fill` border, ! | 기록 없음 |
+| `pending` | `borderStrong` dashed border | 아직이에요 |
+
+- Every screen that shows a day-state uses these marks.
+- A state name never uses the word 실패.
+
+Visual rules (#112):
+
+- Tooltips and toasts use a `text` background with `surface` text. The pair inverts with the theme.
+- Status lights: 괜찮아요 ●, 살펴보세요 ◆, 손봐야 해요 ▲. A best record adds ★.
+- Every habit icon sits on the `accent` `tint`. There is no per-habit color.
+- A progress bar is `accent` before the floor is met and `done` after.
+- In dark, floating elements have no shadow. They carry a `border` color outline.
+- A `scrim` lies behind sheets, menus and popups.
+
+Icons (#103):
+
+- The screen frame uses Lucide line icons (`lucide-react-native`). Frame: the tab bar, ⚙️, ⋯, `?`, close, back and the 끄적이기 button.
+- Line icons are 24 with a stroke of 2. They are `muted`. The selected tab is `accent` `ink`.
+- Meaningful content uses emoji: stats, 🔥 streak, habit icons.
+- The status marks ✓ ★ ½ − ! are text glyphs.
+- Tab bar items and buttons pair an icon with a word.
+- Only four buttons are icon-only: ⚙️, ⋯, close and `?`. Each has an accessible name.
+- No illustrations. An empty screen shows one large emoji, one sentence and one button.
+
+Touch areas (#92, #109, #112):
+
+- Every control is at least 48x48.
+- Exception: a date grid cell is at least 44 wide and 48 tall.
+- A date grid cell's touch area is the whole cell, mark and weekday label included.
+- The `?` icon keeps its drawn size. Its touch area grows to 48x48.
+- In a pill, the whole pill is the touch area of its `?`.
+
+Screen words (#93, #102, #111):
+
+- All copy uses 해요체.
+- XP is called 별: "이번 주 별", "+60 ⭐", "다음 레벨까지 별 120개".
+- The engagement streak is called "조금이라도 한 날".
+- 연속, 최소량 and 오늘 몫 keep their names.
+- `cue` is called 언제·어디서 on every screen, diagnosis included. The Today card shows its value with no label: "🕐 자기 전, 침대 옆에서".
+- `identity` is called 이유.
+- "스탯" becomes "능력치".
+- The skip reason chip "깜빡함" keeps its name.
+- Status lights keep "괜찮아요", "살펴보세요", "손봐야 해요".
+- These keep their words, with 해요체 and 별 applied: "손볼 습관 N개", "오늘의 습관", "캐릭터", "잠깐 쉬기", "보관하기", "최소량 줄이기".
+
+### 6.1 Tab bar
+
+Artboards: the tab bar at the bottom of `ReToday`, `ReDashboard` and `ReJournal`.
+
+- Three tabs, in order: 오늘, 대시보드, 글 모음 (#90, #100).
+- Icons: 오늘 `sun`, 대시보드 `layout-grid`, 글 모음 `notebook-pen`. Each icon has a `label` word under it.
+- The selected tab is `accent` `ink`. The others are `muted`.
+- Other screens open from the Dashboard (#95):
+  - Settings: ⚙️ at the top right.
+  - Habit Detail: tap a habit row.
+  - New habit: the 습관 만들기 button at the bottom.
+  - Reflection: the 회고하기 button on a 🔴 habit.
 
 ### 6.2 Today (`app/(tabs)/today.tsx`)
-- Date header + tally (quests done / logs / XP earned today).
+
+Artboards: `ReToday` (yesterday missed), `ReTodaySheet` (record sheet), `ReTodaySkip` (skip reason sheet), `ReTodayFreeLog` (끄적이기 sheet), `ReTodayStreak` (streak banner and toast), `ReTodayMilestone` (milestone popup).
+
+On screen (#90, #91):
+
+- The question: 지금 무엇을 하면 되나.
+- Top: the date, the title "오늘 할 일" and a count chip ("✅ 3개 중 1개 했어요").
+- Yesterday-missed banner: shown only when yesterday was missed. It has a `?` and the button "어제 했어요 · 채우기".
+- Habit card: icon, name, the 언제·어디서 value, today's progress ("6 / 10쪽") with a progress bar, and a large `+` button.
+- A card whose floor is met shows "✓ 했어요" and a ✓ button. A card past its target shows "★ 목표까지 했어요".
+- 별 appear only in the toast and the celebration right after a log.
+- No 7-day strip on Today.
+- Today's records fold under "오늘 기록 N개", closed by default.
+- The "✏️ 끄적이기" button sits at the bottom.
+
+Record sheet (`ReTodaySheet`, #90, #91):
+
+- The `+` button opens a bottom sheet.
+- Head: icon, name and today's sum ("지금 6쪽"). Close button.
+- A stepper with the amount, and one result line ("이걸로 오늘 몫을 채워요 ✓").
+- The time button "지금 14:20 · 시각 바꾸기".
+- A memo field ("메모 (선택)").
+- The primary button "기록하기".
+- The text button "오늘 못 했어요 · 왜?" opens the skip reason sheet.
+
+Skip reason sheet (`ReTodaySkip`, #120):
+
+- A bottom sheet, not a modal.
+- Head: the habit and "오늘 못 했어요 · 왜?".
+- The memo field is on top. The line "이유를 누르면 바로 기록돼요." follows.
+- Four reason chips at the bottom: 깜빡함, 너무 힘듦, 예외, 안 내킴. Tapping a chip records the skip at once.
+
+끄적이기 sheet (`ReTodayFreeLog`, #91, #120):
+
+- Head: "✏️ 끄적이기" with a `?`.
+- Four kind chips: 메모, 잘한 일, 기분, 떠오른 생각. Picking one is optional. The default is 떠오른 생각.
+- A text field, the time button "지금 14:20 · 날짜와 시각 바꾸기" and the button "남기기".
+
+Streak celebration (`ReTodayStreak`, `ReTodayMilestone`, #97, #99):
+
+- One condition: the habit's current streak went up. Today's logs and backfills both follow it.
+- Usually a banner drops from the top. It shows the habit name, its streak and this week's days.
+- On day 5, 10, 20, 30, 60 and 100 a popup with confetti shows instead. It closes by itself after 3 seconds. These days match the `binaryStreakMilestones` bonus days. Count habits use the same days.
+- A milestone popup shows its bonus 별 line only when that day earns the bonus.
+- The banner does not block logging.
+- Several habits reaching their floor on one day get one banner each.
+- A new banner replaces the open one at once. There is no queue.
+- A backfill that raises the streak changes the banner copy: "어제를 채워서 13일 연속이 됐어요".
+- A backfill that crosses a milestone also shows the popup.
+- A backfill that leaves the streak unchanged shows nothing.
+- Passing the target adds a ★ line to the same banner: "목표까지 넘겼어요 · 별 +N". It uses no confetti.
+- One log that meets both floor and target shows one banner with two lines.
+- With a milestone popup, the ★ line goes inside the popup.
+- One habit and one date celebrate once. Deleting and re-adding a record does not celebrate again.
+- A log that does not raise the streak shows no banner. The undo toast confirms it.
+- When banner and toast show together, the toast has no streak. It holds the amount, 별 and 실행취소.
+
+Undo toast copy (#99):
+
+| Case | Second line | Third line |
+|---|---|---|
+| `partial` | the amount | 조금이라도 했어요 · 최소량까지 3쪽 남았어요 |
+| `skip`, exception reason | the reason | 예외라서 연속은 그대로예요 |
+| `skip`, other reason | the reason | 쉬었어요 · 이유: 피곤해요 |
+| another log on a day already celebrated | +2쪽 · 별 +12 | 더 했어요 |
+
+- The `partial` toast uses the default toast colors.
+- A `skip` with another reason never says the streak broke. The streak pill shows it.
+- A log that earns no 별 drops the 별 part of the second line.
+
+Behaviour rules (moved from v3.1 §6.2):
+
 - **Unified composer:**
   - **Date control (B4).** Defaults to **오늘 (today)**, with a one-tap **어제
     (yesterday)** toggle and a stepper back to the habit's `createdAt` (future blocked,
-    §6.3). A non-today entry is a **backfill** and follows the §6.3 rules (noon-based
+    §6.5). A non-today entry is a **backfill** and follows the §6.5 rules (noon-based
     timestamp, append-only). This makes Today the single logging surface for the two
     dominant cases — today, and "did it last night, forgot to log" — so forgotten days
     are recovered where the thought occurs and `missed` days stop accumulating —
@@ -952,7 +1098,7 @@ restrained language; §6.5 links the reference mockup.
   - Editable fields: `actual` (count), `timestamp` (via the reveal), `note`, and
     skip↔activity mode (incl. `skipReason`); free logs additionally allow `type`.
   - **Undo, not confirm, for new rows (B6).** Every new row saved through the log form
-    (the Dashboard's modal §6.1, Today, and Habit Detail) shows a
+    (the Dashboard's modal §6.3, Today, and Habit Detail) shows a
     transient **undo toast** ("기록됨 +N {unit} · 실행취소"); Undo deletes the
     just-appended row by `id` (append-only → a clean single-row delete). The toast also
     serves as the "it registered" confirmation a save otherwise lacks.
@@ -968,10 +1114,139 @@ restrained language; §6.5 links the reference mockup.
     rule — scoped now: undo-toast for new rows saved through the log form, a
     consequence-aware confirm only for the destructive edge cases.)*
 
-### 6.3 Habit Detail (`app/habit/[id].tsx`)
-- Header: name, stat tag.
-- Stat pills: streak, **engagement ("나타남") streak** (C3 — foregrounded in Forming),
-  floor-rate (28-day), XP/week.
+- Revised (#91): on Today, a past day is filled only from the yesterday-missed banner. Older days are filled from the Dashboard 7-day dots (§6.3) and Habit Detail (§6.5).
+- Revised (#90, #91): each habit card has its own `+` button that opens the record sheet. A free log opens from the 끄적이기 button.
+- Revised (#120): the skip reason chips sit in their own sheet. "오늘 못 했어요 · 왜?" in the record sheet opens it.
+- Revised (#93, #97, #99): XP is called 별 on screen. A streak rise shows the banner or popup above. Any other log changes only the undo toast copy.
+
+### 6.3 Dashboard (`app/index.tsx` or `app/(tabs)/dashboard.tsx`)
+
+Artboards: `ReDashboard`, `ReDashboardStats` (stat sheet), `ReDashboardEmpty` (no habits), `ReSettings` (settings).
+
+On screen (#95, #101, #109, #111):
+
+- The question: 잘 되고 있나, 무엇을 손봐야 하나.
+- Top: the date, the title "대시보드" and ⚙️.
+- Level card: a solid `accent` `fill` card.
+  - "캐릭터 레벨 N" with a `?`.
+  - One stat line: "💪 3 · 📖 2 · 🧘 4".
+  - A progress bar and "다음 레벨까지 별 N개".
+- The head "손볼 습관 N개". It has no `?`.
+- Habit rows, sorted by status light with 🔴 on top.
+- A row holds the status light (shape and word), the icon and name, "🔥 N" streak and a `?` at its head.
+- Under the head sit the last 7 days as dots, each with its weekday. The last one reads 오늘.
+- A row shows no stat.
+- Only a 🔴 row has the "회고하기" button.
+- The "습관 만들기" button sits at the bottom.
+
+Actions:
+
+- Tap a row: Habit Detail.
+- Tap a dot: the record sheet for that date. The sheet head shows the date in large type. Only the sheet's 기록 button saves. A stray tap changes no data (#109).
+- The dot is drawn at 36. Its touch area is the whole cell (§6.0).
+- Tap the level card: the stat sheet (`ReDashboardStats`).
+  - One progress bar per stat, with the stat's level.
+  - Under each bar, the habit names tied to that stat and the 별 left to its next level.
+  - The sheet head shows the character level and the 별 left to the next level.
+- The character level rule does not change.
+
+Empty (`ReDashboardEmpty`):
+
+- "🌱", "아직 습관이 없어요" and the button "습관 만들기".
+
+Settings (`ReSettings`, #95, #120):
+
+- Opened by ⚙️. A back button and the title "설정".
+- "테마": 자동, 라이트, 다크.
+- "보관한 습관 N개": the path to see archived habits and bring them back.
+- "로그아웃".
+
+Behaviour rules (moved from v3.1 §6.1):
+
+- **`기록` on the row (B1).** One button per row opens today's log form (§6.2) in a
+  modal: amount, optional note, `기록`, and the skip chips (B5). A successful save
+  closes the modal and updates the row's heatmap/streak/light in place, with the B6
+  undo toast. A failed save keeps the modal open, with the inputs and an error banner.
+  Closing without saving discards the inputs. The button reads `기록`; on a count
+  habit whose floor is met today it takes the pale selected shape and stays pressable;
+  on a binary habit done today it reads `✓ 했어요` and is disabled.
+  *(Revised: the one-tap "+floor" / "+1 더" / "✓" and the long-press skip chips are
+  gone. Reason: a Dashboard log now takes two taps instead of one, but there is one
+  path to record (#80).)*
+- Tapping a 🔴 (or 🟡) navigates to `reflect/[habitId]`; tapping the row navigates to
+  `habit/[habitId]`.
+- Aggregate status count ("shaky habits · N").
+
+- Revised (#95, #109): a row has no `기록` button. A dot opens the record sheet for its date.
+- Revised (#95): a 🔴 row carries the 회고하기 button that opens Reflection.
+- Revised (#93, #111): the aggregate count reads "손볼 습관 N개".
+
+### 6.4 글 모음
+
+Artboard: `ReJournal`.
+
+On screen (#100):
+
+- The third tab. It gathers free logs and memos.
+- A memo shows its habit name and that day's state mark.
+- Entries group by date, newest date on top.
+- A row of filter chips sits on top: 전체, 끄적이기, then each habit name.
+- A free log's kind is not a filter.
+- The list is read-only.
+- Tap a free log: Today for that date.
+- Tap a memo: that habit's Habit Detail, at that date in the journal.
+
+### 6.5 Habit Detail (`app/habit/[id].tsx`)
+
+Artboards: `ReDetailForming` (forming), `ReDetailEstablished` (established, ⋯ menu open), `ReDetailRed` (손봐야 해요, yes/no habit), `ReDetailPause` (pause confirm sheet).
+
+On screen, in order (#94, #110):
+
+1. Head: back, ⋯, the habit icon, the name, the status light with a `?`.
+2. A 🔴 habit: the "회고하기" button.
+3. One hero card.
+   - Forming: the 자리 잡는 중 ring, counted in days done ("34일", "보통 66일"), with a `?`. Beside it, the 연속 number and the next step ("오늘 4쪽 더 하면 3일").
+   - Established: the 주마다 한 양 bar chart with a `?` and "이번 주 N".
+4. Pills: 연속, 최고 연속 and 성공률, each with a `?`.
+5. The heatmap "최근 3주" with a `?` and a legend of the six day-states.
+6. The design card.
+7. The journal.
+
+Numbers (#94):
+
+- 연속, 최고 연속 and 성공률 always show. 최고 연속 shows for both habit kinds.
+- 조금이라도 한 날 shows as a fourth pill only when it is larger than 연속.
+- 이번 주 별 is hidden on this screen.
+
+Heatmap (#109):
+
+- 7 columns by 3 rows: the last 21 days. It ends today, in the bottom-right cell.
+- One weekday row sits on top.
+- Cells are drawn at 40 in 48-tall rows.
+- Tap a cell: the record sheet for that date, as on the Dashboard (§6.3).
+- Days older than 3 weeks are filled from the journal's "+ 지난 날 기록 추가".
+- `TUNING.heatmapDays` goes from 20 to 21 in the implementation issue.
+
+Design card (#94, #101, #110):
+
+- Title "지금 이렇게 하기로 했어요" and the "수정" button, which opens the edit form.
+- Rows: 언제·어디서, 최소량, 목표 and 능력치 ("📖 지능"). 최소량 and 목표 have a `?`.
+- "이유 보기" expands the 이유.
+- An empty 언제·어디서 keeps "이것부터 정해 보세요" on screen.
+- The stat shows only here. The head has no stat chip.
+
+Journal (#94):
+
+- The last 3 days show. "더 보기" opens the rest.
+
+⋯ menu (#94, #120):
+
+- "⏸ 잠깐 쉬기" and "🗄 보관하기".
+- 잠깐 쉬기 opens a confirm sheet (`ReDetailPause`): the habit, the title "잠깐 쉴까요?", `LIFECYCLE_NOTE` as body, and the buttons "잠깐 쉬기" and "그대로 둘게요".
+- 보관하기 opens a confirm sheet of the same pattern: the title "보관할까요?", `LIFECYCLE_NOTE` as body, and the buttons "보관하기" and "그대로 둘게요". It has no artboard.
+
+Behaviour rules (moved from v3.1 §6.3):
+
 - **Growth panel (C4, count habits).** A bar/sparkline of **weekly summed actual**
   (`weeklyActualTotals`, last 8–12 weeks) with the **floor** and **target** as reference
   lines and a ⭐ on the best week. For **Established** habits this is the *primary* panel
@@ -1005,14 +1280,60 @@ restrained language; §6.5 links the reference mockup.
   - Backfill **appends** (it does not overwrite) — same-day "duplicates" are
     intentional under the multi-entry model; edit/delete a specific row to correct.
 
-### 6.4 Reflection (`app/reflect/[id].tsx`)
+### 6.6 New habit
+
+Artboards: `ReNewHabit` (count), `ReNewHabitYesNo` (yes/no).
+
+On screen (#102, #103, #110):
+
+- One screen. A close button, the title "습관 만들기" and one line under it: "나중에 언제든 고칠 수 있어요".
+- Fields, in order: 이름, 측정 방식, 최소량 and 목표, 언제·어디서, 능력치, 이유.
+- 목표, 언제·어디서 and 이유 carry "· 선택".
+- Each field's explanation moves to a `?` beside its name. Placeholder examples stay inside the fields.
+- 이름 has an icon button on its left. It picks the habit icon. An empty icon falls back to the stat's icon.
+- 측정 방식 offers "횟수 · 양" and "예 · 아니오".
+- A yes/no habit hides the empty 최소량 and 목표 fields. Their explanation moves to the 측정 방식 tooltip.
+- 능력치 is required. One stat is picked by default, so the user can move on without picking.
+- The button "습관 만들기" sits at the bottom.
+
+### 6.7 Reflection (`app/reflect/[id].tsx`)
+
+Artboard: `ReReflection`.
+
+On screen (#102, #109, #111):
+
+- A back button and the title "명상, 잠깐 볼까요".
+- The recover-first question on top ("이 3일, 하셨나요?") with a `?`. Each date has "했어요" and "안 했어요". The line "했어요를 누르면 그날이 성공으로 바뀌고 연속도 다시 이어져요." follows.
+- "최근 7일은 이랬어요" with a `?`. The 7 cells use the common day-state marks (§6.0) and share the width equally. Journal notes follow.
+- "이렇게 보여요" with a `?`. Only the most severe diagnosis card is open. The rest fold under "다른 점 N개 더 보기".
+- The open card always shows its evidence in the body.
+- The recommended action: "✓ 이렇게 해 볼까요: …", its explanation, the alternatives and the button "이대로 고칠게요".
+- The closing evidence sentence at the bottom is gone. "직접 표시한 날만 보고…" moved to the `?` of 이렇게 보여요.
+
+Diagnosis copy (#102, #111):
+
+| Place | Copy |
+|---|---|
+| `cue` badge | 언제·어디서 |
+| `identity` badge | 이유 |
+| Rule 2 message | {요일} 언제·어디서가 자꾸 어긋나요. |
+| Rule 4 message (`cue`) | 언제·어디서가 비어 있어요. 습관이 붙지 않는 가장 큰 이유일 수 있어요. |
+| Rule 4 message (`identity`) | 이유가 비어 있어요. 습관이 붙지 않는 가장 큰 이유일 수 있어요. |
+| Rule 4 evidence | …, 언제·어디서 미설정 / 이유 미설정 |
+| Rule 5 message (`cue`) | 깜빡해서 못 한 날이 반복돼요. |
+| Rule 5 evidence label (`cue`) | 깜빡함 |
+| Prescription | 할 시간 정하기 → 언제·어디서 정하기 |
+| Prescription | 할 시간 바꾸기 → 언제·어디서 바꾸기 |
+
+Behaviour rules (moved from v3.1 §6.4):
+
 - Entry point: tap a 🔴 or 🟡 status light on the Dashboard.
 - **Recover-first prompt (ADR-0002).** When the habit's recent history holds a run of
   `missed` days — `TUNING.diagnosis.missedRunForBackfillPrompt` consecutive, or more
   than `missedRateForBackfillPrompt` of the last 14 days — the screen opens with a
   **bulk-backfill question above the mirror**, not with a diagnosis:
   *"이 5일, 하셨나요?"* Each listed date offers **one tap to fill it** (appends
-  `actual = floor`, noon-pinned per §6.3) and **one tap for "안 했어요"** (appends a
+  `actual = floor`, noon-pinned per §6.5) and **one tap for "안 했어요"** (appends a
   skip; the reason chips follow). Present the two choices with **equal visual weight** —
   making "fill" the easy path biases the data it is meant to collect. In-app only, on
   entering reflection: never a push (§7.4 alert blindness). Filling repairs the day and
@@ -1038,16 +1359,47 @@ restrained language; §6.5 links the reference mockup.
      `committedAt`).
   - After commit: navigate back to Dashboard; status light should have updated.
 
-### 6.5 Reference mockup — `mvp/habiquest-linear.html`
+- Revised (#94, #95): Reflection opens from the 회고하기 button of a 🔴 habit, on the Dashboard and on Habit Detail.
 
-A self-contained, theme-aware (light + dark) HTML mockup of all four surfaces in the
-§6.0 language, showing the improved recording UX (one-tap "+floor" / "✓", quick-add
-chips, progress-to-floor, collapsed time, computed day-states incl. `partial`, the
-engagement streak, the weekly-actual growth chart, the log-time reward, and the
-never-miss-twice save banner) with gamification rendered minimally. It is the visual
-source of truth for implementation and supersedes the old demo's look.
-*(Revised: its recording UX is superseded by the one log form of §6.1 and §6.2. Reason:
-the one-tap, the quick-add chips and the new-entry time reveal are gone (#76).)*
+### 6.8 `?` tooltips
+
+Rules (#90, #93, #111, #112):
+
+- A `?` sits beside each number or symbol that is hard to read alone. One `?` per item.
+- A tooltip opens on hover or tap.
+- A tooltip is 해요체 and two sentences at most.
+- Result guidance right before or after an action stays out of tooltips. It stays as one sentence in the sheet or modal.
+- Picking a skip reason is an action, not a tooltip. It stays in its sheet.
+- Tooltip colors and touch areas follow §6.0.
+- The 측정 방식 tooltip has one copy, whatever the selection.
+- "손볼 습관 N개" has no `?`. The status light `?` explains the same thing.
+- The 능력치 tooltips may change with the outcome of #116.
+
+Copy:
+
+| Place | Copy |
+|---|---|
+| 연속 | 최소량을 채운 날이 이어진 날수예요. 기록 없이 지나간 날이나 이유를 골라 못 했다고 찍은 날이 있으면 0부터 다시 세요. |
+| 조금이라도 한 날 | 최소량에 못 미쳐도 조금이라도 한 날까지 세요. 기록 없는 날이나 이유를 골라 못 했다고 찍은 날이 있으면 0부터 다시 세요. |
+| 성공률 | 최근 28일 중 최소량을 채운 날의 비율이에요. 예외로 찍은 날은 빼고, 5일이 쌓이기 전에는 —로 보여요. |
+| 최고 연속 (Habit Detail pill) | 지금까지 가장 길게 이어진 연속이에요. 연속이 끊겨도 줄지 않아요. |
+| 별과 레벨 | 최소량을 채우면 별을 받아요. 별이 모이면 레벨이 올라요. |
+| 캐릭터 레벨 (Dashboard) | 능력치 가운데 가장 높은 레벨이에요. 습관을 하면 그 습관의 능력치에 별이 쌓여요. |
+| 상태등 | 최근 기록을 보고 습관이 잘 굴러가는지 알려 줘요. 손봐야 해요가 뜨면 회고하기로 원인을 찾아요. |
+| 7일 점 (Dashboard row head) | 점을 누르면 그날 기록을 채울 수 있어요. 테두리만 있는 점은 기록 없는 날이고, 실패로 세요. |
+| 자리 잡기 | 날짜가 아니라 실제로 한 날로 세요. 보통 두 달쯤 걸리니 더뎌도 괜찮아요. |
+| 주마다 한 양 (Habit Detail) | 막대 하나가 한 주 동안 한 양을 모두 더한 값이에요. 가로선은 하루 최소량과 목표를 7일로 곱한 기준이에요. |
+| 최소량 (form) | 아무리 바빠도 할 수 있는 양이에요. 이만큼 하면 그날 몫을 한 거예요. |
+| 목표 (form) | 최소량보다 큰 선택 목표예요. 넘기면 별을 더 받지만 안 해도 괜찮아요. |
+| 측정 방식 (New habit) | 횟수 · 양은 한 만큼 적고, 최소량을 채우면 그날 몫을 해요. 예 · 아니오는 했는지만 보고, 이어 간 날이 쌓이면 별을 더 받아요. |
+| 언제·어디서 (New habit) | 습관을 시작할 때와 곳이에요. 비워 둬도 되고, 잘 안 될 때 먼저 정해 보자고 물어볼게요. |
+| 능력치 (New habit) | 이 습관으로 받은 별이 쌓이는 갈래예요. 가장 높은 능력치 레벨이 캐릭터 레벨이 돼요. |
+| 이유 (New habit) | 어떤 사람이 되고 싶어서 하는지 적어요. 내키지 않는 날 다시 꺼내 보면 이어 가기 쉬워요. |
+| 어제 놓침 배너 (Today) | 하루 놓치는 건 괜찮아요. 어제 했는데 기록만 못 했다면 지금 채워요. |
+| 끄적이기 시트 (Today) | 떠오른 생각이나 방금 한 일을 적어요. 별이나 연속에는 영향이 없어요. |
+| 회고 백필 질문 | 기록 없이 지나간 날은 했는지 못 했는지 알 수 없어요. 그래서 원인을 짚기 전에 먼저 물어봐요. |
+| 회고 7일 칸 | ! 칸은 기록 없이 지나간 날이고, − 칸은 이유를 골라 못 했다고 찍은 날이에요. 둘 다 실패로 세지만 이유는 − 칸만 알 수 있어요. |
+| 이렇게 보여요 (Reflection) | 직접 남긴 기록만 보고 원인을 짚어요. 기록 없이 지나간 날은 이유를 몰라서 빼요. |
 
 ---
 
