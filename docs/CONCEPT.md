@@ -1,7 +1,7 @@
 # Habit System — Product Specification
 
 **Tagline:** Build the Habit, Grow yourself
-**Status:** Draft v3.5 (MVP scope) · updated 2026-09-01 (ADR-0001: an unlogged past day now counts as a miss and backfill repairs it; ADR-0002: a run of unlogged days asks before it diagnoses; plus v3.3's scoped fairness + engagement streak, log-time reward, proactive never-miss-twice save, visible weekly growth, skip-reasons drive diagnosis; minimal adaptive Linear/Notion visual language)
+**Status:** Draft v3.6 (MVP scope) · updated 2026-10-10 (ADR-0007: the easy, bright redesign replaces the minimal visual language) · Draft v3.5 · updated 2026-09-01 (ADR-0001: an unlogged past day now counts as a miss and backfill repairs it; ADR-0002: a run of unlogged days asks before it diagnoses; plus v3.3's scoped fairness + engagement streak, log-time reward, proactive never-miss-twice save, visible weekly growth, skip-reasons drive diagnosis; minimal adaptive Linear/Notion visual language)
 **Working name:** Habiquest (candidate, not final)
 
 ---
@@ -145,20 +145,29 @@ Paused; Established → Forming (demotion if it starts slipping).
 
 ## 4. Product Surfaces (UI map)
 
-**Visual language:** clean, minimal, adaptive light + dark (Linear/Notion family). The
-game layer (XP, levels, streaks, lights) stays but is rendered *quietly* — thin progress
-bars, muted stat chips, small status dots — not a gold RPG skin (principle 2). See SPEC
-§6.0 / the mockup `mvp/habiquest-linear.html`.
+**Visual language:** easy and bright, light + dark (ADR-0007). Each screen shows only
+its core information, and explanations move to `?` tooltips. State is told by color
+together with a shape and words. The game layer (별, streaks, lights) is drawn clearly.
+See SPEC §6.0 and the redesign artboards in `design/`.
 
-1. **Dashboard** — a restrained character sheet: stat levels + thin XP bars, per-habit
-   heatmap, a `기록` button on each row that opens the log form (§5), and **always-on
-   status lights** (§7) that route attention to habits needing action.
-2. **Today** — chronological feed of the day (habit entries + free logs) with a unified
-   composer (§9), immediate log-time reward, and the never-miss-twice save banner.
-3. **Habit Detail** — a single habit's current Design (cue/floor/identity), stats, the
-   **weekly-actual growth chart** (visible gradual growth), and journal history.
-4. **Reflection** — per-habit, entered by tapping a habit's status light; diagnoses (with
-   visible evidence), recommends, and updates the design (§6).
+1. Dashboard: a level card (character level, a one-line stat summary, 별 to the next
+   level) that opens a stat sheet. Below it, one row per habit with its always-on status
+   light (§7), 🔥 streak and last 7 days as dots. A dot opens the record sheet for that
+   date (§5). Habits needing action sort to the top, and a 🔴 habit carries a 회고하기
+   button.
+2. Today: what to do now. One card per habit shows its progress and a `+` button that
+   opens the record sheet. One banner groups the habits with no record yesterday. Each
+   blank habit gets 했어요, which fills yesterday, and 못 했어요, which records a skip
+   with a reason. There is no save button (#135). A 끄적이기 button opens
+   the 끄적이기 sheet for free logs (§9). The day's feed is folded by default, and each
+   log shows an immediate reward. Free logs and notes are read back in the 글 모음 tab.
+3. Habit Detail: a single habit's state first. A hero card shows the forming ring, or
+   the weekly-actual growth chart once established. Streak pills and a 3-week heatmap
+   follow. Then come its current Design (언제·어디서 / 최소량 / 목표 / 능력치, 이유 on
+   demand) and journal history.
+4. Reflection: per-habit, entered from a 🔴 habit's 회고하기 button or from Habit
+   Detail's ⋯ menu in any state. It diagnoses with visible evidence, recommends, and
+   updates the design (§6).
 
 ---
 
@@ -211,7 +220,7 @@ purpose, and is cheaper than blank-form abandonment at creation.
 - **Backfill (required), and easy — it is now the *recovery* mechanism.** An unrecorded
   past day counts as a miss (§3.2); adding the entry later takes it back. "Did it but
   forgot to log" is therefore always recoverable, and recovering it is the point. A **"yesterday" fast-path** sits right in the
-  Today composer for the dominant forgot-last-night case; older gaps use Habit Detail. Since a forgotten day now costs a streak until it is filled, this path has to stay
+  grouped Today banner for the dominant forgot-last-night case; older gaps use Habit Detail. Since a forgotten day now costs a streak until it is filled, this path has to stay
   cheap — the whole bargain of ADR-0001 rests on it.
 - **Skip with reason — a pre-classified diagnosis that now *acts*.** Marking a day skipped
   is **one tap on a reason chip** (a small fixed set, to stay low-friction). Reasons map
@@ -231,8 +240,8 @@ purpose, and is cheaper than blank-form abandonment at creation.
   *consecutive* misses are the real failure signal. The system intervenes **inside the open
   save window** — yesterday was a miss (now including an unrecorded day) and today is still
   pending — with an opportunity-framed nudge ("one floor log today keeps this rolling"),
-  *before* the second miss completes, not after. Because unrecorded days now count, this
-  banner fires more often and doubles as the backfill prompt.
+  *before* the second miss completes, not after. The redesigned Today shows no save
+  nudge (#135). Its grouped yesterday banner asks to fill each blank day instead.
 
 ### Stage 3 — Reflect
 
@@ -383,14 +392,15 @@ A logging layer alongside habits, on the **Today** surface.
 - **Purpose:** a simple record of the user's day — *not* part of habit scoring or
   reflection. Just "what happened today."
 - **Types:** Note / Win / Mood / Idea.
-- **Timestamp:** defaults to now and is **collapsed behind a small "🕑 지금 HH:MM"
-  reveal** (SPEC §6.2, B3) — timestamp only affects ordering — with separate hour/minute
-  pickers (10-minute increments) shown on tap for the rare override.
+- **Timestamp:** defaults to now. A small "지금 HH:MM · 날짜와 시각 바꾸기" button
+  reveals separate hour/minute pickers (10-minute increments) for the rare override
+  (SPEC §6.2, B3). Edits of an existing entry keep the same override. A new habit entry
+  has no override and is always stamped now. Timestamp only affects ordering.
 - **No XP, no stat/streak effect.** Free logs never touch the game layer.
 
-### 9.2 Unified composer
-- Habit entries and free logs are created from the **same** composer on Today.
-- A target selector chooses "Free log" or one of the user's habits:
+### 9.2 Record sheet and 끄적이기 sheet
+- Habit entries and free logs are created from separate sheets on Today (SPEC §6.2).
+- A habit card's `+` opens the record sheet. The 끄적이기 button opens the 끄적이기 sheet:
   - Free log → type (Note/Win/Mood/Idea) + optional note.
   - Habit (count) → actual amount (+ optional note); classified done/over, awarded XP.
   - Habit (yes/no) → a single "done" (+ optional note); awarded XP.
@@ -526,8 +536,8 @@ Deferred to keep the MVP focused and validatable. Design when built:
 ## 13. Design Principles (summary)
 
 1. The loop must close. Records exist to update the design.
-2. Game layer is a scaffold, not the product. Science wins conflicts — and it is
-   rendered *quietly* (minimal, adaptive light+dark UI; §4 / SPEC §6.0), not a loud RPG skin.
+2. Game layer is a scaffold, not the product. Science wins conflicts. It is drawn
+   clearly (easy, bright light+dark UI; §4 / SPEC §6.0, ADR-0007), not as a gold RPG skin.
 3. The first design is a hypothesis — keep creation light (floor required for count
    habits; cue/identity introduced when the data shows they're needed).
 4. Reward the floor (consistency) and growth above it (intensity) — unified as XP,
