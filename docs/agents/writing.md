@@ -7,11 +7,11 @@
 
 ## What the rules cover
 
-- PRs and commits: every rule group, title template included.
+- Commits: every rule group, title template included.
+- PRs: the title rules only. PR bodies follow the `pr` skill template.
 - Issues, ADRs, repo docs: the style clauses and the notation rules only.
 - Code comments and docblocks: nothing here applies. They keep their English conventions.
 - Agent chat replies: out of scope.
-- This repo squash-merges. The PR body becomes the commit body, so they are one text.
 
 ## Titles
 
