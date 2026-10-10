@@ -105,8 +105,8 @@ button{font:inherit; color:inherit; background:none; border:0; padding:0; cursor
 .mk.missed{background:var(--surface); border:2px solid var(--crit); color:var(--crit-ink)}
 .mk.pending{background:var(--surface); border:2px dashed var(--border-strong); color:var(--muted)}
 .mk.mini{width:22px; height:22px; font-size:14px}
-.days{display:flex; gap:4px; align-items:flex-start}
-.day{display:flex; flex-direction:column; align-items:center; gap:2px; font-size:14px; font-weight:700; color:var(--muted)}
+.days{display:grid; grid-template-columns:repeat(7,1fr); align-items:start}
+.day{display:flex; flex-direction:column; align-items:center; gap:2px; min-height:48px; font-size:14px; font-weight:700; color:var(--muted)}
 
 /* 오늘 */
 .habit{display:flex; align-items:center; gap:14px}
@@ -164,8 +164,9 @@ button{font:inherit; color:inherit; background:none; border:0; padding:0; cursor
 .pills{display:grid; grid-template-columns:repeat(3,1fr); gap:8px}
 .pill{background:var(--surface); border:2px solid var(--edge); border-radius:var(--r-md); padding:10px 8px 10px 12px; box-shadow:var(--shadow); white-space:nowrap}
 .pill .q{width:24px}
-.heat{display:grid; grid-template-columns:repeat(10,1fr); gap:6px; margin-top:10px}
-.heat .mk{width:auto; height:auto; aspect-ratio:1; border-radius:8px}
+.heat{display:grid; grid-template-columns:repeat(7,1fr); grid-template-rows:24px; grid-auto-rows:48px; justify-items:center; align-items:center; margin-top:6px}
+.heat .mk{width:40px; height:40px; border-radius:10px}
+.heat .hd{height:24px; align-self:end; font-size:14px; font-weight:700; color:var(--muted)}
 .legend{display:flex; flex-wrap:wrap; gap:6px 12px; margin-top:12px; font-size:14px; font-weight:700; color:var(--muted)}
 .legend span{display:flex; align-items:center; gap:4px}
 .drow{display:flex; gap:12px; padding:12px 0; border-bottom:1px solid var(--border); align-items:center}
@@ -248,8 +249,8 @@ button{font:inherit; color:inherit; background:none; border:0; padding:0; cursor
     </div>
     <div class="pills" style="grid-template-columns:repeat(2,1fr)"><div class="pill"><div class="row t-label muted" style="gap:0">연속<span class="q" aria-label="설명 보기"><svg class="ic"><use href="#i-help"/></svg></span></div><div class="t-head">2<span class="t-label muted">일</span></div></div><div class="pill"><div class="row t-label muted" style="gap:0">최고 연속<span class="q" aria-label="설명 보기"><svg class="ic"><use href="#i-help"/></svg></span></div><div class="t-head">20<span class="t-label muted">일</span></div></div><div class="pill"><div class="row t-label muted" style="gap:0">성공률<span class="q" aria-label="설명 보기"><svg class="ic"><use href="#i-help"/></svg></span></div><div class="t-head">64<span class="t-label muted">%</span></div></div><div class="pill"><div class="row t-label muted" style="gap:0">조금이라도 한 날<span class="q" aria-label="설명 보기"><svg class="ic"><use href="#i-help"/></svg></span></div><div class="t-head">4<span class="t-label muted">일</span></div></div></div>
     <div class="card">
-      <div class="row t-label muted" style="gap:2px">최근 20일<span class="q" aria-label="설명 보기"><svg class="ic"><use href="#i-help"/></svg></span></div>
-      <div class="heat"><span class="mk done" aria-label="했어요">✓</span><span class="mk done" aria-label="했어요">✓</span><span class="mk over" aria-label="목표까지 했어요">★</span><span class="mk done" aria-label="했어요">✓</span><span class="mk partial" aria-label="조금 했어요">½</span><span class="mk missed" aria-label="기록 없음">!</span><span class="mk done" aria-label="했어요">✓</span><span class="mk skip" aria-label="못 했어요">−</span><span class="mk done" aria-label="했어요">✓</span><span class="mk done" aria-label="했어요">✓</span><span class="mk done" aria-label="했어요">✓</span><span class="mk done" aria-label="했어요">✓</span><span class="mk done" aria-label="했어요">✓</span><span class="mk partial" aria-label="조금 했어요">½</span><span class="mk done" aria-label="했어요">✓</span><span class="mk missed" aria-label="기록 없음">!</span><span class="mk partial" aria-label="조금 했어요">½</span><span class="mk done" aria-label="했어요">✓</span><span class="mk done" aria-label="했어요">✓</span><span class="mk partial" aria-label="조금 했어요">½</span></div>
+      <div class="row t-label muted" style="gap:2px">최근 3주<span class="q" aria-label="설명 보기"><svg class="ic"><use href="#i-help"/></svg></span></div>
+      <div class="heat"><span class="hd">일</span><span class="hd">월</span><span class="hd">화</span><span class="hd">수</span><span class="hd">목</span><span class="hd">금</span><span class="hd">토</span><span class="mk done" aria-label="했어요">✓</span><span class="mk done" aria-label="했어요">✓</span><span class="mk done" aria-label="했어요">✓</span><span class="mk over" aria-label="목표까지 했어요">★</span><span class="mk done" aria-label="했어요">✓</span><span class="mk partial" aria-label="조금 했어요">½</span><span class="mk missed" aria-label="기록 없음">!</span><span class="mk done" aria-label="했어요">✓</span><span class="mk skip" aria-label="못 했어요">−</span><span class="mk done" aria-label="했어요">✓</span><span class="mk done" aria-label="했어요">✓</span><span class="mk done" aria-label="했어요">✓</span><span class="mk done" aria-label="했어요">✓</span><span class="mk done" aria-label="했어요">✓</span><span class="mk partial" aria-label="조금 했어요">½</span><span class="mk done" aria-label="했어요">✓</span><span class="mk missed" aria-label="기록 없음">!</span><span class="mk partial" aria-label="조금 했어요">½</span><span class="mk done" aria-label="했어요">✓</span><span class="mk done" aria-label="했어요">✓</span><span class="mk partial" aria-label="조금 했어요">½</span></div>
       <div class="legend"><span><span class="mk mini done">✓</span>했어요</span><span><span class="mk mini over">★</span>목표까지 했어요</span><span><span class="mk mini partial">½</span>조금 했어요</span><span><span class="mk mini skip">−</span>못 했어요</span><span><span class="mk mini missed">!</span>기록 없음</span><span><span class="mk mini pending"></span>아직이에요</span></div>
     </div>
     <div class="card">

@@ -105,8 +105,8 @@ button{font:inherit; color:inherit; background:none; border:0; padding:0; cursor
 .mk.missed{background:var(--surface); border:2px solid var(--crit); color:var(--crit-ink)}
 .mk.pending{background:var(--surface); border:2px dashed var(--border-strong); color:var(--muted)}
 .mk.mini{width:22px; height:22px; font-size:14px}
-.days{display:flex; gap:4px; align-items:flex-start}
-.day{display:flex; flex-direction:column; align-items:center; gap:2px; font-size:14px; font-weight:700; color:var(--muted)}
+.days{display:grid; grid-template-columns:repeat(7,1fr); align-items:start}
+.day{display:flex; flex-direction:column; align-items:center; gap:2px; min-height:48px; font-size:14px; font-weight:700; color:var(--muted)}
 
 /* 오늘 */
 .habit{display:flex; align-items:center; gap:14px}
@@ -164,8 +164,9 @@ button{font:inherit; color:inherit; background:none; border:0; padding:0; cursor
 .pills{display:grid; grid-template-columns:repeat(3,1fr); gap:8px}
 .pill{background:var(--surface); border:2px solid var(--edge); border-radius:var(--r-md); padding:10px 8px 10px 12px; box-shadow:var(--shadow); white-space:nowrap}
 .pill .q{width:24px}
-.heat{display:grid; grid-template-columns:repeat(10,1fr); gap:6px; margin-top:10px}
-.heat .mk{width:auto; height:auto; aspect-ratio:1; border-radius:8px}
+.heat{display:grid; grid-template-columns:repeat(7,1fr); grid-template-rows:24px; grid-auto-rows:48px; justify-items:center; align-items:center; margin-top:6px}
+.heat .mk{width:40px; height:40px; border-radius:10px}
+.heat .hd{height:24px; align-self:end; font-size:14px; font-weight:700; color:var(--muted)}
 .legend{display:flex; flex-wrap:wrap; gap:6px 12px; margin-top:12px; font-size:14px; font-weight:700; color:var(--muted)}
 .legend span{display:flex; align-items:center; gap:4px}
 .drow{display:flex; gap:12px; padding:12px 0; border-bottom:1px solid var(--border); align-items:center}
@@ -246,7 +247,7 @@ button{font:inherit; color:inherit; background:none; border:0; padding:0; cursor
     </div>
 
     <div class="head-line"><span class="t-title">최근 7일은 이랬어요</span><span class="q" aria-label="설명 보기"><svg class="ic"><use href="#i-help"/></svg></span></div>
-    <div class="days" style="gap:8px"><div class="day"><span class="mk sq done" style="width:40px;height:40px">✓</span>일</div><div class="day"><span class="mk sq missed" style="width:40px;height:40px">!</span>월</div><div class="day"><span class="mk sq done" style="width:40px;height:40px">✓</span>화</div><div class="day"><span class="mk sq missed" style="width:40px;height:40px">!</span>수</div><div class="day"><span class="mk sq skip" style="width:40px;height:40px">−</span>목</div><div class="day"><span class="mk sq missed" style="width:40px;height:40px">!</span>금</div><div class="day"><span class="mk sq pending" style="width:40px;height:40px"></span>오늘</div></div>
+    <div class="days"><div class="day"><span class="mk sq done" style="width:40px;height:40px">✓</span>일</div><div class="day"><span class="mk sq missed" style="width:40px;height:40px">!</span>월</div><div class="day"><span class="mk sq done" style="width:40px;height:40px">✓</span>화</div><div class="day"><span class="mk sq missed" style="width:40px;height:40px">!</span>수</div><div class="day"><span class="mk sq skip" style="width:40px;height:40px">−</span>목</div><div class="day"><span class="mk sq missed" style="width:40px;height:40px">!</span>금</div><div class="day"><span class="mk sq pending" style="width:40px;height:40px"></span>오늘</div></div>
     <div class="card" style="padding:12px 16px"><div class="row t-label muted"><span>10/8</span><span style="font-weight:600">회식이라 못 했다.</span></div></div>
 
     <div class="head-line"><span class="t-title">이렇게 보여요</span><span class="q" aria-label="설명 보기"><svg class="ic"><use href="#i-help"/></svg></span></div>
