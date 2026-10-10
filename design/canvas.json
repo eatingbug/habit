@@ -7,6 +7,10 @@
     {
       "id": "page-2",
       "name": "기준 화면 (목업 재현)"
+    },
+    {
+      "id": "page-3",
+      "name": "리디자인 (#89)"
     }
   ],
   "artboards": [
@@ -122,6 +126,258 @@
       "w": 390,
       "h": 1200,
       "title": "잠깐 돌아보기"
+    },
+    {
+      "file": "ReToday.dc.html",
+      "page": "page-3",
+      "x": 0,
+      "y": 0,
+      "w": 390,
+      "h": 940,
+      "title": "오늘 · 어제를 놓친 날 · 라이트"
+    },
+    {
+      "file": "ReToday.dark.dc.html",
+      "page": "page-3",
+      "x": 420,
+      "y": 0,
+      "w": 390,
+      "h": 940,
+      "title": "오늘 · 어제를 놓친 날 · 다크"
+    },
+    {
+      "file": "ReTodaySheet.dc.html",
+      "page": "page-3",
+      "x": 900,
+      "y": 0,
+      "w": 390,
+      "h": 940,
+      "title": "오늘 · 기록 시트 · 라이트"
+    },
+    {
+      "file": "ReTodaySheet.dark.dc.html",
+      "page": "page-3",
+      "x": 1320,
+      "y": 0,
+      "w": 390,
+      "h": 940,
+      "title": "오늘 · 기록 시트 · 다크"
+    },
+    {
+      "file": "ReTodayStreak.dc.html",
+      "page": "page-3",
+      "x": 1800,
+      "y": 0,
+      "w": 390,
+      "h": 940,
+      "title": "오늘 · 연속이 오른 순간 · 라이트"
+    },
+    {
+      "file": "ReTodayStreak.dark.dc.html",
+      "page": "page-3",
+      "x": 2220,
+      "y": 0,
+      "w": 390,
+      "h": 940,
+      "title": "오늘 · 연속이 오른 순간 · 다크"
+    },
+    {
+      "file": "ReTodayMilestone.dc.html",
+      "page": "page-3",
+      "x": 2700,
+      "y": 0,
+      "w": 390,
+      "h": 940,
+      "title": "오늘 · 기념일 팝업 · 라이트"
+    },
+    {
+      "file": "ReTodayMilestone.dark.dc.html",
+      "page": "page-3",
+      "x": 3120,
+      "y": 0,
+      "w": 390,
+      "h": 940,
+      "title": "오늘 · 기념일 팝업 · 다크"
+    },
+    {
+      "file": "ReDashboard.dc.html",
+      "page": "page-3",
+      "x": 0,
+      "y": 1160,
+      "w": 390,
+      "h": 1080,
+      "title": "대시보드 · 라이트"
+    },
+    {
+      "file": "ReDashboard.dark.dc.html",
+      "page": "page-3",
+      "x": 420,
+      "y": 1160,
+      "w": 390,
+      "h": 1080,
+      "title": "대시보드 · 다크"
+    },
+    {
+      "file": "ReDashboardStats.dc.html",
+      "page": "page-3",
+      "x": 900,
+      "y": 1160,
+      "w": 390,
+      "h": 1080,
+      "title": "대시보드 · 능력치 시트 · 라이트"
+    },
+    {
+      "file": "ReDashboardStats.dark.dc.html",
+      "page": "page-3",
+      "x": 1320,
+      "y": 1160,
+      "w": 390,
+      "h": 1080,
+      "title": "대시보드 · 능력치 시트 · 다크"
+    },
+    {
+      "file": "ReDashboardEmpty.dc.html",
+      "page": "page-3",
+      "x": 1800,
+      "y": 1160,
+      "w": 390,
+      "h": 780,
+      "title": "대시보드 · 빈 화면 · 라이트"
+    },
+    {
+      "file": "ReDashboardEmpty.dark.dc.html",
+      "page": "page-3",
+      "x": 2220,
+      "y": 1160,
+      "w": 390,
+      "h": 780,
+      "title": "대시보드 · 빈 화면 · 다크"
+    },
+    {
+      "file": "ReJournal.dc.html",
+      "page": "page-3",
+      "x": 2700,
+      "y": 1160,
+      "w": 390,
+      "h": 1040,
+      "title": "글 모음 · 라이트"
+    },
+    {
+      "file": "ReJournal.dark.dc.html",
+      "page": "page-3",
+      "x": 3120,
+      "y": 1160,
+      "w": 390,
+      "h": 1040,
+      "title": "글 모음 · 다크"
+    },
+    {
+      "file": "ReDetailForming.dc.html",
+      "page": "page-3",
+      "x": 0,
+      "y": 2440,
+      "w": 390,
+      "h": 1700,
+      "title": "습관 상세 · 자리 잡는 중 · 라이트"
+    },
+    {
+      "file": "ReDetailForming.dark.dc.html",
+      "page": "page-3",
+      "x": 420,
+      "y": 2440,
+      "w": 390,
+      "h": 1700,
+      "title": "습관 상세 · 자리 잡는 중 · 다크"
+    },
+    {
+      "file": "ReDetailEstablished.dc.html",
+      "page": "page-3",
+      "x": 900,
+      "y": 2440,
+      "w": 390,
+      "h": 1500,
+      "title": "습관 상세 · 자리 잡은 뒤 · 라이트"
+    },
+    {
+      "file": "ReDetailEstablished.dark.dc.html",
+      "page": "page-3",
+      "x": 1320,
+      "y": 2440,
+      "w": 390,
+      "h": 1500,
+      "title": "습관 상세 · 자리 잡은 뒤 · 다크"
+    },
+    {
+      "file": "ReDetailRed.dc.html",
+      "page": "page-3",
+      "x": 1800,
+      "y": 2440,
+      "w": 390,
+      "h": 1380,
+      "title": "습관 상세 · 손봐야 해요 · 라이트"
+    },
+    {
+      "file": "ReDetailRed.dark.dc.html",
+      "page": "page-3",
+      "x": 2220,
+      "y": 2440,
+      "w": 390,
+      "h": 1380,
+      "title": "습관 상세 · 손봐야 해요 · 다크"
+    },
+    {
+      "file": "ReNewHabit.dc.html",
+      "page": "page-3",
+      "x": 0,
+      "y": 4340,
+      "w": 390,
+      "h": 1060,
+      "title": "새 습관 · 횟수 · 양 · 라이트"
+    },
+    {
+      "file": "ReNewHabit.dark.dc.html",
+      "page": "page-3",
+      "x": 420,
+      "y": 4340,
+      "w": 390,
+      "h": 1060,
+      "title": "새 습관 · 횟수 · 양 · 다크"
+    },
+    {
+      "file": "ReNewHabitYesNo.dc.html",
+      "page": "page-3",
+      "x": 900,
+      "y": 4340,
+      "w": 390,
+      "h": 900,
+      "title": "새 습관 · 예 · 아니오 · 라이트"
+    },
+    {
+      "file": "ReNewHabitYesNo.dark.dc.html",
+      "page": "page-3",
+      "x": 1320,
+      "y": 4340,
+      "w": 390,
+      "h": 900,
+      "title": "새 습관 · 예 · 아니오 · 다크"
+    },
+    {
+      "file": "ReReflection.dc.html",
+      "page": "page-3",
+      "x": 1800,
+      "y": 4340,
+      "w": 390,
+      "h": 1380,
+      "title": "회고 · 라이트"
+    },
+    {
+      "file": "ReReflection.dark.dc.html",
+      "page": "page-3",
+      "x": 2220,
+      "y": 4340,
+      "w": 390,
+      "h": 1380,
+      "title": "회고 · 다크"
     }
   ],
   "annotations": [
@@ -148,6 +404,14 @@
       "y": -190,
       "w": 1830,
       "text": "기존 목업 네 화면을 옮긴 것 — 비교 기준입니다. 가짜 아이폰 상태바는 뺐습니다(실제 기기에서 진짜 상태바와 겹쳐 보임).\n홈과 오늘은 실제로 눌러볼 수 있습니다: 최소만큼 / ✓ → 진행바·연속 날수·점수·기록·되돌리기.\n\n연속 날수는 새 규칙(ADR-0001)으로 다시 계산했습니다 — 기록 없는 날이 연속을 끊습니다."
+    },
+    {
+      "id": "note-4",
+      "page": "page-3",
+      "x": 0,
+      "y": -190,
+      "w": 3510,
+      "text": "지도 '쉽고 밝은 화면을 위한 리디자인'(#89)의 결정을 그린 정적 아트보드입니다. 라이트 왼쪽, 다크 오른쪽입니다.\n토큰은 _tokens.redesign.css, 아이콘은 Lucide 선 아이콘, 내용은 이모지입니다. 툴팁이 그려진 보드는 ?를 누른 모습입니다.\n데이터는 보드끼리 맞췄습니다: 명상 🔴, 독서 살펴보세요, 턱걸이 괜찮아요 ★. 기념일 팝업만 다른 날의 예시입니다."
     }
   ],
   "launch": {
