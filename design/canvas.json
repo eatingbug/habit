@@ -378,6 +378,78 @@
       "w": 390,
       "h": 1380,
       "title": "회고 · 다크"
+    },
+    {
+      "file": "ReTodayFreeLog.dc.html",
+      "page": "page-3",
+      "x": 0,
+      "y": 5920,
+      "w": 390,
+      "h": 940,
+      "title": "오늘 · 끄적이기 시트 · 라이트"
+    },
+    {
+      "file": "ReTodayFreeLog.dark.dc.html",
+      "page": "page-3",
+      "x": 420,
+      "y": 5920,
+      "w": 390,
+      "h": 940,
+      "title": "오늘 · 끄적이기 시트 · 다크"
+    },
+    {
+      "file": "ReTodaySkip.dc.html",
+      "page": "page-3",
+      "x": 900,
+      "y": 5920,
+      "w": 390,
+      "h": 940,
+      "title": "오늘 · 못 한 이유 · 라이트"
+    },
+    {
+      "file": "ReTodaySkip.dark.dc.html",
+      "page": "page-3",
+      "x": 1320,
+      "y": 5920,
+      "w": 390,
+      "h": 940,
+      "title": "오늘 · 못 한 이유 · 다크"
+    },
+    {
+      "file": "ReSettings.dc.html",
+      "page": "page-3",
+      "x": 1800,
+      "y": 5920,
+      "w": 390,
+      "h": 780,
+      "title": "설정 · 라이트"
+    },
+    {
+      "file": "ReSettings.dark.dc.html",
+      "page": "page-3",
+      "x": 2220,
+      "y": 5920,
+      "w": 390,
+      "h": 780,
+      "title": "설정 · 다크"
+    },
+    {
+      "file": "ReDetailPause.dc.html",
+      "page": "page-3",
+      "x": 2700,
+      "y": 5920,
+      "w": 390,
+      "h": 940,
+      "title": "습관 상세 · 잠깐 쉬기 확인 · 라이트"
+    },
+    {
+      "file": "ReDetailPause.dark.dc.html",
+      "page": "page-3",
+      "x": 3120,
+      "y": 5920,
+      "w": 390,
+      "h": 940,
+      "title": "습관 상세 · 잠깐 쉬기 확인 · 다크"
     }
   ],
   "annotations": [
