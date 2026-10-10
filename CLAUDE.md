@@ -62,8 +62,9 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 
 ## 5. Writing Rules
 
-- Applies to: PR titles and bodies, commit messages, issues, ADRs, repo docs.
-- Does not apply to: code comments, docblocks, agent chat replies.
+- Applies to: PR titles, commit messages, issues, ADRs, repo docs.
+- Does not apply to: code comments, docblocks, agent chat replies, PR bodies.
+- PR bodies follow the `pr` skill template. Keep the `Closes #N` footer.
 - Rationale and before/after examples: `docs/agents/writing.md`.
 
 ### Titles (PRs and commits only)
@@ -75,7 +76,7 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 - No `·` or `+` lists. One title, one change.
 - Over the limit, or unwritable without a list: split the PR. Generalize only if it cannot split.
 
-### Bodies (PRs and commits only)
+### Bodies (commits only)
 
 - Required, in order: `## 문제` `## 변경` `## 검증`.
 - Optional, and nothing else: `## 트레이드오프` `## 범위 밖`.
