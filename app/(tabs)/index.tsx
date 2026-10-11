@@ -1,4 +1,5 @@
 import { useFocusEffect, useRouter } from 'expo-router';
+import { Settings } from 'lucide-react-native';
 import { useCallback, useRef, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
@@ -10,12 +11,12 @@ import {
   Eyebrow,
   Footnote,
   Heatmap,
+  IconButton,
   LogForm,
   TOAST_OVERLAY_CLEARANCE,
   ToastOverlay,
 } from '@/components';
-import { RETRY_LABEL, SIGN_OUT_LABEL } from '@/config/copy';
-import { useSession } from '@/context/SessionContext';
+import { RETRY_LABEL, SETTINGS_COPY } from '@/config/copy';
 import type { StatusLight } from '@/domain/statusLight';
 import { useDashboard, type DashboardRow, type StatProgress } from '@/hooks/useDashboard';
 import type { SkipReason } from '@/models';
@@ -266,9 +267,8 @@ function LogModal({
 }
 
 export default function Dashboard() {
-  const { colors, preference, toggle } = useTheme();
+  const { colors } = useTheme();
   const router = useRouter();
-  const { signOut } = useSession();
   const {
     rows,
     stats,
@@ -307,24 +307,12 @@ export default function Dashboard() {
       <ScrollView style={styles.fill} contentContainerStyle={styles.screen}>
         <View style={styles.header}>
           <Text style={[styles.title, { color: colors.text }]}>대시보드</Text>
-          <View style={styles.headerControls}>
-            <Pressable
-              onPress={toggle}
-              style={[styles.toggle, { borderColor: colors.border, backgroundColor: colors.surface2 }]}
-            >
-              <Text style={[styles.toggleText, { color: colors.muted }]}>
-                {preference === 'system' ? '자동' : preference === 'light' ? '라이트' : '다크'}
-              </Text>
-            </Pressable>
-            {/* 로그아웃은 게이트를 되돌리는 유일한 손잡이다 — 누르면 `<Stack>` 이 통째로
-                언마운트되고 이전 사용자의 화면은 남지 않는다 (AC 3). */}
-            <Pressable
-              onPress={() => void signOut()}
-              style={[styles.toggle, { borderColor: colors.border, backgroundColor: colors.surface2 }]}
-            >
-              <Text style={[styles.toggleText, { color: colors.muted }]}>{SIGN_OUT_LABEL}</Text>
-            </Pressable>
-          </View>
+          {/* ⚙️ opens Settings (§6.3), which now holds the theme choice and 로그아웃. */}
+          <IconButton
+            icon={Settings}
+            accessibilityLabel={SETTINGS_COPY.open}
+            onPress={() => router.push('/settings')}
+          />
         </View>
 
         {/* Gated on the same `loading` as the rows below: before the load resolves the
@@ -430,15 +418,7 @@ const styles = StyleSheet.create({
   // `.rowline` (`design/_tokens.css:48`) — the character block and the 손볼 습관 chip on
   // one baseline, the chip pushed to the trailing edge.
   rowline: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: SPACE.md },
-  headerControls: { flexDirection: 'row', alignItems: 'center', gap: SPACE.md },
   title: { fontSize: FONT_SIZE.xl, fontWeight: '600', letterSpacing: -0.2 },
-  toggle: {
-    borderWidth: 1,
-    borderRadius: RADIUS.pill,
-    paddingHorizontal: SPACE.lg,
-    paddingVertical: SPACE.sm + 1,
-  },
-  toggleText: { fontSize: FONT_SIZE.sm },
   notice: { fontSize: FONT_SIZE.base },
   // `.sh` beside the `캐릭터` eyebrow — the level reads in mono, as the canvas's
   // `<span class="num">` does.

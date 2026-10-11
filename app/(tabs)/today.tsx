@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useFocusEffect } from 'expo-router';
+import { useCallback, useRef, useState } from 'react';
 import { Keyboard, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import {
@@ -1060,7 +1061,20 @@ export default function Today() {
     removeFreeLog,
     toast,
     undoLast,
+    reload,
   } = useToday({ date: selectedDate ?? undefined });
+  /**
+   * Re-read on every return to this tab (#126). A tab stays mounted, so a log made on
+   * the Dashboard or Habit Detail would otherwise not show here. The first focus is the
+   * mount, whose load `useToday` already runs.
+   */
+  const focusedBefore = useRef(false);
+  useFocusEffect(
+    useCallback(() => {
+      if (focusedBefore.current) reload();
+      focusedBefore.current = true;
+    }, [reload]),
+  );
   const [selectedId, setSelectedId] = useState<string | null>(null);
   /**
    * The feed row being edited (#13). Held as an **id**, and the item derived from the

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 import {
   FREE_LOG_NO_TEXT_NOTE,
@@ -441,6 +441,11 @@ export interface TodayView {
   /** The live 실행취소 toast for an append from the log form or the banner (B6). */
   toast: QuickLogToast | null;
   undoLast(): Promise<void>;
+  /**
+   * Read the repository again. Today is a tab and stays mounted (#126), so a write made
+   * on another screen reaches it only when the screen calls this on focus.
+   */
+  reload(): void;
 }
 
 /**
@@ -507,9 +512,8 @@ export function useToday({
    */
   const [version, setVersion] = useState(0);
 
-  function reload() {
-    setVersion((current) => current + 1);
-  }
+  // Stable, so the screen can hand it to `useFocusEffect`.
+  const reload = useCallback(() => setVersion((current) => current + 1), []);
 
   useEffect(() => {
     let cancelled = false;
@@ -858,5 +862,6 @@ export function useToday({
     toast: quick.toast,
     failure: failure ?? quick.failure,
     undoLast: quick.undoLast,
+    reload,
   };
 }

@@ -552,7 +552,7 @@ export const SESSION_CHECKING_NOTE = '로그인 상태를 확인하는 중…';
 /** 로그인 자체가 시작되지 못했을 때. 실패한 탭이 아무 말 없이 끝나지 않게 한다. */
 export const SIGN_IN_FAILED_NOTE = '로그인을 시작하지 못했어요. 잠시 뒤 다시 눌러 주세요.';
 
-/** 로그아웃 버튼 — 대시보드 머리말의 테마 토글 옆. */
+/** 로그아웃 버튼 — 설정 화면의 맨 아래 (#126). */
 export const SIGN_OUT_LABEL = '로그아웃';
 
 /**
@@ -571,3 +571,48 @@ export const LOAD_FAILED_NOTE = '불러오지 못했어요. 연결을 확인하�
 
 /** 실패 배너가 달고 있는 버튼. */
 export const RETRY_LABEL = '다시 시도';
+
+/** 목록을 읽는 동안 남는 한 줄 (#126). 옛 화면들은 같은 문구를 직접 적는다. */
+export const LOADING_NOTE = '불러오는 중…';
+
+/** 아래 탭 바의 세 낱말 (SPEC §6.1). 접근성 이름도 같다. */
+export const TAB_LABELS = {
+  today: '오늘',
+  dashboard: '대시보드',
+  journal: '글 모음',
+} as const;
+
+/**
+ * 설정 화면과 보관한 습관 화면 (SPEC §6.3 Settings, `ReSettings`, #126).
+ * `open` 과 `back` 은 아이콘만 있는 버튼의 접근성 이름이다 (§6.0 Icons).
+ * 보관한 습관 목록과 그 빈 화면은 아트보드가 없다. 빈 화면은 §6.0 의 이모지 하나,
+ * 문장 하나, 버튼 하나를 따른다.
+ */
+export const SETTINGS_COPY = {
+  open: '설정',
+  back: '뒤로',
+  title: '설정',
+  themeLabel: '테마',
+  themeOptions: { system: '자동', light: '라이트', dark: '다크' },
+  archivedTitle: '보관한 습관',
+  archivedEmptyEmoji: '🗄️',
+  archivedEmpty: '보관한 습관이 없어요.',
+  archivedEmptyAction: '설정으로 돌아가기',
+} as const;
+
+/**
+ * 설정의 "보관한 습관 N개" 줄. 개수를 모르면(읽는 중이거나 읽기 실패) 숫자를 빼고
+ * "보관한 습관" 만 쓴다. 읽지 못한 것을 "0개" 라고 말하지 않기 위해서다.
+ *
+ * 아트보드는 "N개" 를 줄 오른쪽에 따로 그린다. 그 조각이 `archivedCountLabel` 이고,
+ * `archivedRowLabel` 은 접근성 이름으로 쓰는 한 줄 전체다.
+ */
+export function archivedCountLabel(count: number | null): string {
+  return count == null ? '' : `${count}개`;
+}
+
+export function archivedRowLabel(count: number | null): string {
+  return count == null
+    ? SETTINGS_COPY.archivedTitle
+    : `${SETTINGS_COPY.archivedTitle} ${archivedCountLabel(count)}`;
+}
