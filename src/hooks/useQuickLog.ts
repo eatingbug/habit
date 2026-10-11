@@ -1,14 +1,28 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
-import { skipToastLines, undoToastLines, UNDO_TOAST_COPY, WRITE_FAILED_NOTE } from '@/config/copy';
+import {
+  celebrationLine,
+  DAY_WORDS,
+  habitIcon,
+  milestoneBonusLine,
+  monthDayLabel,
+  skipToastLines,
+  starLine,
+  undoToastLines,
+  UNDO_TOAST_COPY,
+  WEEKDAY_LABELS,
+  WRITE_FAILED_NOTE,
+} from '@/config/copy';
 import { TUNING } from '@/config/tuning';
 import { useRepository } from '@/context/RepositoryContext';
 import { buildBackfillActivity, buildBackfillSkip } from '@/domain/backfill';
 import { type ClassifiedDay, dayStates, isFloorMet } from '@/domain/classify';
-import { dateOf } from '@/domain/dates';
+import { addDays, dateOf, weekdayOf } from '@/domain/dates';
 import {
   computeStatLevel,
+  computeStreak,
   describeLogEffect,
+  milestoneBonusXP,
   type HabitWithEntries,
 } from '@/domain/score';
 import { localNoonOn, newId } from '@/lib/device';
@@ -66,6 +80,42 @@ export interface QuickLogToast {
    */
   sub?: string;
 }
+
+/** One day of the celebration's week strip (`ReTodayStreak`'s `.wk`). */
+export interface CelebrationDay {
+  /** 일 … 토. */
+  label: string;
+  /** Floor met on that day. */
+  done: boolean;
+  today: boolean;
+}
+
+/**
+ * The streak celebration (SPEC §6.2 Streak celebration) — ready to render.
+ *
+ * Raised by an activity log that makes the habit's **current** streak go up, on today
+ * or by a backfill. Usually a `banner` that drops from the top. On a day of
+ * `TUNING.binaryStreakMilestones` (5, 10, 20, 30, 60, 100) it is a `milestone` popup
+ * instead, for count habits too.
+ */
+export interface StreakCelebration {
+  /** The row that raised the streak. A new celebration replaces the open one at once. */
+  entryId: string;
+  kind: 'banner' | 'milestone';
+  /** The streak after the log; drawn in `streak` ink before `CELEBRATION_COPY.streakSuffix`. */
+  streak: number;
+  /** "📖 독서 오늘 몫을 채웠어요", or the backfill's "… 어제를 채워서 13일 연속이 됐어요". */
+  line: string;
+  /** "★ 목표까지 넘겼어요 · 별 +N" when the same log passed the target. */
+  starLine?: string;
+  /** The popup's bonus 별 line, only when that day earns the bonus. */
+  bonusLine?: string;
+  /** Sunday to Saturday of the week holding today. */
+  week: CelebrationDay[];
+}
+
+/** The milestone popup closes by itself after 3 seconds (§6.2). */
+export const MILESTONE_POPUP_MS = 3_000;
 
 export interface QuickLog {
   /**
@@ -144,6 +194,13 @@ export interface QuickLog {
   undoLast(): Promise<void>;
   /** Retire the toast without touching the row. The auto-dismiss timer's own path. */
   dismissToast(): void;
+  /**
+   * The live streak celebration, or `null` (§6.2). Replaced by the next one at once,
+   * with no queue. A popup closes after `MILESTONE_POPUP_MS`; a banner after
+   * `TUNING.undoToastMs`, together with the toast beside it.
+   */
+  celebration: StreakCelebration | null;
+  dismissCelebration(): void;
 }
 
 export interface QuickLogOptions {
@@ -256,6 +313,13 @@ export function useQuickLog({
   const repository = useRepository();
   const { failure, attempt } = useFailure();
   const [toast, setToast] = useState<QuickLogToast | null>(null);
+  const [celebration, setCelebration] = useState<StreakCelebration | null>(null);
+  /**
+   * `habitId:date` pairs already celebrated (§6.2: "One habit and one date celebrate
+   * once. Deleting and re-adding a record does not celebrate again."). Held for the
+   * life of the hook. Today is a tab that stays mounted, so that is the app session.
+   */
+  const celebrated = useRef(new Set<string>());
 
   /**
    * Is a write to `day` a backfill? Every write to a date other than `today` is,
@@ -332,6 +396,76 @@ export function useQuickLog({
     return () => clearTimeout(timer);
   }, [liveToastId]);
 
+  function dismissCelebration() {
+    setCelebration(null);
+  }
+
+  /** Same shape as the undo window: keyed on the row, so a replacement restarts it. */
+  const liveCelebrationId = celebration?.entryId;
+  const liveCelebrationKind = celebration?.kind;
+  useEffect(() => {
+    if (liveCelebrationId == null) return;
+
+    const timer = setTimeout(
+      dismissCelebration,
+      liveCelebrationKind === 'milestone' ? MILESTONE_POPUP_MS : TUNING.undoToastMs,
+    );
+    return () => clearTimeout(timer);
+  }, [liveCelebrationId, liveCelebrationKind]);
+
+  /**
+   * The celebration for one activity log, or `null` when the current streak did not go
+   * up or this habit and date were already celebrated. The streak is `computeStreak`
+   * through **today** over the whole history, before and after the write, so a backfill
+   * that re-joins two runs counts exactly as the domain counts it (ADR-0001).
+   */
+  function celebrationFor(
+    habit: Habit,
+    entryId: string,
+    day: string,
+    before: HabitEntry[],
+    after: HabitEntry[],
+    effect: ReturnType<typeof describeLogEffect>,
+  ): StreakCelebration | null {
+    const streakBefore = computeStreak(before, habit, today);
+    const streak = computeStreak(after, habit, today);
+    if (streak <= streakBefore) return null;
+
+    const isMilestone = TUNING.binaryStreakMilestones[streak] != null;
+    // The bonus this very day earned: the binary ladder's delta, or a count habit's
+    // once-only longevity bonus (`describeLogEffect` already decided it was new).
+    const bonus =
+      effect.streakMilestoneHit !== streak
+        ? 0
+        : habit.kind === 'binary'
+          ? milestoneBonusXP(after, habit) - milestoneBonusXP(before, habit)
+          : (TUNING.xpStreakBonus[streak] ?? 0);
+
+    const weekStart = addDays(today, -weekdayOf(today));
+    const states = new Map(
+      dayStates(habit, after, weekStart, addDays(weekStart, 6), today).map((d) => [d.date, d.state]),
+    );
+
+    return {
+      entryId,
+      kind: isMilestone ? 'milestone' : 'banner',
+      streak,
+      line: celebrationLine({
+        icon: habitIcon(habit),
+        name: habit.name,
+        streak,
+        filledDay:
+          day === today ? undefined : day === addDays(today, -1) ? DAY_WORDS.yesterday : monthDayLabel(day),
+      }),
+      starLine: effect.pushedToOver ? starLine(TUNING.xpBonusTargetExceed) : undefined,
+      bonusLine: isMilestone && bonus > 0 ? milestoneBonusLine(bonus) : undefined,
+      week: WEEKDAY_LABELS.map((label, index) => {
+        const date = addDays(weekStart, index);
+        return { label, done: isFloorMet(states.get(date)), today: date === today };
+      }),
+    };
+  }
+
   async function logActivity(
     habit: Habit,
     actual: number,
@@ -390,6 +524,15 @@ export function useQuickLog({
     const siblings = await statSiblings(habit);
     const effect = describeLogEffect(before, after, habit, siblings);
 
+    const key = `${habit.id}:${day}`;
+    const alreadyCelebrated = celebrated.current.has(key);
+    const raised = alreadyCelebrated
+      ? null
+      : celebrationFor(habit, entryId, day, before, after, effect);
+    if (raised != null) {
+      celebrated.current.add(key);
+      setCelebration(raised);
+    }
     // The domain's sum for the day, never a second reduce of our own (C7a).
     const sumOnDay = dayStates(habit, after, day, day, today)[0]?.sum ?? 0;
 
@@ -413,8 +556,8 @@ export function useQuickLog({
         statLevel: computeStatLevel(habit.statId, [{ habit, entries: after }, ...siblings]),
         pushedToOver: effect.pushedToOver,
         floorCrossed: effect.floorCrossedToday,
-        celebrated: false,
-        alreadyCelebrated: false,
+        celebrated: raised != null,
+        alreadyCelebrated,
         isBackfill,
       }),
     });
@@ -456,6 +599,7 @@ export function useQuickLog({
     });
 
     // §6.2 Undo toast copy: the same `기록됨`, then the reason, then what it means.
+    // A skip never celebrates: the banner is for a habit reaching its floor.
     setToast({
       entryId,
       message: UNDO_TOAST_COPY.title,
@@ -532,5 +676,7 @@ export function useQuickLog({
     removeEntry,
     undoLast,
     dismissToast,
+    celebration,
+    dismissCelebration,
   };
 }

@@ -2,6 +2,7 @@ import type { Habit, LogType, SkipReason } from '@/models';
 
 import {
   BEST_RECORD_GLYPH,
+  CELEBRATION_COPY,
   CONFIG_MISSING_NOTE,
   DAY_STATE_GLYPHS,
   DAY_STATE_WORDS,
@@ -11,12 +12,15 @@ import {
   STATUS_LIGHT_GLYPHS,
   STATUS_LIGHT_WORDS,
   TOOLTIPS,
+  celebrationLine,
   deleteConfirmLines,
   levelUpLine,
+  milestoneBonusLine,
   rowRewardLine,
   saveBannerLines,
   signInCopy,
   skipToastLines,
+  starLine,
   undoToastLines,
   type UndoToastFacts,
 } from './copy';
@@ -339,6 +343,27 @@ describe('skipToastLines — a skip puts its reason second (§6.2)', () => {
     for (const reason of ['cue', 'floor', 'identity'] as const) {
       expect(skipToastLines({ reason }).sub).not.toMatch(/끊|실패/);
     }
+  });
+});
+
+describe('celebration copy (§6.2 Streak celebration)', () => {
+  it('says the habit filled today’s share', () => {
+    expect(celebrationLine({ icon: '📖', name: '독서', streak: 3 })).toBe('📖 독서 오늘 몫을 채웠어요');
+  });
+
+  it('says which day a backfill filled and the streak it made', () => {
+    expect(celebrationLine({ icon: '📖', name: '독서', streak: 13, filledDay: '어제' })).toBe(
+      '📖 독서 어제를 채워서 13일 연속이 됐어요',
+    );
+    expect(celebrationLine({ icon: '📖', name: '독서', streak: 4, filledDay: '2월 27일' })).toBe(
+      '📖 독서 2월 27일을 채워서 4일 연속이 됐어요',
+    );
+  });
+
+  it('writes the ★ line and the bonus line with their 별', () => {
+    expect(starLine(12)).toBe('★ 목표까지 넘겼어요 · 별 +12');
+    expect(milestoneBonusLine(90)).toBe('기념일 보너스 · 별 +90');
+    expect(CELEBRATION_COPY.streakSuffix).toBe('일 연속!');
   });
 });
 

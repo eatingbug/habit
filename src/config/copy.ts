@@ -7,6 +7,8 @@ import type {
   SkipReason,
 } from '@/models';
 
+import { TUNING } from './tuning';
+
 /**
  * User-facing strings that no single layer can own.
  *
@@ -734,3 +736,58 @@ export const UNDO_TOAST_COPY = {
   title: '기록됨',
   undo: '실행취소',
 } as const;
+
+/** The streak banner's and the milestone popup's fixed words (§6.2 Streak celebration). */
+export const CELEBRATION_COPY = {
+  /** After the streak number, which is drawn in `streak` ink: "3" + "일 연속!". */
+  streakSuffix: '일 연속!',
+} as const;
+
+/** Weekday labels from Sunday, for the celebration's week and the date headers. */
+export const WEEKDAY_LABELS = ['일', '월', '화', '수', '목', '금', '토'] as const;
+
+/**
+ * The celebration's line under the streak. On today: "📖 독서 오늘 몫을 채웠어요"
+ * (`ReTodayStreak`). On a backfill: the SPEC's "어제를 채워서 13일 연속이 됐어요", after
+ * the habit. `filledDay` is 어제 or "M월 D일"; the object particle follows it (어제를,
+ * 27일을), and every "M월 D일" ends in 일, so the two cases are all there is.
+ */
+export function celebrationLine({
+  icon,
+  name,
+  streak,
+  filledDay,
+}: {
+  icon: string;
+  name: string;
+  streak: number;
+  filledDay?: string;
+}): string {
+  if (filledDay == null) return `${icon} ${name} ${DAY_WORDS.today} 몫을 채웠어요`;
+  const particle = filledDay === DAY_WORDS.yesterday ? '를' : '을';
+  return `${icon} ${name} ${filledDay}${particle} 채워서 ${streak}일 연속이 됐어요`;
+}
+
+/** The ★ line a target crossing adds to the banner or popup (§6.2). */
+export function starLine(stars: number): string {
+  return `★ 목표까지 넘겼어요 · 별 +${stars}`;
+}
+
+/** The milestone popup's bonus line, shown only when the day earns the bonus (§6.2). */
+export function milestoneBonusLine(stars: number): string {
+  return `기념일 보너스 · 별 +${stars}`;
+}
+
+/**
+ * The habit's icon: its stat's icon (`TUNING.stats`), since a habit has no icon field
+ * yet (#127; the New habit ticket adds one). `🌱` when `statId` names no configured stat.
+ */
+export function habitIcon(habit: Pick<Habit, 'statId'>): string {
+  return TUNING.stats.find((stat) => stat.id === habit.statId)?.icon ?? '🌱';
+}
+
+/** "10월 9일" — a date by month and day, for copy that names a past day. */
+export function monthDayLabel(date: string): string {
+  const [, month, day] = date.split('-').map(Number);
+  return `${month}월 ${day}일`;
+}
