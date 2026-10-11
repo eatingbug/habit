@@ -6,22 +6,36 @@ import {
   CONFIG_MISSING_NOTE,
   DAY_STATE_GLYPHS,
   DAY_STATE_WORDS,
+  DAY_WORDS,
   LOG_TYPE_LABELS,
   SCREEN_WORDS,
+  SHEET_COPY,
   SKIP_REASON_LABELS,
   STATUS_LIGHT_GLYPHS,
   STATUS_LIGHT_WORDS,
+  TODAY_COPY,
   TOOLTIPS,
+  backfillTimeLabel,
+  cardBadge,
+  cardProgressLine,
   celebrationLine,
+  countChipLabel,
+  cueLine,
   deleteConfirmLines,
+  editTimeLabel,
+  foldLabel,
+  freeLogTimeLabel,
   levelUpLine,
   milestoneBonusLine,
-  rowRewardLine,
-  saveBannerLines,
+  nowLabel,
+  recordResultLine,
+  recordSumLabel,
   signInCopy,
+  skipSheetTitle,
   skipToastLines,
   starLine,
   undoToastLines,
+  yesterdayBannerTitle,
   type UndoToastFacts,
 } from './copy';
 
@@ -373,25 +387,6 @@ describe('celebration copy (§6.2 Streak celebration)', () => {
   });
 });
 
-describe('saveBannerLines — the at-risk banner, split where the canvas splits it (#18)', () => {
-  it('names the habit in the bold lead and keeps the invitation in the rest', () => {
-    expect(saveBannerLines('명상')).toEqual({
-      lead: '어제 명상 기록을 놓쳤어요.',
-      rest: '오늘 한 번이면 흐름이 이어져요. 어제도 지금 채워 넣을 수 있어요.',
-    });
-  });
-
-  /**
-   * The reason the canvas's `{이름}을` is not copied literally: the object particle
-   * would have to be 를 after a vowel, and neither form is right for both. Making the
-   * name a modifier of an invariant noun is grammatical for every habit name.
-   */
-  it('reads the same for a vowel-final name, which 을 would have broken', () => {
-    expect(saveBannerLines('요가').lead).toBe('어제 요가 기록을 놓쳤어요.');
-    expect(saveBannerLines('푸시업 30').lead).toBe('어제 푸시업 30 기록을 놓쳤어요.');
-  });
-});
-
 describe('signInCopy — 로그인 가능한 플랫폼인가 (#51)', () => {
   /**
    * 이 파일에 있는 이유가 곧 이 테스트다: 화면에 두면 `jest.config.js` 의 `src/**` 가
@@ -421,46 +416,6 @@ describe('CONFIG_MISSING_NOTE — 흰 화면 대신 무엇을 넣어야 하는�
   it('없는 환경변수 두 개의 이름을 그대로 담는다', () => {
     expect(CONFIG_MISSING_NOTE).toContain('EXPO_PUBLIC_SUPABASE_URL');
     expect(CONFIG_MISSING_NOTE).toContain('EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY');
-  });
-});
-
-/**
- * 네 갈래는 캔버스의 `logAmount` 그대로다 — `design/parts/Today.logic.js:60` 과
- * `:65–68`. 숫자는 캔버스에서 옮겨 적지 않는다: 여기 넣는 `xp` 는 `attributeDayXP` 가
- * 계산한 값이고, 이 테스트는 그 값이 문장에 그대로 나오는지만 본다.
- */
-describe('rowRewardLine — 피드 행에 남는 보상 줄 (#37)', () => {
-  const base = { xp: 0, sum: 0, floor: 5, floorMet: false, crossedFloor: false };
-
-  it('최소에 못 미친 행은 XP 대신 "나타남" 을 말한다 (`:60`)', () => {
-    expect(rowRewardLine({ ...base, sum: 3 })).toBe(
-      '→ 3/5 · 최소엔 못 미쳤지만 “나타남” 하루 추가',
-    );
-  });
-
-  it('목표를 넘긴 행은 합과 목표와 XP 를 말한다 (`:65`)', () => {
-    expect(
-      rowRewardLine({ ...base, xp: 78, sum: 8, floorMet: true, crossedTarget: 8 }),
-    ).toBe('→ 합 8 · 목표 8 넘음 · +78 XP');
-  });
-
-  it('최소를 채운 행은 오늘 몫 완료를 말한다 (`:67`)', () => {
-    expect(rowRewardLine({ ...base, xp: 60, sum: 5, floorMet: true, crossedFloor: true })).toBe(
-      '→ 5/5 오늘 몫 완료 · +60 XP',
-    );
-  });
-
-  /** 이 줄이 답해야 하는 질문이 "왜 이 행은 0 이냐" 라서, 0 도 적는다. */
-  it('이미 채워진 뒤의 행은 제 몫만 말하고, 0 이면 0 이라고 적는다 (`:68`)', () => {
-    expect(rowRewardLine({ ...base, xp: 0, sum: 9, floorMet: true })).toBe('→ 합 9 · +0 XP');
-    expect(rowRewardLine({ ...base, xp: 18, sum: 9, floorMet: true })).toBe('→ 합 9 · +18 XP');
-  });
-
-  /** 예/아니오 습관은 floor 1 이고 목표가 없다 (§3.2) — 갈래를 따로 두지 않는다. */
-  it('예/아니오 습관은 1/1 오늘 몫 완료로 읽힌다', () => {
-    expect(
-      rowRewardLine({ xp: 60, sum: 1, floor: 1, floorMet: true, crossedFloor: true }),
-    ).toBe('→ 1/1 오늘 몫 완료 · +60 XP');
   });
 });
 
@@ -594,5 +549,99 @@ describe('TOOLTIPS — `?` 툴팁 문구 (§6.8 표)', () => {
       const sentences = tip.split(/(?<=\.)\s+/).filter((part) => part.length > 0);
       expect(sentences.length).toBeLessThanOrEqual(2);
     }
+  });
+});
+
+/** 오늘 화면의 문구 (SPEC §6.2, #127). 훅이 이 함수로 문구를 만든다. */
+describe('오늘 화면 문구 (§6.2)', () => {
+  it('고정 낱말은 SPEC과 아트보드 그대로다', () => {
+    expect(TODAY_COPY).toMatchObject({
+      title: '오늘 할 일',
+      fill: '채우기',
+      did: '했어요',
+      didNot: '못 했어요',
+      yesterdayListTitle: '어제 기록이 빈 습관',
+      freeLogButton: '끄적이기',
+      freeLogTitle: '✏️ 끄적이기',
+      freeLogSubmit: '남기기',
+    });
+    expect(TODAY_COPY.did).toBe(DAY_STATE_WORDS.done);
+    expect(TODAY_COPY.didNot).toBe(DAY_STATE_WORDS.skip);
+    expect(DAY_WORDS).toEqual({ today: '오늘', yesterday: '어제' });
+  });
+
+  it('공통 기록 시트와 못 한 이유 시트의 낱말', () => {
+    expect(SHEET_COPY).toMatchObject({
+      notePlaceholder: '메모 (선택)',
+      record: '기록하기',
+      skipHint: '이유를 누르면 바로 기록돼요.',
+    });
+  });
+
+  it('개수 칩은 "3개 중 1개 했어요"다', () => {
+    expect(countChipLabel(3, 1)).toBe('✅ 3개 중 1개 했어요');
+  });
+
+  it('어제 배너 제목은 빈 습관이 하나면 이름을, 둘 이상이면 개수를 말한다 (#135)', () => {
+    expect(yesterdayBannerTitle(['명상'])).toBe('🌙 어제 명상 기록이 비어 있어요.');
+    expect(yesterdayBannerTitle(['독서', '명상', '스트레칭'])).toBe('🌙 어제 기록이 빈 습관 3개');
+  });
+
+  it('접힌 기록과 시트 머리 문구', () => {
+    expect(foldLabel(2)).toBe('오늘 기록 2개');
+    expect(skipSheetTitle('오늘')).toBe('오늘 못 했어요 · 왜?');
+    expect(skipSheetTitle('어제')).toBe('어제 못 했어요 · 왜?');
+    expect(recordSumLabel(6, '쪽')).toBe('지금 6쪽');
+    expect(nowLabel('14:20')).toBe('지금 14:20');
+    expect(freeLogTimeLabel('14:20')).toBe('지금 14:20 · 시간 바꾸기');
+    expect(editTimeLabel('07:10')).toBe('07:10 · 시간 바꾸기');
+    expect(backfillTimeLabel('어제')).toBe('어제 12:00');
+  });
+
+  it('카드의 표시와 진행 줄', () => {
+    expect(cardBadge('done')).toBe('✓ 했어요');
+    expect(cardBadge('over')).toBe('★ 목표까지 했어요');
+    expect(cardBadge('skip')).toBe('− 못 했어요');
+    expect(cardBadge('partial')).toBeNull();
+    expect(cardBadge('pending')).toBeNull();
+    expect(cardProgressLine({ sum: 6, floor: 10, unit: '쪽' })).toBe('6 / 10쪽');
+    expect(cardProgressLine({ sum: 30, floor: 10, unit: '쪽', target: 30 })).toBe('30쪽 · 목표 30쪽');
+    expect(cueLine('자기 전, 침대 옆에서')).toBe('🕐 자기 전, 침대 옆에서');
+  });
+
+  describe('recordResultLine — 이 양이 오늘 몫에 무엇을 하는지 (C7a)', () => {
+    const base = { sum: 0, floor: 10, unit: '쪽', dayWord: '오늘' };
+
+    it('최소량을 채우는 양이면 오늘 몫을 채운다고 한다', () => {
+      expect(recordResultLine({ ...base, sum: 6, amount: 4 })).toBe('이걸로 오늘 몫을 채워요 ✓');
+      expect(recordResultLine({ ...base, amount: 10, dayWord: '어제' })).toBe('이걸로 어제 몫을 채워요 ✓');
+    });
+
+    it('모자라면 남는 양을 말한다', () => {
+      expect(recordResultLine({ ...base, sum: 2, amount: 3 })).toBe('최소량까지 5쪽 남아요');
+    });
+
+    it('목표를 넘기는 양이면 목표를 말한다', () => {
+      expect(recordResultLine({ ...base, amount: 30, target: 30 })).toBe('이걸로 목표까지 넘겨요 ★');
+      expect(recordResultLine({ ...base, sum: 12, amount: 20, target: 30 })).toBe('이걸로 목표까지 넘겨요 ★');
+    });
+
+    it('이미 채운 날이면 그렇다고 말한다', () => {
+      expect(recordResultLine({ ...base, sum: 12, amount: 2 })).toBe('오늘 몫은 이미 채웠어요');
+      expect(recordResultLine({ ...base, sum: 31, amount: 2, target: 30 })).toBe('오늘 몫은 이미 채웠어요');
+    });
+  });
+
+  it('오늘 화면 문구에는 실패, XP, 스탯이 없다', () => {
+    const all = [
+      ...(Object.values(TODAY_COPY).filter((value) => typeof value === 'string') as string[]),
+      countChipLabel(3, 1),
+      yesterdayBannerTitle(['명상']),
+      yesterdayBannerTitle(['독서', '명상']),
+      foldLabel(2),
+      recordResultLine({ sum: 0, floor: 10, unit: '쪽', dayWord: '오늘', amount: 3 }),
+      ...Object.values(DAY_STATE_WORDS),
+    ];
+    for (const line of all) expect(line).not.toMatch(/실패|XP|스탯/);
   });
 });
