@@ -1,9 +1,15 @@
 import type { Habit, LogType, SkipReason } from '@/models';
 
 import {
+  BEST_RECORD_GLYPH,
   CONFIG_MISSING_NOTE,
+  DAY_STATE_GLYPHS,
+  DAY_STATE_WORDS,
   LOG_TYPE_LABELS,
+  SCREEN_WORDS,
   SKIP_REASON_LABELS,
+  STATUS_LIGHT_GLYPHS,
+  STATUS_LIGHT_WORDS,
   deleteConfirmLines,
   rewardToastLines,
   rowRewardLine,
@@ -423,5 +429,73 @@ describe('rowRewardLine — 피드 행에 남는 보상 줄 (#37)', () => {
     expect(
       rowRewardLine({ xp: 60, sum: 1, floor: 1, floorMet: true, crossedFloor: true }),
     ).toBe('→ 1/1 오늘 몫 완료 · +60 XP');
+  });
+});
+
+/**
+ * 공통 상태 단어 (SPEC §6.0 Day-state marks, Visual rules, Screen words, #127). 대시보드,
+ * 습관 상세, 글 모음 티켓이 이 낱말을 그대로 다시 쓴다. 그래서 낱말 하나하나를 고정한다.
+ */
+describe('DAY_STATE_WORDS — 하루 상태 여섯의 화면 낱말 (§6.0)', () => {
+  it('SPEC 표의 낱말 그대로다', () => {
+    expect(DAY_STATE_WORDS).toEqual({
+      done: '했어요',
+      over: '목표까지 했어요',
+      partial: '조금 했어요',
+      skip: '못 했어요',
+      missed: '기록 없음',
+      pending: '아직이에요',
+    });
+  });
+
+  it('표시 글자는 ✓ ★ ½ − ! 이고, pending 은 점선 테두리뿐이라 글자가 없다', () => {
+    expect(DAY_STATE_GLYPHS).toEqual({
+      done: '✓',
+      over: '★',
+      partial: '½',
+      skip: '−',
+      missed: '!',
+      pending: '',
+    });
+  });
+
+  it('어느 상태 이름에도 실패라는 말이 없다', () => {
+    for (const word of Object.values(DAY_STATE_WORDS)) expect(word).not.toContain('실패');
+  });
+});
+
+describe('STATUS_LIGHT_WORDS — 상태등은 색, 모양, 글자가 함께 간다 (§6.0)', () => {
+  it('세 단계의 낱말과 모양', () => {
+    expect(STATUS_LIGHT_WORDS).toEqual({
+      stable: '괜찮아요',
+      caution: '살펴보세요',
+      intervention: '손봐야 해요',
+    });
+    expect(STATUS_LIGHT_GLYPHS).toEqual({ stable: '●', caution: '◆', intervention: '▲' });
+  });
+
+  it('최고 기록은 ★을 더한다', () => {
+    expect(BEST_RECORD_GLYPH).toBe('★');
+  });
+});
+
+describe('SCREEN_WORDS — 화면이 부르는 이름 (§6.0 Screen words)', () => {
+  it('XP는 별, 스탯은 능력치, cue는 언제·어디서, identity는 이유다', () => {
+    expect(SCREEN_WORDS).toEqual({
+      star: '별',
+      stat: '능력치',
+      cue: '언제·어디서',
+      identity: '이유',
+      engagementStreak: '조금이라도 한 날',
+      streak: '연속',
+      floor: '최소량',
+      dayShare: '오늘 몫',
+    });
+  });
+
+  it('XP와 스탯이라는 말은 화면 낱말에 없다', () => {
+    for (const word of Object.values(SCREEN_WORDS)) {
+      expect(word).not.toMatch(/XP|스탯/);
+    }
   });
 });

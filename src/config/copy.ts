@@ -1,4 +1,5 @@
 import type {
+  DayState,
   DiagnosisComponent,
   Habit,
   LogType,
@@ -616,3 +617,66 @@ export function archivedRowLabel(count: number | null): string {
     ? SETTINGS_COPY.archivedTitle
     : `${SETTINGS_COPY.archivedTitle} ${archivedCountLabel(count)}`;
 }
+
+/**
+ * 공통 상태 단어 (SPEC §6.0, #127). 오늘 화면 티켓이 두고, 대시보드, 습관 상세, 글 모음
+ * 티켓이 다시 쓴다. 모든 화면이 같은 하루 상태를 같은 낱말과 같은 표시로 보여 준다.
+ */
+
+/** 하루 상태 여섯의 화면 낱말 (§6.0 Day-state marks). 어느 이름에도 "실패"가 없다. */
+export const DAY_STATE_WORDS: Record<DayState, string> = {
+  done: '했어요',
+  over: '목표까지 했어요',
+  partial: '조금 했어요',
+  skip: '못 했어요',
+  missed: '기록 없음',
+  pending: '아직이에요',
+};
+
+/** 하루 상태 표시 안의 글자. `pending` 은 점선 테두리뿐이라 글자가 없다. */
+export const DAY_STATE_GLYPHS: Record<DayState, string> = {
+  done: '✓',
+  over: '★',
+  partial: '½',
+  skip: '−',
+  missed: '!',
+  pending: '',
+};
+
+/**
+ * 상태등 세 단계의 낱말과 모양 (§6.0 Visual rules). 키는 `src/domain/statusLight.ts` 의
+ * `StatusLight` 값이다. `personal_best` 는 `stable` 에 `BEST_RECORD_GLYPH` 를 더해 그린다.
+ * `src/config` 는 도메인 아래 층이라 그 타입을 가져오지 않고 키만 맞춘다 (§2.2).
+ */
+export const STATUS_LIGHT_WORDS = {
+  stable: '괜찮아요',
+  caution: '살펴보세요',
+  intervention: '손봐야 해요',
+} as const;
+
+export const STATUS_LIGHT_GLYPHS = {
+  stable: '●',
+  caution: '◆',
+  intervention: '▲',
+} as const;
+
+/** 최고 기록이 상태등에 더하는 표시. */
+export const BEST_RECORD_GLYPH = '★';
+
+/** 화면이 부르는 이름 (§6.0 Screen words). XP는 별, 스탯은 능력치다. */
+export const SCREEN_WORDS = {
+  star: '별',
+  stat: '능력치',
+  cue: '언제·어디서',
+  identity: '이유',
+  engagementStreak: '조금이라도 한 날',
+  streak: '연속',
+  floor: '최소량',
+  dayShare: '오늘 몫',
+} as const;
+
+/** 아이콘만 있는 버튼의 접근성 이름 (§6.0 Icons). */
+export const ICON_LABELS = {
+  help: '설명 보기',
+  close: '닫기',
+} as const;
