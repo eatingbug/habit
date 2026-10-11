@@ -1,15 +1,42 @@
 import type { Habit, LogType, SkipReason } from '@/models';
 
 import {
+  BEST_RECORD_GLYPH,
+  CELEBRATION_COPY,
   CONFIG_MISSING_NOTE,
+  DAY_STATE_GLYPHS,
+  DAY_STATE_WORDS,
+  DAY_WORDS,
   LOG_TYPE_LABELS,
+  SCREEN_WORDS,
+  SHEET_COPY,
   SKIP_REASON_LABELS,
+  STATUS_LIGHT_GLYPHS,
+  STATUS_LIGHT_WORDS,
+  TODAY_COPY,
+  TOOLTIPS,
+  backfillTimeLabel,
+  cardBadge,
+  cardProgressLine,
+  celebrationLine,
+  countChipLabel,
+  cueLine,
   deleteConfirmLines,
-  rewardToastLines,
-  rowRewardLine,
-  saveBannerLines,
+  editTimeLabel,
+  foldLabel,
+  freeLogTimeLabel,
+  levelUpLine,
+  milestoneBonusLine,
+  nowLabel,
+  recordResultLine,
+  recordSumLabel,
   signInCopy,
-  type RewardToastFacts,
+  skipSheetTitle,
+  skipToastLines,
+  starLine,
+  undoToastLines,
+  yesterdayBannerTitle,
+  type UndoToastFacts,
 } from './copy';
 
 /**
@@ -27,9 +54,9 @@ import {
 const CANVAS_ORDER = ['깜빡함', '너무 힘듦', '예외', '안 내킴'];
 
 /**
- * Every value `stateLabel` can return (`app/today.tsx`). Listed here because
- * `jest.config.js` cannot import from `app/`: the confirm's miss clause must not
- * reuse any of them, and `못 함` — `stateLabel('skip')` — is the one it collided with.
+ * Every day-state label a caller can pass as `stateAfterLabel`: the shared
+ * `DAY_STATE_WORDS` (Today) and the old labels the habit detail screen still uses until
+ * its own redesign ticket. The confirm's miss clause must not reuse any of them.
  */
 const STATE_LABELS = [
   '성공',
@@ -38,6 +65,12 @@ const STATE_LABELS = [
   '못 함',
   '기록 없음 · 실패',
   '아직 기록 없음',
+  '했어요',
+  '목표까지 했어요',
+  '조금 했어요',
+  '못 했어요',
+  '기록 없음',
+  '아직이에요',
 ];
 
 describe('SKIP_REASON_LABELS', () => {
@@ -84,7 +117,7 @@ describe('deleteConfirmLines', () => {
 
   it('warns about the erased miss only when the miss is erased (AC 6)', () => {
     expect(deleteConfirmLines({ ...facts, carriesMiss: true })).toEqual([
-      '실패로 세던 기록이 바로 이 줄이라, 지우면 그 실패는 더 세지 않아요.',
+      '못 했다고 찍은 기록이 바로 이 줄이라, 지우면 그날을 못 한 날로 세지 않아요.',
     ]);
     expect(deleteConfirmLines(facts)).toEqual([]);
   });
@@ -99,7 +132,7 @@ describe('deleteConfirmLines', () => {
     });
 
     expect(lines).toEqual([
-      '실패로 세던 기록이 바로 이 줄이라, 지우면 그 실패는 더 세지 않아요.',
+      '못 했다고 찍은 기록이 바로 이 줄이라, 지우면 그날을 못 한 날로 세지 않아요.',
       '지운 뒤 오늘: 못 함',
     ]);
     // The miss clause says what the row was *counted as* and what stops. Reusing the
@@ -121,7 +154,7 @@ describe('deleteConfirmLines', () => {
 
     expect(lines).toHaveLength(3);
     expect(lines[0]).toContain('남는 기록이 없어요');
-    expect(lines[1]).toContain('더 세지 않아요');
+    expect(lines[1]).toContain('못 한 날로 세지 않아요');
     expect(lines[2]).toBe('지운 뒤 오늘: 아직 기록 없음');
   });
 
@@ -207,14 +240,13 @@ describe('LOG_TYPE_LABELS', () => {
 });
 
 /**
- * `rewardToastLines` — the log-time toast's copy (#17 AC 6, AC 7).
+ * `undoToastLines` and `skipToastLines` — the undo toast's second and third lines
+ * (SPEC §6.2 Undo toast copy, #127).
  *
- * A pure function over a delta the domain has already decided, so it asserts here in
- * the same seam as the domain: no repository, no render. The facts arrive as plain
- * primitives — `src/config` sits below `src/domain` (SPEC §2.2), so neither the
- * function nor this file imports `LogEffect` — and the fixtures below build them
- * directly. Every branch is covered, because the cascade is a priority order and an
- * untested branch is one that could be unreachable without anything saying so.
+ * Pure functions over facts the domain and the hook have already decided, so they
+ * assert here with no repository and no render. The facts are plain primitives:
+ * `src/config` sits below `src/domain` (SPEC §2.2). Every branch is covered, because the
+ * third line is a priority order and an untested branch could be unreachable.
  */
 const COUNT_HABIT: Habit = {
   id: 'h1',
@@ -229,128 +261,129 @@ const COUNT_HABIT: Habit = {
 
 const BINARY_HABIT: Habit = { ...COUNT_HABIT, id: 'h2', kind: 'binary', floor: 1, floorUnit: 'time' };
 
-type Delta = Pick<
-  RewardToastFacts,
-  'xpGained' | 'floorCrossedToday' | 'pushedToOver' | 'statLevelUp' | 'showedUp' | 'streakMilestoneHit'
->;
-
-const NOTHING_MOVED: Delta = {
+const NOTHING_MOVED: UndoToastFacts = {
+  habit: COUNT_HABIT,
+  actual: 5,
   xpGained: 0,
-  floorCrossedToday: false,
-  pushedToOver: false,
+  remainingToFloor: 0,
   statLevelUp: false,
-  showedUp: false,
+  statName: '지능',
+  statLevel: 3,
+  pushedToOver: false,
+  floorCrossed: false,
+  celebrated: false,
+  alreadyCelebrated: false,
+  isBackfill: false,
 };
 
-function lines(effect: Partial<Delta>, over: Partial<RewardToastFacts> = {}) {
-  return rewardToastLines({
-    habit: COUNT_HABIT,
-    actual: 5,
-    ...NOTHING_MOVED,
-    ...effect,
-    isBackfill: false,
-    statName: '지능',
-    statLevel: 3,
-    ...over,
-  });
+function lines(over: Partial<UndoToastFacts>) {
+  return undoToastLines({ ...NOTHING_MOVED, ...over });
 }
 
-describe('rewardToastLines — the mono detail slot', () => {
-  it('appends the XP the log earned', () => {
-    expect(lines({ xpGained: 60, floorCrossedToday: true }).detail).toBe('+5쪽 · +60 XP');
+describe('undoToastLines — the second line: amount and 별', () => {
+  it('appends the 별 the log earned', () => {
+    expect(lines({ xpGained: 60, floorCrossed: true }).detail).toBe('+5쪽 · 별 +60');
   });
 
-  it('says nothing about XP when the log earned none — the sub line carries that day', () => {
-    expect(lines({ showedUp: true }).detail).toBe('+5쪽');
+  it('drops the 별 part when the log earned none', () => {
+    expect(lines({ actual: 3, remainingToFloor: 2 }).detail).toBe('+3쪽');
   });
 
   it('keeps a binary habit off the unit path, which would read `+1time`', () => {
-    expect(lines({ xpGained: 60, floorCrossedToday: true }, { habit: BINARY_HABIT, actual: 1 }).detail).toBe(
-      '✓ 완료 · +60 XP',
+    expect(lines({ habit: BINARY_HABIT, actual: 1, xpGained: 60, floorCrossed: true }).detail).toBe(
+      '✓ 했어요 · 별 +60',
     );
   });
 });
 
-describe('rewardToastLines — the attributed sub line', () => {
-  it('names the stat and its new level on a level-up', () => {
-    expect(lines({ xpGained: 60, floorCrossedToday: true, statLevelUp: true }).sub).toBe('지능 레벨 3');
+describe('undoToastLines — the third line', () => {
+  it('has none when a banner or popup celebrates the log — the toast holds no streak', () => {
+    expect(lines({ xpGained: 60, floorCrossed: true, celebrated: true }).sub).toBeUndefined();
   });
 
-  it('falls through to the next branch when the stat id names no configured stat', () => {
-    expect(lines({ xpGained: 60, floorCrossedToday: true, statLevelUp: true }, { statName: undefined }).sub).toBe(
-      '최소만큼 했어요 💪',
+  it('says how much is left to the floor on a partial log', () => {
+    expect(lines({ actual: 3, remainingToFloor: 2 }).sub).toBe(
+      '조금이라도 했어요 · 최소량까지 2쪽 남았어요',
     );
   });
 
-  it('names the run length a milestone was reached at', () => {
-    expect(lines({ xpGained: 90, streakMilestoneHit: 5 }).sub).toBe('이어 간 날 5일 보너스');
+  it('says 더 했어요 on another log of a day already celebrated', () => {
+    expect(lines({ actual: 2, xpGained: 12 }).sub).toBe('더 했어요');
+    expect(lines({ floorCrossed: true, alreadyCelebrated: true }).sub).toBe('더 했어요');
   });
 
-  it('reports clearing the target', () => {
-    expect(lines({ xpGained: 120, floorCrossedToday: true, pushedToOver: true }).sub).toBe(
-      '목표까지 넘었어요 🎯',
+  it('says the target was passed', () => {
+    expect(lines({ xpGained: 84, pushedToOver: true }).sub).toBe('목표까지 넘겼어요');
+  });
+
+  it('says the day is filled when the floor is crossed with no celebration', () => {
+    expect(lines({ xpGained: 60, floorCrossed: true }).sub).toBe('오늘 몫을 채웠어요');
+    expect(lines({ xpGained: 60, floorCrossed: true, isBackfill: true }).sub).toBe('그날 몫을 채웠어요');
+  });
+
+  it('names the stat and its new level on a level-up, beside a banner too (#127 decision)', () => {
+    expect(lines({ xpGained: 60, floorCrossed: true, statLevelUp: true, celebrated: true }).sub).toBe(
+      '지능 레벨 3으로 올랐어요',
     );
   });
 
-  it('reports crossing the floor', () => {
-    expect(lines({ xpGained: 60, floorCrossedToday: true }).sub).toBe('최소만큼 했어요 💪');
+  it('reads the level-up particle off how the number is said', () => {
+    expect(levelUpLine('의지', 1)).toBe('의지 레벨 1로 올랐어요');
+    expect(levelUpLine('의지', 2)).toBe('의지 레벨 2로 올랐어요');
+    expect(levelUpLine('의지', 3)).toBe('의지 레벨 3으로 올랐어요');
+    expect(levelUpLine('의지', 6)).toBe('의지 레벨 6으로 올랐어요');
+    expect(levelUpLine('의지', 7)).toBe('의지 레벨 7로 올랐어요');
+    expect(levelUpLine('의지', 10)).toBe('의지 레벨 10으로 올랐어요');
   });
 
-  it('acknowledges a sub-floor log rather than going silent (AC 7)', () => {
-    expect(lines({ showedUp: true }).sub).toBe('오늘 나타났어요');
-  });
-
-  it('says 그 날, not 오늘, on a backfill — the only sentence here that names a day', () => {
-    expect(lines({ showedUp: true }, { isBackfill: true }).sub).toBe('그 날 나타났어요');
-  });
-
-  it("tells a binary habit's second log of the day why it earned nothing", () => {
-    expect(lines({}, { habit: BINARY_HABIT, actual: 1 }).sub).toBe('XP는 하루 한 번만');
-  });
-
-  it('reports intensity above a floor the day had already met', () => {
-    expect(lines({ xpGained: 12 }).sub).toBe('최소보다 더 했어요');
-  });
-
-  it('does not borrow the binary line for a count habit that earned no XP', () => {
-    expect(lines({}).sub).toBe('최소보다 더 했어요');
-  });
-});
-
-describe('rewardToastLines — one line, so the branches are a priority order', () => {
-  it('puts a level-up ahead of the milestone that caused it', () => {
-    expect(lines({ xpGained: 90, statLevelUp: true, streakMilestoneHit: 5 }).sub).toBe('지능 레벨 3');
-  });
-
-  it('puts a milestone ahead of the floor crossing on the same log', () => {
-    expect(lines({ xpGained: 150, floorCrossedToday: true, streakMilestoneHit: 5 }).sub).toBe(
-      '이어 간 날 5일 보너스',
-    );
-  });
-
-  it('puts clearing the target ahead of crossing the floor, which one log can do at once', () => {
-    expect(lines({ xpGained: 120, floorCrossedToday: true, pushedToOver: true }).sub).toBe(
-      '목표까지 넘었어요 🎯',
+  it('falls through when the stat id names no configured stat', () => {
+    expect(lines({ xpGained: 60, floorCrossed: true, statLevelUp: true, statName: undefined }).sub).toBe(
+      '오늘 몫을 채웠어요',
     );
   });
 });
 
-describe('saveBannerLines — the at-risk banner, split where the canvas splits it (#18)', () => {
-  it('names the habit in the bold lead and keeps the invitation in the rest', () => {
-    expect(saveBannerLines('명상')).toEqual({
-      lead: '어제 명상 기록을 놓쳤어요.',
-      rest: '오늘 한 번이면 흐름이 이어져요. 어제도 지금 채워 넣을 수 있어요.',
+describe('skipToastLines — a skip puts its reason second (§6.2)', () => {
+  it('says the streak stays on an exception', () => {
+    expect(skipToastLines({ reason: 'exception' })).toEqual({
+      detail: '예외',
+      sub: '예외라서 연속은 그대로예요',
     });
   });
 
-  /**
-   * The reason the canvas's `{이름}을` is not copied literally: the object particle
-   * would have to be 를 after a vowel, and neither form is right for both. Making the
-   * name a modifier of an invariant noun is grammatical for every habit name.
-   */
-  it('reads the same for a vowel-final name, which 을 would have broken', () => {
-    expect(saveBannerLines('요가').lead).toBe('어제 요가 기록을 놓쳤어요.');
-    expect(saveBannerLines('푸시업 30').lead).toBe('어제 푸시업 30 기록을 놓쳤어요.');
+  it('says 쉬었어요 on any other reason, with the note after 이유: when there is one', () => {
+    expect(skipToastLines({ reason: 'cue' })).toEqual({ detail: '깜빡함', sub: '쉬었어요' });
+    expect(skipToastLines({ reason: 'floor', note: '피곤해요' })).toEqual({
+      detail: '너무 힘듦',
+      sub: '쉬었어요 · 이유: 피곤해요',
+    });
+  });
+
+  it('never says the streak broke', () => {
+    for (const reason of ['cue', 'floor', 'identity'] as const) {
+      expect(skipToastLines({ reason }).sub).not.toMatch(/끊|실패/);
+    }
+  });
+});
+
+describe('celebration copy (§6.2 Streak celebration)', () => {
+  it('says the habit filled today’s share', () => {
+    expect(celebrationLine({ icon: '📖', name: '독서', streak: 3 })).toBe('📖 독서 오늘 몫을 채웠어요');
+  });
+
+  it('says which day a backfill filled and the streak it made', () => {
+    expect(celebrationLine({ icon: '📖', name: '독서', streak: 13, filledDay: '어제' })).toBe(
+      '📖 독서 어제를 채워서 13일 연속이 됐어요',
+    );
+    expect(celebrationLine({ icon: '📖', name: '독서', streak: 4, filledDay: '2월 27일' })).toBe(
+      '📖 독서 2월 27일을 채워서 4일 연속이 됐어요',
+    );
+  });
+
+  it('writes the ★ line and the bonus line with their 별', () => {
+    expect(starLine(12)).toBe('★ 목표까지 넘겼어요 · 별 +12');
+    expect(milestoneBonusLine(90)).toBe('기념일 보너스 · 별 +90');
+    expect(CELEBRATION_COPY.streakSuffix).toBe('일 연속!');
   });
 });
 
@@ -387,41 +420,228 @@ describe('CONFIG_MISSING_NOTE — 흰 화면 대신 무엇을 넣어야 하는�
 });
 
 /**
- * 네 갈래는 캔버스의 `logAmount` 그대로다 — `design/parts/Today.logic.js:60` 과
- * `:65–68`. 숫자는 캔버스에서 옮겨 적지 않는다: 여기 넣는 `xp` 는 `attributeDayXP` 가
- * 계산한 값이고, 이 테스트는 그 값이 문장에 그대로 나오는지만 본다.
+ * 공통 상태 단어 (SPEC §6.0 Day-state marks, Visual rules, Screen words, #127). 대시보드,
+ * 습관 상세, 글 모음 티켓이 이 낱말을 그대로 다시 쓴다. 그래서 낱말 하나하나를 고정한다.
  */
-describe('rowRewardLine — 피드 행에 남는 보상 줄 (#37)', () => {
-  const base = { xp: 0, sum: 0, floor: 5, floorMet: false, crossedFloor: false };
+describe('DAY_STATE_WORDS — 하루 상태 여섯의 화면 낱말 (§6.0)', () => {
+  it('SPEC 표의 낱말 그대로다', () => {
+    expect(DAY_STATE_WORDS).toEqual({
+      done: '했어요',
+      over: '목표까지 했어요',
+      partial: '조금 했어요',
+      skip: '못 했어요',
+      missed: '기록 없음',
+      pending: '아직이에요',
+    });
+  });
 
-  it('최소에 못 미친 행은 XP 대신 "나타남" 을 말한다 (`:60`)', () => {
-    expect(rowRewardLine({ ...base, sum: 3 })).toBe(
-      '→ 3/5 · 최소엔 못 미쳤지만 “나타남” 하루 추가',
+  it('표시 글자는 ✓ ★ ½ − ! 이고, pending 은 점선 테두리뿐이라 글자가 없다', () => {
+    expect(DAY_STATE_GLYPHS).toEqual({
+      done: '✓',
+      over: '★',
+      partial: '½',
+      skip: '−',
+      missed: '!',
+      pending: '',
+    });
+  });
+
+  it('어느 상태 이름에도 실패라는 말이 없다', () => {
+    for (const word of Object.values(DAY_STATE_WORDS)) expect(word).not.toContain('실패');
+  });
+});
+
+describe('STATUS_LIGHT_WORDS — 상태등은 색, 모양, 글자가 함께 간다 (§6.0)', () => {
+  it('세 단계의 낱말과 모양', () => {
+    expect(STATUS_LIGHT_WORDS).toEqual({
+      stable: '괜찮아요',
+      caution: '살펴보세요',
+      intervention: '손봐야 해요',
+    });
+    expect(STATUS_LIGHT_GLYPHS).toEqual({ stable: '●', caution: '◆', intervention: '▲' });
+  });
+
+  it('최고 기록은 ★을 더한다', () => {
+    expect(BEST_RECORD_GLYPH).toBe('★');
+  });
+});
+
+describe('SCREEN_WORDS — 화면이 부르는 이름 (§6.0 Screen words)', () => {
+  it('XP는 별, 스탯은 능력치, cue는 언제·어디서, identity는 이유다', () => {
+    expect(SCREEN_WORDS).toEqual({
+      star: '별',
+      stat: '능력치',
+      cue: '언제·어디서',
+      identity: '이유',
+      engagementStreak: '조금이라도 한 날',
+      streak: '연속',
+      floor: '최소량',
+      dayShare: '오늘 몫',
+    });
+  });
+
+  it('XP와 스탯이라는 말은 화면 낱말에 없다', () => {
+    for (const word of Object.values(SCREEN_WORDS)) {
+      expect(word).not.toMatch(/XP|스탯/);
+    }
+  });
+});
+
+describe('TOOLTIPS — `?` 툴팁 문구 (§6.8 표)', () => {
+  it('오늘 화면의 두 툴팁은 표의 문장 그대로다', () => {
+    expect(TOOLTIPS.yesterdayBanner).toBe(
+      '기록 없이 지나간 날은 연속이 끊긴 것으로 세요. 했는지 못 했는지 채우면 그 기록으로 다시 계산해요.',
+    );
+    expect(TOOLTIPS.freeLog).toBe(
+      '떠오른 생각이나 방금 한 일을 적어요. 별이나 연속에는 영향이 없어요.',
     );
   });
 
-  it('목표를 넘긴 행은 합과 목표와 XP 를 말한다 (`:65`)', () => {
-    expect(
-      rowRewardLine({ ...base, xp: 78, sum: 8, floorMet: true, crossedTarget: 8 }),
-    ).toBe('→ 합 8 · 목표 8 넘음 · +78 XP');
+  it('다른 화면이 쓸 툴팁도 표 그대로 둔다', () => {
+    expect(TOOLTIPS).toEqual({
+      streak:
+        '최소량을 채운 날이 이어진 날수예요. 기록 없이 지나간 날이나 이유를 골라 못 했다고 찍은 날이 있으면 0부터 다시 세요.',
+      engagementStreak:
+        '최소량에 못 미쳐도 조금이라도 한 날까지 세요. 기록 없는 날이나 이유를 골라 못 했다고 찍은 날이 있으면 0부터 다시 세요.',
+      successRate:
+        '최근 28일 중 최소량을 채운 날의 비율이에요. 예외로 찍은 날은 빼고, 5일이 쌓이기 전에는 —로 보여요.',
+      bestStreak: '지금까지 가장 길게 이어진 연속이에요. 연속이 끊겨도 줄지 않아요.',
+      starsAndLevel: '최소량을 채우면 별을 받아요. 별이 모이면 레벨이 올라요.',
+      characterLevel:
+        '능력치 가운데 가장 높은 레벨이에요. 습관을 하면 그 습관의 능력치에 별이 쌓여요.',
+      statusLight:
+        '최근 기록을 보고 습관이 잘 굴러가는지 알려 줘요. 손봐야 해요가 뜨면 회고하기로 원인을 찾아요.',
+      sevenDayDots:
+        '점을 누르면 그날 기록을 채울 수 있어요. 테두리만 있는 점은 기록 없는 날이고, 실패로 세요.',
+      recentThreeWeeks:
+        '최근 3주를 하루 한 칸으로 보여 줘요. 칸을 누르면 그날 기록을 채울 수 있어요.',
+      forming: '날짜가 아니라 실제로 한 날로 세요. 보통 두 달쯤 걸리니 더뎌도 괜찮아요.',
+      weeklyTotal:
+        '막대 하나가 한 주 동안 한 양을 모두 더한 값이에요. 가로선은 하루 최소량과 목표를 7일로 곱한 기준이에요.',
+      floor: '아무리 바빠도 할 수 있는 양이에요. 이만큼 하면 그날 몫을 한 거예요.',
+      target: '최소량보다 큰 선택 목표예요. 넘기면 별을 더 받지만 안 해도 괜찮아요.',
+      kind: '횟수 · 양은 한 만큼 적고, 최소량을 채우면 그날 몫을 해요. 예 · 아니오는 했는지만 보고, 이어 간 날이 쌓이면 별을 더 받아요.',
+      cue: '습관을 시작할 때와 곳이에요. 비워 둬도 되고, 잘 안 될 때 먼저 정해 보자고 물어볼게요.',
+      stat: '이 습관으로 받은 별이 쌓이는 갈래예요. 가장 높은 능력치 레벨이 캐릭터 레벨이 돼요.',
+      identity:
+        '어떤 사람이 되고 싶어서 하는지 적어요. 내키지 않는 날 다시 꺼내 보면 이어 가기 쉬워요.',
+      yesterdayBanner:
+        '기록 없이 지나간 날은 연속이 끊긴 것으로 세요. 했는지 못 했는지 채우면 그 기록으로 다시 계산해요.',
+      freeLog: '떠오른 생각이나 방금 한 일을 적어요. 별이나 연속에는 영향이 없어요.',
+      reflectionBackfill:
+        '기록 없이 지나간 날은 했는지 못 했는지 알 수 없어요. 그래서 원인을 짚기 전에 먼저 물어봐요.',
+      reflectionSevenDays:
+        '! 칸은 기록 없이 지나간 날이고, − 칸은 이유를 골라 못 했다고 찍은 날이에요. 둘 다 실패로 세지만 이유는 − 칸만 알 수 있어요.',
+      reflectionHowItReads:
+        '직접 남긴 기록만 보고 원인을 짚어요. 기록 없이 지나간 날은 이유를 몰라서 빼요.',
+    });
   });
 
-  it('최소를 채운 행은 오늘 몫 완료를 말한다 (`:67`)', () => {
-    expect(rowRewardLine({ ...base, xp: 60, sum: 5, floorMet: true, crossedFloor: true })).toBe(
-      '→ 5/5 오늘 몫 완료 · +60 XP',
-    );
+  it('오늘 화면의 툴팁에는 실패, XP, 스탯이 없다', () => {
+    for (const tip of [TOOLTIPS.yesterdayBanner, TOOLTIPS.freeLog]) {
+      expect(tip).not.toMatch(/실패|XP|스탯/);
+    }
   });
 
-  /** 이 줄이 답해야 하는 질문이 "왜 이 행은 0 이냐" 라서, 0 도 적는다. */
-  it('이미 채워진 뒤의 행은 제 몫만 말하고, 0 이면 0 이라고 적는다 (`:68`)', () => {
-    expect(rowRewardLine({ ...base, xp: 0, sum: 9, floorMet: true })).toBe('→ 합 9 · +0 XP');
-    expect(rowRewardLine({ ...base, xp: 18, sum: 9, floorMet: true })).toBe('→ 합 9 · +18 XP');
+  it('툴팁은 두 문장 이하다 (§6.8)', () => {
+    for (const tip of Object.values(TOOLTIPS)) {
+      // 마침표로만 끊는다. "! 칸은" 의 `!` 는 하루 상태 표시이지 문장 끝이 아니다.
+      const sentences = tip.split(/(?<=\.)\s+/).filter((part) => part.length > 0);
+      expect(sentences.length).toBeLessThanOrEqual(2);
+    }
+  });
+});
+
+/** 오늘 화면의 문구 (SPEC §6.2, #127). 훅이 이 함수로 문구를 만든다. */
+describe('오늘 화면 문구 (§6.2)', () => {
+  it('고정 낱말은 SPEC과 아트보드 그대로다', () => {
+    expect(TODAY_COPY).toMatchObject({
+      title: '오늘 할 일',
+      fill: '채우기',
+      did: '했어요',
+      didNot: '못 했어요',
+      yesterdayListTitle: '어제 기록이 빈 습관',
+      freeLogButton: '끄적이기',
+      freeLogTitle: '✏️ 끄적이기',
+      freeLogSubmit: '남기기',
+    });
+    expect(TODAY_COPY.did).toBe(DAY_STATE_WORDS.done);
+    expect(TODAY_COPY.didNot).toBe(DAY_STATE_WORDS.skip);
+    expect(DAY_WORDS).toEqual({ today: '오늘', yesterday: '어제' });
   });
 
-  /** 예/아니오 습관은 floor 1 이고 목표가 없다 (§3.2) — 갈래를 따로 두지 않는다. */
-  it('예/아니오 습관은 1/1 오늘 몫 완료로 읽힌다', () => {
-    expect(
-      rowRewardLine({ xp: 60, sum: 1, floor: 1, floorMet: true, crossedFloor: true }),
-    ).toBe('→ 1/1 오늘 몫 완료 · +60 XP');
+  it('공통 기록 시트와 못 한 이유 시트의 낱말', () => {
+    expect(SHEET_COPY).toMatchObject({
+      notePlaceholder: '메모 (선택)',
+      record: '기록하기',
+      skipHint: '이유를 누르면 바로 기록돼요.',
+    });
+  });
+
+  it('개수 칩은 "3개 중 1개 했어요"다', () => {
+    expect(countChipLabel(3, 1)).toBe('✅ 3개 중 1개 했어요');
+  });
+
+  it('어제 배너 제목은 빈 습관이 하나면 이름을, 둘 이상이면 개수를 말한다 (#135)', () => {
+    expect(yesterdayBannerTitle(['명상'])).toBe('🌙 어제 명상 기록이 비어 있어요.');
+    expect(yesterdayBannerTitle(['독서', '명상', '스트레칭'])).toBe('🌙 어제 기록이 빈 습관 3개');
+  });
+
+  it('접힌 기록과 시트 머리 문구', () => {
+    expect(foldLabel(2)).toBe('오늘 기록 2개');
+    expect(skipSheetTitle('오늘')).toBe('오늘 못 했어요 · 왜?');
+    expect(skipSheetTitle('어제')).toBe('어제 못 했어요 · 왜?');
+    expect(recordSumLabel(6, '쪽')).toBe('지금 6쪽');
+    expect(nowLabel('14:20')).toBe('지금 14:20');
+    expect(freeLogTimeLabel('14:20')).toBe('지금 14:20 · 시간 바꾸기');
+    expect(editTimeLabel('07:10')).toBe('07:10 · 시간 바꾸기');
+    expect(backfillTimeLabel('어제')).toBe('어제 12:00');
+  });
+
+  it('카드의 표시와 진행 줄', () => {
+    expect(cardBadge('done')).toBe('✓ 했어요');
+    expect(cardBadge('over')).toBe('★ 목표까지 했어요');
+    expect(cardBadge('skip')).toBe('− 못 했어요');
+    expect(cardBadge('partial')).toBeNull();
+    expect(cardBadge('pending')).toBeNull();
+    expect(cardProgressLine({ sum: 6, floor: 10, unit: '쪽' })).toBe('6 / 10쪽');
+    expect(cardProgressLine({ sum: 30, floor: 10, unit: '쪽', target: 30 })).toBe('30쪽 · 목표 30쪽');
+    expect(cueLine('자기 전, 침대 옆에서')).toBe('🕐 자기 전, 침대 옆에서');
+  });
+
+  describe('recordResultLine — 이 양이 오늘 몫에 무엇을 하는지 (C7a)', () => {
+    const base = { sum: 0, floor: 10, unit: '쪽', dayWord: '오늘' };
+
+    it('최소량을 채우는 양이면 오늘 몫을 채운다고 한다', () => {
+      expect(recordResultLine({ ...base, sum: 6, amount: 4 })).toBe('이걸로 오늘 몫을 채워요 ✓');
+      expect(recordResultLine({ ...base, amount: 10, dayWord: '어제' })).toBe('이걸로 어제 몫을 채워요 ✓');
+    });
+
+    it('모자라면 남는 양을 말한다', () => {
+      expect(recordResultLine({ ...base, sum: 2, amount: 3 })).toBe('최소량까지 5쪽 남아요');
+    });
+
+    it('목표를 넘기는 양이면 목표를 말한다', () => {
+      expect(recordResultLine({ ...base, amount: 30, target: 30 })).toBe('이걸로 목표까지 넘겨요 ★');
+      expect(recordResultLine({ ...base, sum: 12, amount: 20, target: 30 })).toBe('이걸로 목표까지 넘겨요 ★');
+    });
+
+    it('이미 채운 날이면 그렇다고 말한다', () => {
+      expect(recordResultLine({ ...base, sum: 12, amount: 2 })).toBe('오늘 몫은 이미 채웠어요');
+      expect(recordResultLine({ ...base, sum: 31, amount: 2, target: 30 })).toBe('오늘 몫은 이미 채웠어요');
+    });
+  });
+
+  it('오늘 화면 문구에는 실패, XP, 스탯이 없다', () => {
+    const all = [
+      ...(Object.values(TODAY_COPY).filter((value) => typeof value === 'string') as string[]),
+      countChipLabel(3, 1),
+      yesterdayBannerTitle(['명상']),
+      yesterdayBannerTitle(['독서', '명상']),
+      foldLabel(2),
+      recordResultLine({ sum: 0, floor: 10, unit: '쪽', dayWord: '오늘', amount: 3 }),
+      ...Object.values(DAY_STATE_WORDS),
+    ];
+    for (const line of all) expect(line).not.toMatch(/실패|XP|스탯/);
   });
 });
