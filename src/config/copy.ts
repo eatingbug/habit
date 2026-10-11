@@ -148,8 +148,10 @@ export interface DeleteConfirmFacts {
  * one term for the 미스 being erased and for the day's surviving state, one sentence
  * apart, which is the mixing `CONTEXT.md`'s glossary forbids. It would also give the
  * label a second source, three lines below a docblock promising the map stays the
- * screen's. So the clause names what the row was **counted as** (실패) and what stops
- * — never how the day now reads.
+ * screen's. So the clause names what the row **was** (a skip with a reason, in the
+ * §6.8 tooltips' own words "이유를 골라 못 했다고 찍은") and what stops — never how
+ * the day now reads. It no longer says 실패: the redesigned Today shows this confirm,
+ * and no Today copy uses that word (#127).
  *
  * Every clause is the caller's to ask for, and two of them are asked for by only one
  * screen:
@@ -170,7 +172,7 @@ export function deleteConfirmLines(facts: DeleteConfirmFacts): string[] {
     lines.push(`이 기록을 지우면 ${day} ${facts.habitName}에 남는 기록이 없어요.`);
   }
   if (facts.carriesMiss) {
-    lines.push('실패로 세던 기록이 바로 이 줄이라, 지우면 그 실패는 더 세지 않아요.');
+    lines.push('못 했다고 찍은 기록이 바로 이 줄이라, 지우면 그날을 못 한 날로 세지 않아요.');
   }
   if (facts.streakBefore != null && facts.streakAfter != null) {
     lines.push(`연속 날수가 다시 계산돼요 — ${facts.streakBefore}일 → ${facts.streakAfter}일.`);
