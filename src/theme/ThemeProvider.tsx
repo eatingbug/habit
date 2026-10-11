@@ -1,6 +1,7 @@
 import { createContext, useContext, useMemo, useState, type ReactNode } from 'react';
 import { useColorScheme } from 'react-native';
 
+import { PALETTES as REDESIGN_PALETTES, type Palette as RedesignPalette } from './redesignTokens';
 import { PALETTES, type Palette, type ThemeName } from './tokens';
 
 /** 'system' follows the OS; the explicit values are the manual override (§6.0). */
@@ -9,6 +10,11 @@ type ThemePreference = ThemeName | 'system';
 interface ThemeContextValue {
   name: ThemeName;
   colors: Palette;
+  /**
+   * The redesign palette (`redesignTokens.ts`) for the same scheme as `colors`. Screens
+   * move from `colors` to `redesign` one ticket at a time (#123).
+   */
+  redesign: RedesignPalette;
   preference: ThemePreference;
   setPreference: (p: ThemePreference) => void;
   /** Cycles system → light → dark → system, for the header toggle. */
@@ -26,6 +32,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     return {
       name,
       colors: PALETTES[name],
+      redesign: REDESIGN_PALETTES[name],
       preference,
       setPreference,
       toggle: () =>
