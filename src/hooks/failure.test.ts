@@ -1,5 +1,5 @@
 import { act, renderHook, waitFor } from '@testing-library/react-native';
-import { createElement, type ReactNode } from 'react';
+import { createElement, type ComponentProps, type ReactNode } from 'react';
 
 import {
   LOAD_FAILED_NOTE,
@@ -96,7 +96,9 @@ async function flakyWith(habits: Habit[] = [habit()]): Promise<Flaky> {
 
 function wrapperFor(repository: HabitRepository) {
   return function Wrapper({ children }: { children: ReactNode }) {
-    return createElement(RepositoryProvider, { repository, children });
+    // `children` goes in as the third argument; the cast covers the prop it fills at runtime.
+    const props = { repository } as ComponentProps<typeof RepositoryProvider>;
+    return createElement(RepositoryProvider, props, children);
   };
 }
 

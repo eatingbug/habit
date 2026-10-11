@@ -61,6 +61,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     try {
       client = createSupabaseClient();
     } catch (cause) {
+      // Client creation must stay out of render, so the one-shot failure is reported from here.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setSession({
         status: 'misconfigured',
         message: cause instanceof Error ? cause.message : CONFIG_MISSING_NOTE,
