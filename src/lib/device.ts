@@ -20,6 +20,15 @@ export function localToday(): string {
 }
 
 /**
+ * "HH:MM" on the device's **local** wall clock — how a row's UTC `timestamp`, or now,
+ * reads to the user (the feed's time column, B3's "지금 14:20").
+ */
+export function localClock(at: string | Date): string {
+  const time = typeof at === 'string' ? new Date(at) : at;
+  return `${`${time.getHours()}`.padStart(2, '0')}:${`${time.getMinutes()}`.padStart(2, '0')}`;
+}
+
+/**
  * The B3 time override (§6.2): a `date` plus the hour and minute the user typed → an
  * ISO `timestamp`. Built from the **local** wall clock, for the same reason
  * `localToday` avoids `toISOString()` — the feed reads the row back with
