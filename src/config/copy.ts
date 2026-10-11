@@ -1,4 +1,5 @@
 import type {
+  DayState,
   DiagnosisComponent,
   Habit,
   LogType,
@@ -616,3 +617,105 @@ export function archivedRowLabel(count: number | null): string {
     ? SETTINGS_COPY.archivedTitle
     : `${SETTINGS_COPY.archivedTitle} ${archivedCountLabel(count)}`;
 }
+
+/**
+ * 공통 상태 단어 (SPEC §6.0, #127). 오늘 화면 티켓이 두고, 대시보드, 습관 상세, 글 모음
+ * 티켓이 다시 쓴다. 모든 화면이 같은 하루 상태를 같은 낱말과 같은 표시로 보여 준다.
+ */
+
+/** 하루 상태 여섯의 화면 낱말 (§6.0 Day-state marks). 어느 이름에도 "실패"가 없다. */
+export const DAY_STATE_WORDS: Record<DayState, string> = {
+  done: '했어요',
+  over: '목표까지 했어요',
+  partial: '조금 했어요',
+  skip: '못 했어요',
+  missed: '기록 없음',
+  pending: '아직이에요',
+};
+
+/** 하루 상태 표시 안의 글자. `pending` 은 점선 테두리뿐이라 글자가 없다. */
+export const DAY_STATE_GLYPHS: Record<DayState, string> = {
+  done: '✓',
+  over: '★',
+  partial: '½',
+  skip: '−',
+  missed: '!',
+  pending: '',
+};
+
+/**
+ * 상태등 세 단계의 낱말과 모양 (§6.0 Visual rules). 키는 `src/domain/statusLight.ts` 의
+ * `StatusLight` 값이다. `personal_best` 는 `stable` 에 `BEST_RECORD_GLYPH` 를 더해 그린다.
+ * `src/config` 는 도메인 아래 층이라 그 타입을 가져오지 않고 키만 맞춘다 (§2.2).
+ */
+export const STATUS_LIGHT_WORDS = {
+  stable: '괜찮아요',
+  caution: '살펴보세요',
+  intervention: '손봐야 해요',
+} as const;
+
+export const STATUS_LIGHT_GLYPHS = {
+  stable: '●',
+  caution: '◆',
+  intervention: '▲',
+} as const;
+
+/** 최고 기록이 상태등에 더하는 표시. */
+export const BEST_RECORD_GLYPH = '★';
+
+/** 화면이 부르는 이름 (§6.0 Screen words). XP는 별, 스탯은 능력치다. */
+export const SCREEN_WORDS = {
+  star: '별',
+  stat: '능력치',
+  cue: '언제·어디서',
+  identity: '이유',
+  engagementStreak: '조금이라도 한 날',
+  streak: '연속',
+  floor: '최소량',
+  dayShare: '오늘 몫',
+} as const;
+
+/** 아이콘만 있는 버튼의 접근성 이름 (§6.0 Icons). */
+export const ICON_LABELS = {
+  help: '설명 보기',
+  close: '닫기',
+} as const;
+
+/** `?` 툴팁 문구 (§6.8 Copy 표). 표의 문장 그대로다. */
+export const TOOLTIPS = {
+  streak:
+    '최소량을 채운 날이 이어진 날수예요. 기록 없이 지나간 날이나 이유를 골라 못 했다고 찍은 날이 있으면 0부터 다시 세요.',
+  engagementStreak:
+    '최소량에 못 미쳐도 조금이라도 한 날까지 세요. 기록 없는 날이나 이유를 골라 못 했다고 찍은 날이 있으면 0부터 다시 세요.',
+  successRate:
+    '최근 28일 중 최소량을 채운 날의 비율이에요. 예외로 찍은 날은 빼고, 5일이 쌓이기 전에는 —로 보여요.',
+  bestStreak: '지금까지 가장 길게 이어진 연속이에요. 연속이 끊겨도 줄지 않아요.',
+  starsAndLevel: '최소량을 채우면 별을 받아요. 별이 모이면 레벨이 올라요.',
+  characterLevel:
+    '능력치 가운데 가장 높은 레벨이에요. 습관을 하면 그 습관의 능력치에 별이 쌓여요.',
+  statusLight:
+    '최근 기록을 보고 습관이 잘 굴러가는지 알려 줘요. 손봐야 해요가 뜨면 회고하기로 원인을 찾아요.',
+  sevenDayDots:
+    '점을 누르면 그날 기록을 채울 수 있어요. 테두리만 있는 점은 기록 없는 날이고, 실패로 세요.',
+  recentThreeWeeks:
+    '최근 3주를 하루 한 칸으로 보여 줘요. 칸을 누르면 그날 기록을 채울 수 있어요.',
+  forming: '날짜가 아니라 실제로 한 날로 세요. 보통 두 달쯤 걸리니 더뎌도 괜찮아요.',
+  weeklyTotal:
+    '막대 하나가 한 주 동안 한 양을 모두 더한 값이에요. 가로선은 하루 최소량과 목표를 7일로 곱한 기준이에요.',
+  floor: '아무리 바빠도 할 수 있는 양이에요. 이만큼 하면 그날 몫을 한 거예요.',
+  target: '최소량보다 큰 선택 목표예요. 넘기면 별을 더 받지만 안 해도 괜찮아요.',
+  kind: '횟수 · 양은 한 만큼 적고, 최소량을 채우면 그날 몫을 해요. 예 · 아니오는 했는지만 보고, 이어 간 날이 쌓이면 별을 더 받아요.',
+  cue: '습관을 시작할 때와 곳이에요. 비워 둬도 되고, 잘 안 될 때 먼저 정해 보자고 물어볼게요.',
+  stat: '이 습관으로 받은 별이 쌓이는 갈래예요. 가장 높은 능력치 레벨이 캐릭터 레벨이 돼요.',
+  identity:
+    '어떤 사람이 되고 싶어서 하는지 적어요. 내키지 않는 날 다시 꺼내 보면 이어 가기 쉬워요.',
+  yesterdayBanner:
+    '기록 없이 지나간 날은 연속이 끊긴 것으로 세요. 했는지 못 했는지 채우면 그 기록으로 다시 계산해요.',
+  freeLog: '떠오른 생각이나 방금 한 일을 적어요. 별이나 연속에는 영향이 없어요.',
+  reflectionBackfill:
+    '기록 없이 지나간 날은 했는지 못 했는지 알 수 없어요. 그래서 원인을 짚기 전에 먼저 물어봐요.',
+  reflectionSevenDays:
+    '! 칸은 기록 없이 지나간 날이고, − 칸은 이유를 골라 못 했다고 찍은 날이에요. 둘 다 실패로 세지만 이유는 − 칸만 알 수 있어요.',
+  reflectionHowItReads:
+    '직접 남긴 기록만 보고 원인을 짚어요. 기록 없이 지나간 날은 이유를 몰라서 빼요.',
+} as const;
