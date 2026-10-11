@@ -986,6 +986,7 @@ On screen (#90, #91):
 
 - The question: 지금 무엇을 하면 되나.
 - Top: the date, the title "오늘 할 일" and a count chip ("✅ 3개 중 1개 했어요").
+- A paused habit (잠깐 쉬기) is not shown on Today and is not counted in the count chip. It stays on Dashboard and Habit Detail.
 - Yesterday banner (#135): one banner groups every habit whose yesterday is `missed`. It has a `?`.
   - One blank habit: the title "🌙 어제 {습관} 기록이 비어 있어요." with "했어요" and "못 했어요" in the banner.
   - Two or more: the title "🌙 어제 기록이 빈 습관 N개" with one "채우기" button. It opens the list sheet.
@@ -1021,7 +1022,8 @@ Skip reason sheet (`ReTodaySkip`, #120):
 
 - Head: "✏️ 끄적이기" with a `?`.
 - Four kind chips: 메모, 잘한 일, 기분, 떠오른 생각. Picking one is optional. The default is 떠오른 생각.
-- A text field, the time button "지금 14:20 · 날짜와 시각 바꾸기" and the button "남기기".
+- A text field, the time button "지금 14:20 · 시간 바꾸기" and the button "남기기".
+- Free logs are for today only. The time button changes the time, never the date.
 
 Streak celebration (`ReTodayStreak`, `ReTodayMilestone`, #97, #99):
 
@@ -1092,9 +1094,12 @@ Behaviour rules (from v3.1 §6.2):
     skip at once. Optional free-text note above the chips. (Reasons are diagnostic — Part D.)
   - **Time (B3).** A new habit entry is always stamped now, or noon on a backfill. The
     record sheet shows the time as a plain label ("지금 14:20"), not a control. Free logs
-    and edits of an existing entry default to **now**, with the time behind a small
-    "지금 HH:MM · 날짜와 시각 바꾸기" button that reveals the picker only to override
-    (rare — `timestamp` is ordering/tiebreak only, §3.3).
+    are today-only and default to **now**, with the time behind a small
+    "지금 HH:MM · 시간 바꾸기" button. An edit of an existing entry defaults to the
+    entry's own time, not now (no silent reorder, #13). Its small "HH:MM · 시간 바꾸기"
+    button overrides the time only when the user picks one. Either button reveals the
+    picker only to override the time, never the date (rare — `timestamp` is
+    ordering/tiebreak only, §3.3).
   - Log button — calls `upsertEntry` or `upsertFreeLog` (always a fresh `id`; the
     sheet never overwrites another day's rows — multiple per day are expected).
   - **Log-time reward feedback (C1).** On a successful log, Today shows an immediate,

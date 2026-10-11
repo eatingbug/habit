@@ -392,9 +392,11 @@ A logging layer alongside habits, on the **Today** surface.
 - **Purpose:** a simple record of the user's day — *not* part of habit scoring or
   reflection. Just "what happened today."
 - **Types:** Note / Win / Mood / Idea.
-- **Timestamp:** defaults to now. A small "지금 HH:MM · 날짜와 시각 바꾸기" button
+- **Timestamp:** today only, defaults to now. A small "지금 HH:MM · 시간 바꾸기" button
   reveals separate hour/minute pickers (10-minute increments) for the rare override
-  (SPEC §6.2, B3). Edits of an existing entry keep the same override. A new habit entry
+  (SPEC §6.2, B3). It changes the time, never the date. Edits of an existing entry default
+  to the entry's own time, not now (#13). Their "HH:MM · 시간 바꾸기" button overrides the
+  time only when the user picks one. A new habit entry
   has no override and is always stamped now. Timestamp only affects ordering.
 - **No XP, no stat/streak effect.** Free logs never touch the game layer.
 
