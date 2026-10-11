@@ -195,7 +195,7 @@ describe('diagnosis flags and their evidence (§6.4, AC 2–5)', () => {
     const [card] = result.current.flags;
     expect(card.flag.component).toBe('cue');
     expect(card.flag.severity).toBe('critical');
-    expect(card.componentLabel).toBe('언제 할지');
+    expect(card.componentLabel).toBe('언제·어디서');
     expect(card.flag.evidence).toContain('21%');
     expect(card.chart).toBeNull();
   });
@@ -241,6 +241,82 @@ describe('diagnosis flags and their evidence (§6.4, AC 2–5)', () => {
   });
 });
 
+/**
+ * SPEC §6.7 Diagnosis copy — the table's ten rows, as the screen receives them (#111).
+ * `TODAY` is a Sunday, so `TUESDAYS` are the 24th and the 17th.
+ */
+describe('the diagnosis copy table (§6.7, #131)', () => {
+  const TUESDAYS = [addDays(TODAY, -5), addDays(TODAY, -12)];
+
+  /** Healthy, except `skipped` — those days hold one `cue` skip and nothing else. */
+  function cueSkips(skipped: string[]): HabitEntry[] {
+    return [
+      ...healthy().filter((entry) => !skipped.includes(entry.date)),
+      ...skipped.map((date) => skip(date, 'cue')),
+    ];
+  }
+
+  function rule4Identity(): { subject: Habit; entries: HabitEntry[] } {
+    const { subject, entries } = rule4Only();
+    return { subject: { ...subject, cue: '아침 커피 뒤', identity: undefined }, entries };
+  }
+
+  it('names cue 언제·어디서 and identity 이유 on the badge', async () => {
+    const cue = await render(await seed(rule4Only().subject, rule4Only().entries));
+    const { subject, entries } = rule4Identity();
+    const identity = await render(await seed(subject, entries));
+
+    expect(cue.result.current.flags[0].componentLabel).toBe('언제·어디서');
+    expect(identity.result.current.flags[0].componentLabel).toBe('이유');
+  });
+
+  it('says Rule 2 with the weekday and 언제·어디서', async () => {
+    const { result } = await render(await seed(habit(), cueSkips(TUESDAYS)));
+
+    expect(result.current.flags.map((card) => card.flag.message)).toEqual([
+      '화요일 언제·어디서가 자꾸 어긋나요.',
+    ]);
+  });
+
+  it('says Rule 4 for an empty 언제·어디서, with its evidence', async () => {
+    const { subject, entries } = rule4Only();
+    const { result } = await render(await seed(subject, entries));
+
+    expect(result.current.flags[0].flag.message).toBe(
+      '언제·어디서가 비어 있어요. 습관이 붙지 않는 가장 큰 이유일 수 있어요.',
+    );
+    expect(result.current.flags[0].flag.evidence).toBe('최근 14일 달성률 21%, 언제·어디서 미설정');
+  });
+
+  it('says Rule 4 for an empty 이유, with its evidence', async () => {
+    const { subject, entries } = rule4Identity();
+    const { result } = await render(await seed(subject, entries));
+
+    expect(result.current.flags[0].flag.message).toBe(
+      '이유가 비어 있어요. 습관이 붙지 않는 가장 큰 이유일 수 있어요.',
+    );
+    expect(result.current.flags[0].flag.evidence).toBe('최근 14일 달성률 21%, 이유 미설정');
+  });
+
+  it('says Rule 5 on cue skips with the 깜빡함 chip’s own word', async () => {
+    // A Tuesday and a Wednesday: two weekdays, so Rule 2 stays silent.
+    const { result } = await render(await seed(habit(), cueSkips([TUESDAYS[0], addDays(TODAY, -4)])));
+
+    expect(result.current.flags.map((card) => card.flag.message)).toEqual(['깜빡해서 못 한 날이 반복돼요.']);
+    expect(result.current.flags[0].flag.evidence).toBe("최근 28일 중 '깜빡함' 사유로 안 함으로 찍은 날 2일");
+  });
+
+  it('names the two cue prescriptions 언제·어디서 정하기 and 언제·어디서 바꾸기', async () => {
+    const empty = await render(await seed(rule4Only().subject, rule4Only().entries));
+    const set = await render(await seed(habit(), cueSkips(TUESDAYS)));
+
+    expect(empty.result.current.suggested).toBe('fill_cue');
+    expect(empty.result.current.options[0].label).toBe('언제·어디서 정하기');
+    expect(set.result.current.suggested).toBe('adjust_cue');
+    expect(set.result.current.options[0].label).toBe('언제·어디서 바꾸기');
+  });
+});
+
 describe('the recommended action (§6.4, AC 7, AC 9)', () => {
   it('pre-selects the engine’s suggestion, with its reason', async () => {
     const { subject, entries } = rule4Only();
@@ -249,7 +325,7 @@ describe('the recommended action (§6.4, AC 7, AC 9)', () => {
     expect(result.current.suggested).toBe('fill_cue');
     expect(result.current.chosen).toBe('fill_cue');
     const chosen = result.current.options.find((option) => option.action === 'fill_cue');
-    expect(chosen?.label).toBe('할 시간 정하기');
+    expect(chosen?.label).toBe('언제·어디서 정하기');
     expect(chosen?.reason.length).toBeGreaterThan(0);
     expect(chosen?.field).toBe('cue');
   });

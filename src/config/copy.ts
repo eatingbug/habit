@@ -223,14 +223,14 @@ export const LIFECYCLE_NOTE =
  * `app/reflect/[id].tsx` because `useReflection` hands the screen its options already
  * labelled, and a hook cannot read copy that lives in `app/`.
  *
- * Canvas: `fill_cue` (`design/parts/Reflection.body.html:48`), `lower_floor` (`:52`),
- * `keep` (`:54`). `pause` and `archive` are `LIFECYCLE_LABELS`' own words — `:53`
+ * `fill_cue` and `adjust_cue` are SPEC §6.7's Diagnosis copy table (#111). Canvas:
+ * `lower_floor` (`design/parts/Reflection.body.html:52`), `keep` (`:54`). `pause` and `archive` are `LIFECYCLE_LABELS`' own words — `:53`
  * draws `잠깐 쉬기` too — so one action has one name on both screens. The other three
  * are **캔버스 출처 없음 — 신규 문구**.
  */
 export const REFLECTION_ACTION_LABELS: Record<ReflectionAction, string> = {
-  fill_cue: '할 시간 정하기',
-  adjust_cue: '할 시간 바꾸기',
+  fill_cue: '언제·어디서 정하기',
+  adjust_cue: '언제·어디서 바꾸기',
   fill_identity: '하는 이유 적기',
   lower_floor: '최소량 줄이기',
   raise_target: '목표 올리기',
@@ -241,10 +241,10 @@ export const REFLECTION_ACTION_LABELS: Record<ReflectionAction, string> = {
 
 /**
  * The line under the recommended action — "with explanation" (§6.4). `fill_cue` is the
- * canvas's (`Reflection.body.html:49`); the rest are **캔버스 출처 없음 — 신규 문구**.
+ * canvas's (`ReReflection.body.html`); the rest are **캔버스 출처 없음 — 신규 문구**.
  */
 export const REFLECTION_ACTION_REASONS: Record<ReflectionAction, string> = {
-  fill_cue: '언제, 어디서 할지만 정해도 훨씬 잘 됩니다. 맞으면 누르기만 하세요.',
+  fill_cue: '언제, 어디서 할지만 정해도 훨씬 잘 돼요. 맞으면 누르기만 하세요.',
   adjust_cue: '지금 정한 때가 자꾸 어긋나요. 더 잘 지켜지는 때로 옮겨 보세요.',
   fill_identity: '왜 하는지가 분명하면 내키지 않는 날에도 이어 가기 쉬워요.',
   lower_floor: '최소량을 못 할 수가 없을 만큼 낮추면 이어 가기가 쉬워져요.',
@@ -256,13 +256,14 @@ export const REFLECTION_ACTION_REASONS: Record<ReflectionAction, string> = {
 
 /**
  * The flag card's component badge (§6.4 "Component (CUE / FLOOR / IDENTITY / LOAD)").
- * `cue` and `floor` are the canvas's (`Reflection.body.html:37` · `:42`); `identity` and
- * `load` are **캔버스 출처 없음 — 신규 문구**.
+ * `cue` and `identity` are SPEC §6.7's Diagnosis copy table (#111), the same words as
+ * `SCREEN_WORDS`. `floor` is the canvas's (`Reflection.body.html:42`); `load` is
+ * **캔버스 출처 없음 — 신규 문구**.
  */
 export const COMPONENT_LABELS: Record<DiagnosisComponent, string> = {
-  cue: '언제 할지',
+  cue: '언제·어디서',
   floor: '최소량',
-  identity: '하는 이유',
+  identity: '이유',
   load: '양 늘리기',
 };
 
