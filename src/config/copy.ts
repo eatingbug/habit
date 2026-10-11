@@ -88,16 +88,6 @@ export const LOG_TYPE_LABELS: Record<LogType, string> = {
  */
 export const FREE_LOG_NO_TEXT_NOTE = '점수에는 영향 없어요';
 
-/**
- * The target selector's free option — the canvas's **first** tab
- * (`design/parts/Today.logic.js:135`, `{ id: 'free', label: '오늘 일기' }`).
- *
- * Beside the labels above rather than in the screen for the same reason: the option
- * list itself is `useToday.targetOptions`, and a hook cannot read copy that lives in
- * `app/`.
- */
-export const FREE_TARGET_LABEL = '오늘 일기';
-
 /** What `deleteConfirmLines` needs to know — see `useToday.DeleteEffect` for each. */
 export interface DeleteConfirmFacts {
   habitName: string;
@@ -148,8 +138,10 @@ export interface DeleteConfirmFacts {
  * one term for the 미스 being erased and for the day's surviving state, one sentence
  * apart, which is the mixing `CONTEXT.md`'s glossary forbids. It would also give the
  * label a second source, three lines below a docblock promising the map stays the
- * screen's. So the clause names what the row was **counted as** (실패) and what stops
- * — never how the day now reads.
+ * screen's. So the clause names what the row **was** (a skip with a reason, in the
+ * §6.8 tooltips' own words "이유를 골라 못 했다고 찍은") and what stops — never how
+ * the day now reads. It no longer says 실패: the redesigned Today shows this confirm,
+ * and no Today copy uses that word (#127).
  *
  * Every clause is the caller's to ask for, and two of them are asked for by only one
  * screen:
@@ -170,7 +162,7 @@ export function deleteConfirmLines(facts: DeleteConfirmFacts): string[] {
     lines.push(`이 기록을 지우면 ${day} ${facts.habitName}에 남는 기록이 없어요.`);
   }
   if (facts.carriesMiss) {
-    lines.push('실패로 세던 기록이 바로 이 줄이라, 지우면 그 실패는 더 세지 않아요.');
+    lines.push('못 했다고 찍은 기록이 바로 이 줄이라, 지우면 그날을 못 한 날로 세지 않아요.');
   }
   if (facts.streakBefore != null && facts.streakAfter != null) {
     lines.push(`연속 날수가 다시 계산돼요 — ${facts.streakBefore}일 → ${facts.streakAfter}일.`);
@@ -405,37 +397,159 @@ export function rowRewardLine(facts: RowRewardFacts): string {
 }
 
 /**
- * The at-risk save banner's two halves (SPEC §4.3 C2, issue #18 AC 5) — copy from
- * `design/parts/Today.body.html:13`.
- *
- * Two strings and not one, because the canvas splits them typographically: the banner's
- * surface and border are `--warn` (`design/_tokens.css:93–94`) and so is the **bold**
- * first sentence (`:97`), while the single `<span class="dot r">` beside it is the only
- * crit-red thing in the box. Returning one joined sentence would lose which half is
- * bold and warn-coloured, and the screen would have to re-split it.
- *
- * Takes the habit's **name** rather than a `Habit` for `deleteConfirmLines`' reason:
- * §2.2 puts `src/config` below `src/domain`, and `src/domain/score.ts:1` already
- * imports `@/config/tuning`, so importing anything from `@/domain` here would close a
- * cycle. Nothing but the name is needed.
- *
- * **Declared deviation.** SPEC §4.3 C2 (`docs/SPEC.md:547–548`) quotes the banner as
- * `어제 놓쳤어요 — 오늘 최소 한 번이면 이어갈 수 있어요`; this follows the canvas's three-clause version instead,
- * which names the habit and adds the backfill invitation. The invitation is not a false
- * promise: the date stepper that honours it shipped with #14.
- *
- * **One word is ours: `기록을`.** The canvas writes `어제 명상을 놓쳤어요`, whose object
- * particle is `을` only because 명상 ends in a consonant; a habit named 요가 or 달리기
- * would need `를`, and half of all names would read as broken Korean. Rather than
- * inflecting the particle from the name's last syllable — a rule with its own edge
- * cases on a name ending in a digit or a Latin letter — the name is made a modifier of
- * an invariant noun. The register is the canvas's, unchanged.
+ * The redesigned Today screen's copy (SPEC §6.2, the `ReToday*` artboards, #127).
+ * Fixed words are here; the sentences that carry a number or a name are the functions
+ * below, which `useToday` calls. Words marked 신규 문구 are not in the SPEC or a board.
  */
-export function saveBannerLines(habitName: string): { lead: string; rest: string } {
-  return {
-    lead: `어제 ${habitName} 기록을 놓쳤어요.`,
-    rest: '오늘 한 번이면 흐름이 이어져요. 어제도 지금 채워 넣을 수 있어요.',
-  };
+export const TODAY_COPY = {
+  title: '오늘 할 일',
+  fill: '채우기',
+  // Literals, not `DAY_STATE_WORDS.done`: that record is declared further down this
+  // file, and a module-level read of it here would run before it exists.
+  did: '했어요',
+  didNot: '못 했어요',
+  yesterdayListTitle: '어제 기록이 빈 습관',
+  freeLogButton: '끄적이기',
+  freeLogTitle: '✏️ 끄적이기',
+  /** 신규 문구. The board shows a filled field, not its placeholder. */
+  freeLogPlaceholder: '떠오른 생각을 적어요',
+  freeLogSubmit: '남기기',
+  notePlaceholder: '메모 (선택)',
+  record: '기록하기',
+  skipHint: '이유를 누르면 바로 기록돼요.',
+  /** 신규 문구 (the edit sheet has no board): 저장, 삭제 and the confirm's two answers. */
+  save: '저장',
+  remove: '삭제',
+  confirmRemove: '지울게요',
+  keep: '그대로 둘게요',
+  /** The edit sheet's row kind switch — the day-state words of the two row kinds. */
+  editKinds: { activity: '했어요', skip: '못 했어요' },
+  /** The stepper's accessible names (신규 문구). */
+  stepDown: '하나 줄이기',
+  stepUp: '하나 늘리기',
+  /** The time reveal's two fields and reset (신규 문구). */
+  hour: '시',
+  minute: '분',
+  backToNow: '지금으로',
+  /** A backfilled row's stamp, in the edit sheet (§6.3 noon pin). */
+  backfillTime: '낮 12:00으로 남아요',
+  /** The empty screen: one emoji, one sentence, one button (§6.0 Icons). 신규 문구. */
+  emptyEmoji: '🌱',
+  empty: '아직 습관이 없어요.',
+  emptyAction: '습관 만들기',
+  /** The fold's accessible action words. */
+  foldOpen: '펼치기',
+  foldClose: '접기',
+} as const;
+
+/** "✅ 3개 중 1개 했어요" — the count chip. */
+export function countChipLabel(total: number, done: number): string {
+  return `✅ ${total}개 중 ${done}개 ${DAY_STATE_WORDS.done}`;
+}
+
+/**
+ * The yesterday banner's title (#135): the habit's name when one habit is blank, the
+ * count when two or more are.
+ */
+export function yesterdayBannerTitle(names: string[]): string {
+  return names.length === 1
+    ? `🌙 어제 ${names[0]} 기록이 비어 있어요.`
+    : `🌙 어제 기록이 빈 습관 ${names.length}개`;
+}
+
+/** "오늘 기록 2개" — the fold over the day's records. */
+export function foldLabel(count: number): string {
+  return `오늘 기록 ${count}개`;
+}
+
+/** The 언제·어디서 value on a habit card, with no label (§6.0 Screen words). */
+export function cueLine(cue: string): string {
+  return `🕐 ${cue}`;
+}
+
+/** The card's status words, mark first: ✓ 했어요, ★ 목표까지 했어요, − 못 했어요. */
+export function cardBadge(state: DayState): string | null {
+  return state === 'done' || state === 'over' || state === 'skip'
+    ? `${DAY_STATE_GLYPHS[state]} ${DAY_STATE_WORDS[state]}`
+    : null;
+}
+
+/** "6 / 10쪽", or past the target "30쪽 · 목표 30쪽" (§6.2 Habit card). */
+export function cardProgressLine({
+  sum,
+  floor,
+  unit,
+  target,
+}: {
+  sum: number;
+  floor: number;
+  unit: string;
+  /** Given only when the day is `over`. */
+  target?: number;
+}): string {
+  return target != null ? `${sum}${unit} · 목표 ${target}${unit}` : `${sum} / ${floor}${unit}`;
+}
+
+/** "{어느 날} 못 했어요 · 왜?" — the skip reason sheet's title and the record sheet's link. */
+export function skipSheetTitle(dayWord: string): string {
+  return `${dayWord} ${DAY_STATE_WORDS.skip} · 왜?`;
+}
+
+/** "지금 6쪽" — today's sum, in the record sheet's head. */
+export function recordSumLabel(sum: number, unit: string): string {
+  return `지금 ${sum}${unit}`;
+}
+
+/** "지금 14:20" — the record sheet's time, a plain label (B3). */
+export function nowLabel(clock: string): string {
+  return `지금 ${clock}`;
+}
+
+/** A backfill's time in the record sheet: it is stamped at noon (B3, §6.3). 신규 문구. */
+export function backfillTimeLabel(dayWord: string): string {
+  return `${dayWord} 12:00`;
+}
+
+/** "지금 14:20 · 날짜와 시각 바꾸기" — the free log's time button (B3). */
+export function freeLogTimeLabel(clock: string): string {
+  return `지금 ${clock} · 날짜와 시각 바꾸기`;
+}
+
+/** An existing row's time button in the edit sheet. 신규 문구. */
+export function editTimeLabel(clock: string): string {
+  return `${clock} · 시각 바꾸기`;
+}
+
+/**
+ * The record sheet's one result line under the stepper (C7a): what this amount does to
+ * the day. The SPEC gives one case, "이걸로 오늘 몫을 채워요 ✓". The other three are
+ * 신규 문구 in the same register: still short of the floor, past the target, and a day
+ * whose floor is already met.
+ */
+export function recordResultLine({
+  sum,
+  amount,
+  floor,
+  target,
+  unit,
+  dayWord,
+}: {
+  /** The day's sum before this amount. */
+  sum: number;
+  amount: number;
+  floor: number;
+  /** The habit's target when the engine honours one (`> floor`, count only). */
+  target?: number;
+  unit: string;
+  /** 오늘 or 어제. */
+  dayWord: string;
+}): string {
+  const next = sum + amount;
+  const passesTarget = target != null && sum < target && next >= target;
+  if (sum < floor && next < floor) return `최소량까지 ${floor - next}${unit} 남아요`;
+  if (passesTarget) return '이걸로 목표까지 넘겨요 ★';
+  if (sum < floor) return `이걸로 ${dayWord} 몫을 채워요 ✓`;
+  return `${dayWord} 몫은 이미 채웠어요`;
 }
 
 /**

@@ -1,4 +1,5 @@
 import {
+  localClock,
   localToday,
   newId,
   restampedAtLocalTime,
@@ -103,6 +104,15 @@ describe('newId', () => {
     });
     const ids = new Set(Array.from({ length: 2000 }, () => newId()));
     expect(ids.size).toBe(2000);
+  });
+});
+
+describe('localClock', () => {
+  it('reads a stamp on the local wall clock, zero-padded', () => {
+    // Built from local fields, so the assertion holds in every timezone.
+    const at = new Date(2026, 2, 1, 7, 5);
+    expect(localClock(at)).toBe('07:05');
+    expect(localClock(at.toISOString())).toBe('07:05');
   });
 });
 

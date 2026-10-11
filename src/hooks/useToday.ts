@@ -1,12 +1,26 @@
 import { useCallback, useEffect, useState } from 'react';
 
 import {
+  backfillTimeLabel,
+  cardBadge,
+  cardProgressLine,
+  countChipLabel,
+  cueLine,
+  DAY_STATE_WORDS,
+  foldLabel,
   FREE_LOG_NO_TEXT_NOTE,
-  FREE_TARGET_LABEL,
+  habitIcon,
   LOAD_FAILED_NOTE,
   LOG_TYPE_LABELS,
+  longDateLabel,
+  nowLabel,
+  recordResultLine,
+  recordSumLabel,
   rowRewardLine,
-  saveBannerLines,
+  SKIP_REASON_LABELS,
+  skipSheetTitle,
+  TODAY_COPY,
+  yesterdayBannerTitle,
 } from '@/config/copy';
 import { useRepository } from '@/context/RepositoryContext';
 import { isBackfilledRow, isBackfillableDate } from '@/domain/backfill';
@@ -15,12 +29,11 @@ import {
   dayStates,
   isFloorMet,
 } from '@/domain/classify';
-import { addDays, compareDates, dateOf } from '@/domain/dates';
+import { addDays, compareDates, dateOf, weekdayOf } from '@/domain/dates';
 import { deleteOutcome, type DeleteOutcome } from '@/domain/deleteEffect';
 import { sortByDomainOrder } from '@/domain/feed';
 import { attributeDayXP, computeXP, type RowReward } from '@/domain/score';
-import { atRiskToday } from '@/domain/streak';
-import { localNoonOn, localToday, newId } from '@/lib/device';
+import { localClock, localNoonOn, localToday, newId } from '@/lib/device';
 import type { FreeLog, Habit, HabitEntry, LogType, SkipReason } from '@/models';
 
 import { useFailure, type Failure } from './failure';
@@ -29,6 +42,7 @@ import {
   useQuickLog,
   type LogAffordances,
   type QuickLogToast,
+  type StreakCelebration,
 } from './useQuickLog';
 
 /**
@@ -64,7 +78,110 @@ export interface TodayHabitRow extends LogAffordances {
    * into a paused day is legitimate and still earns (§7.3).
    */
   day?: ClassifiedDay;
+  /** The habit card's icon (`habitIcon`). */
+  icon: string;
+  /** "🕐 자기 전, 침대 옆에서", or `null` with no 언제·어디서. */
+  cueLine: string | null;
+  /** "✓ 했어요", "★ 목표까지 했어요" or "− 못 했어요", or `null` (`cardBadge`). */
+  badge: string | null;
+  /**
+   * "6 / 10쪽", past the target "30쪽 · 목표 30쪽", or "아직이에요" on a yes/no habit
+   * not done yet. `null` on a yes/no habit that is done, whose badge says it all.
+   */
+  progressLine: string | null;
+  /** The bar's fill, 0..1 of the floor. `null` on a yes/no habit, which has no bar. */
+  progressRatio: number | null;
+  /** The floor is met today: ✓ button, `done` border and bar (§6.0 Visual rules). */
+  floorMet: boolean;
+  /** False only on a yes/no habit already done today: its ✓ button is disabled (§6.2). */
+  canLog: boolean;
 }
+
+/** Which day a sheet writes to: today, or yesterday from the yesterday banner (B4). */
+export type SheetDay = 'today' | 'yesterday';
+
+/** One habit blank yesterday — a row of the yesterday list sheet (#135). */
+export interface YesterdayBlank {
+  habit: Habit;
+  /** "📖 독서". */
+  label: string;
+}
+
+/**
+ * The yesterday banner (#135, §6.2): one banner over every habit whose yesterday is
+ * `missed`. `null` when there is none, and on any date but today.
+ */
+export interface YesterdayBanner {
+  count: number;
+  /** "🌙 어제 명상 기록이 비어 있어요." or "🌙 어제 기록이 빈 습관 3개". */
+  title: string;
+  /**
+   * The habit when exactly one is blank: 했어요 and 못 했어요 sit in the banner. `null`
+   * with two or more: one 채우기 opens the list sheet.
+   */
+  single: Habit | null;
+  blanks: YesterdayBlank[];
+}
+
+/** The record sheet (§6.2 Record sheet, `ReTodaySheet`), ready to render. */
+export interface RecordSheetView {
+  kind: 'record';
+  habit: Habit;
+  day: SheetDay;
+  /** "📖 독서". */
+  title: string;
+  /** "지금 6쪽" on a count habit's today, else `null`. */
+  sumLabel: string | null;
+  isCount: boolean;
+  unit: string;
+  /** The stepper's start (B2). */
+  defaultAmount: number;
+  /** "지금 14:20", or "어제 12:00" for the noon-pinned backfill (B3). */
+  timeLabel: string;
+  /** "오늘 못 했어요 · 왜?", or `null` once the day holds activity (not skippable). */
+  skipLabel: string | null;
+  /** The one result line for the staged amount (C7a). */
+  resultLine(amount: number): string;
+}
+
+/** The skip reason sheet (§6.2, `ReTodaySkip`). A reason chip records the skip at once. */
+export interface SkipSheetView {
+  kind: 'skip';
+  habit: Habit;
+  day: SheetDay;
+  /** "🧘 명상". */
+  eyebrow: string;
+  /** "오늘 못 했어요 · 왜?" or "어제 못 했어요 · 왜?". */
+  title: string;
+}
+
+/** The yesterday list sheet (`ReTodayYesterday`). */
+export interface YesterdayListSheetView {
+  kind: 'yesterdayList';
+  /** "10월 9일 금요일". */
+  eyebrow: string;
+  title: string;
+  blanks: YesterdayBlank[];
+}
+
+/**
+ * The one sheet open on Today, or none. Derived each render from what is open and the
+ * loaded rows, so a write that fills a blank shortens the list sheet with no patching.
+ */
+export type TodaySheet =
+  | RecordSheetView
+  | SkipSheetView
+  | YesterdayListSheetView
+  | { kind: 'freeLog' }
+  | { kind: 'editEntry'; item: TodayHabitFeedItem }
+  | { kind: 'editFree'; item: TodayFreeFeedItem };
+
+/** What is open — the hook's only sheet state. Everything shown is derived from it. */
+type SheetIntent =
+  | { kind: 'record' | 'skip'; habitId: string; day: SheetDay; fromList: boolean }
+  | { kind: 'yesterdayList' }
+  | { kind: 'freeLog' }
+  | { kind: 'edit'; id: string };
 
 /** A habit row's line of the chronological feed (§6.2). */
 export interface TodayHabitFeedItem {
@@ -84,6 +201,12 @@ export interface TodayHabitFeedItem {
   backfilled: boolean;
   /** What this row contributed, and the line that says so — see `TodayRowReward`. */
   reward: TodayRowReward;
+  /** "07:10" — the row's local wall-clock time. */
+  time: string;
+  /** "📖 독서". */
+  title: string;
+  /** "6쪽", "✓ 했어요", or "못 했어요 · 깜빡함" on a skip row. */
+  summary: string;
 }
 
 /**
@@ -147,6 +270,12 @@ export interface TodayFreeFeedItem {
    * between two sentences is a judgment and `jest.config.js` matches `src/**` only.
    */
   note: string;
+  /** "07:10" — the log's local wall-clock time. */
+  time: string;
+  /** "✏️ 떠오른 생각". */
+  title: string;
+  /** The row's one line — `note`, under the name every feed row shares. */
+  summary: string;
 }
 
 /**
@@ -164,19 +293,6 @@ export type TodayFeedItem = TodayHabitFeedItem | TodayFreeFeedItem;
  */
 export function feedItemId(item: TodayFeedItem): string {
   return item.kind === 'free' ? item.log.id : item.entry.id;
-}
-
-/**
- * The target selector's free option. The value is the canvas's own tab id
- * (`design/parts/Today.logic.js:135`); habit ids are UUIDs, so it can never collide
- * with one.
- */
-export const FREE_TARGET = 'free';
-
-/** One option of the composer's target selector — a habit, or the free path. */
-export interface TargetOption {
-  value: string;
-  label: string;
 }
 
 /**
@@ -249,41 +365,6 @@ export interface DateControl {
   earliest: string;
 }
 
-/**
- * The at-risk save banner (SPEC §4.3 C2, #18 AC 5) — `design/parts/Today.body.html:10–16`.
- *
- * Ready to render: the habit it names, the two halves of its sentence and the write its
- * button performs. Every judgment behind it is here rather than in `app/today.tsx` —
- * whether there is a banner at all, which habit it names, and what `✓ 완료` writes —
- * because `jest.config.js` matches `src/**` only and there are no component render
- * tests, so a condition written in the screen is a condition nothing asserts.
- *
- * Screen-level, not per-row: the canvas puts it **above** the composer, outside the
- * target selector, so it does not follow the habit the user happens to have selected.
- */
-export interface SaveBanner {
-  /** The habit the banner is about — already named inside `lead`, kept for the label. */
-  habitName: string;
-  /** The bold, warn-coloured first sentence (`design/_tokens.css:97`). */
-  lead: string;
-  /** The rest of the sentence, in body colour. */
-  rest: string;
-  /**
-   * `✓ 완료` — one tap that takes today to its floor, which is what clears the banner
-   * (AC 5). The amount is the day's `progress.remaining`, not `defaultAmount`: the two
-   * agree on an empty day, and differ on a `partial` one, which `atRiskToday` admits
-   * (`src/domain/streak.ts:142`). There `defaultAmount` repeats the day's last amount,
-   * and a banner promising 완료 must instead finish the day. `remaining` is never 0
-   * while the banner shows, since both admitted states hold `sum < floor`, so §3.3's
-   * `actual > 0` invariant cannot be broken.
-   *
-   * It writes no note. The log form's note is the form's own state (#79), and the
-   * screen draws this button in the default variant so it does not read as the form's
-   * submit.
-   */
-  onSave(): Promise<void>;
-}
-
 export interface TodayView {
   /**
    * The day being recorded — 'YYYY-MM-DD'. Today unless the date control stepped it
@@ -292,11 +373,42 @@ export interface TodayView {
   date: string;
   /** The date control's derived state (§6.2 B4) — see `DateControl`. */
   dateControl: DateControl;
+  /** "10월 10일 토요일" — the header above "오늘 할 일". */
+  dateLabel: string;
+  /** "✅ 3개 중 1개 했어요", or `null` with no habits. */
+  countChip: string | null;
+  /** "오늘 기록 2개" — the fold over `feed`. */
+  foldLabel: string;
+  /** The yesterday banner (#135), or `null` — see `YesterdayBanner`. */
+  yesterdayBanner: YesterdayBanner | null;
+  /** The open sheet, or `null` — see `TodaySheet`. */
+  sheet: TodaySheet | null;
+  /** `+` on a habit card, or 했어요 for yesterday (B4): the record sheet. */
+  openRecord(habitId: string, day?: SheetDay): void;
+  /** "{어느 날} 못 했어요 · 왜?", or 못 했어요 for yesterday: the skip reason sheet. */
+  openSkip(habitId: string, day?: SheetDay): void;
+  /** The banner's 채우기: the yesterday list sheet. */
+  openYesterdayList(): void;
+  /** "✏️ 끄적이기": the 끄적이기 sheet. */
+  openFreeLog(): void;
+  /** A feed row: its edit sheet, keyed on the row's id. */
+  openFeedItem(id: string): void;
   /**
-   * The at-risk save banner, or `null` when there is nothing to save (#18 AC 5) — see
-   * `SaveBanner`.
+   * Close the open sheet. A record or skip sheet opened from the yesterday list goes
+   * back to the list while it still has rows.
    */
-  saveBanner: SaveBanner | null;
+  closeSheet(): void;
+  /**
+   * 기록하기 on the open record sheet: one activity row on its day (B1), today stamped
+   * now and yesterday noon-pinned (B3, §6.3). Then the sheet closes, or returns to the
+   * yesterday list while other habits are still blank. Rejects like `logActivity`.
+   */
+  recordFromSheet(amount: number, note?: string): Promise<void>;
+  /** A reason chip on the open skip sheet: one skip row on its day at once (B5). */
+  skipFromSheet(reason: SkipReason, note?: string): Promise<void>;
+  /** The streak banner or milestone popup (§6.2) — see `StreakCelebration`. */
+  celebration: StreakCelebration | null;
+  dismissCelebration(): void;
   loading: boolean;
   /**
    * 실패한 **읽기**, 또는 `null`. 쓰기는 여기 오지 않는다 — 이 화면의 작성기·편집기가
@@ -389,28 +501,6 @@ export interface TodayView {
    */
   deletePreview(entryId: string): DeleteEffect | null;
   /**
-   * What the composer's target selector offers on `date`, the free tab **first** as on
-   * the canvas (`design/parts/Today.logic.js:135`). One list over both kinds, so the
-   * screen's "is there anything to choose between?" test counts them together: gating
-   * on the habits alone would hide the free tab on a one-habit install, which is the
-   * commonest screen there is.
-   *
-   * Derived here and not in the screen because the list encodes two judgments —
-   * whether the free path is on offer at all (`freeLogAvailable`) and which habits
-   * exist on `date` (`rows`) — and `jest.config.js` matches `src/**` only, so a list
-   * assembled in `app/` is one no test can reach. Which option is *selected* is UI
-   * state and stays in the screen.
-   */
-  targetOptions: TargetOption[];
-  /**
-   * Does the screen's selection land on the free path? Asked rather than stored,
-   * because a selection can go stale under the date control: `FREE_TARGET` held from
-   * today and then stepped back would otherwise leave the screen with no composer at
-   * all, since the free option is withdrawn on a past date. With no habits on `date`
-   * the free path is the only one there is, so a null selection resolves to it too.
-   */
-  resolvesToFree(selectedId: string | null): boolean;
-  /**
    * Write one free log on **today** (#16 AC 1). Always a fresh `id`, and `date` is set
    * explicitly to today at creation — §3.4 makes `date` authoritative for grouping, so
    * it may never be left to be re-derived from `timestamp` in some other timezone.
@@ -470,6 +560,50 @@ function rowReward(habit: Habit, row: RowReward): TodayRowReward {
             crossedTarget: row.crossedTarget,
           }),
   };
+}
+
+/**
+ * One habit card's words and marks (§6.2 Habit card, C7a). The sum is the domain's
+ * (`progress.sum`), and the floor-met test is `isFloorMet`, so the card cannot disagree
+ * with the count chip.
+ */
+function cardOf(habit: Habit, day: ClassifiedDay | undefined, affordances: LogAffordances) {
+  const floorMet = isFloorMet(day?.state);
+  const { sum, floor } = affordances.progress;
+  const isCount = habit.kind === 'count';
+  const cue = habit.cue?.trim();
+
+  return {
+    icon: habitIcon(habit),
+    cueLine: cue != null && cue.length > 0 ? cueLine(cue) : null,
+    badge: day == null ? null : cardBadge(day.state),
+    progressLine: isCount
+      ? cardProgressLine({
+          sum,
+          floor,
+          unit: habit.floorUnit,
+          target: day?.state === 'over' ? habit.target : undefined,
+        })
+      : floorMet || day?.state === 'skip'
+        ? null
+        : DAY_STATE_WORDS.pending,
+    progressRatio: isCount ? Math.min(1, floor > 0 ? sum / floor : 0) : null,
+    floorMet,
+    canLog: isCount || !floorMet,
+  };
+}
+
+/** "📖 독서" — a habit's icon and name, as sheets and rows head with it. */
+function labelOf(habit: Habit): string {
+  return `${habitIcon(habit)} ${habit.name}`;
+}
+
+/** A habit row's one summary line in the feed. */
+function summaryOf(habit: Habit, entry: HabitEntry): string {
+  if (entry.skipReason != null) {
+    return `${DAY_STATE_WORDS.skip} · ${SKIP_REASON_LABELS[entry.skipReason]}`;
+  }
+  return habit.kind === 'binary' ? `✓ ${DAY_STATE_WORDS.done}` : `${entry.actual}${habit.floorUnit}`;
 }
 
 interface Loaded {
@@ -581,11 +715,10 @@ export function useToday({
       const next: Loaded = {
         earliest,
         history: new Map(perHabit.map(({ habit, history }) => [habit.id, history])),
-        rows: perHabit.map(({ habit, day }) => ({
-          habit,
-          day,
-          ...logAffordances(habit, day),
-        })),
+        rows: perHabit.map(({ habit, day }) => {
+          const affordances = logAffordances(habit, day);
+          return { habit, day, ...affordances, ...cardOf(habit, day, affordances) };
+        }),
         // One sort over the habit rows **and** the free logs together, so the feed is
         // the domain's total order across both kinds (§6.2) — not a per-habit
         // concatenation, and not habit rows with free ones appended. The ordering pair
@@ -607,18 +740,27 @@ export function useToday({
               backfilled:
                 entry.date !== today && isBackfilledRow(entry, localNoonOn(entry.date)),
               reward: rewardById.get(entry.id) as TodayRowReward,
+              time: localClock(entry.timestamp),
+              title: labelOf(byId.get(entry.habitId) as Habit),
+              summary: summaryOf(byId.get(entry.habitId) as Habit, entry),
             } satisfies TodayHabitFeedItem,
           })),
-          ...freeLogs.map((log) => ({
-            id: log.id,
-            timestamp: log.timestamp,
-            item: {
-              kind: 'free',
-              log,
-              label: LOG_TYPE_LABELS[log.type],
-              note: log.text.length > 0 ? log.text : FREE_LOG_NO_TEXT_NOTE,
-            } satisfies TodayFreeFeedItem,
-          })),
+          ...freeLogs.map((log) => {
+            const note = log.text.length > 0 ? log.text : FREE_LOG_NO_TEXT_NOTE;
+            return {
+              id: log.id,
+              timestamp: log.timestamp,
+              item: {
+                kind: 'free',
+                log,
+                label: LOG_TYPE_LABELS[log.type],
+                note,
+                time: localClock(log.timestamp),
+                title: `✏️ ${LOG_TYPE_LABELS[log.type]}`,
+                summary: note,
+              } satisfies TodayFreeFeedItem,
+            };
+          }),
         ]).map((row): TodayFeedItem => row.item),
         xpToday: perHabit.reduce((total, entry) => total + entry.xp, 0),
       };
@@ -734,70 +876,49 @@ export function useToday({
   };
 
   /**
-   * The at-risk habit the banner names, or none (#18 AC 5, SPEC §4.3 C2).
+   * The habits blank yesterday (#135): created by yesterday, and yesterday classified
+   * `missed` through the domain over the loaded history. A paused yesterday has no
+   * state at all (ADR-0003) and a reasoned skip is not blank, so neither is listed.
    *
-   * Derived from the loaded snapshot rather than held as state, so a write re-derives
-   * it for free: `reload()` bumps `version`, the load effect re-reads every habit's
-   * history, and this asks `atRiskToday` again. Nothing patches the banner on a write,
-   * which is what makes "reaching the floor clears it" a property of the screen rather
-   * than of a second rule that could disagree with the domain.
-   *
-   * The **first** at-risk habit in `rows` — repository order, the same order the target
-   * selector offers. The canvas's banner names one habit and carries one button, so
-   * with two at risk it has to choose; taking the first row keeps the banner and the
-   * list in the same order rather than inventing a priority the SPEC does not state.
-   *
-   * Withheld on a past date. The sentence says `오늘 한 번이면`, and the alternative —
-   * showing it on yesterday and writing to today anyway — would run a write against a
-   * day the screen is not showing. Taken off `dateControl.isBackfill` rather than
-   * recomputed, for `freeLogAvailable`'s reason: one encoding of "is the day on screen
-   * today?".
-   *
-   * Paused habits need nothing here: `atRiskToday` returns false for them on its own
-   * (ADR-0003 ¶4, `src/domain/streak.ts:131`).
+   * Derived from the loaded snapshot, never held as state: a write reloads, and the
+   * filled habit drops out of the list by itself. Withheld on any date but today — the
+   * banner names 어제, which is only yesterday when the screen shows today.
    */
-  const atRiskRow = dateControl.isBackfill
-    ? undefined
-    : loaded.rows.find((row) =>
-        atRiskToday(loaded.history.get(row.habit.id) ?? [], row.habit, today),
-      );
+  const blanks: YesterdayBlank[] = dateControl.isBackfill
+    ? []
+    : loaded.rows
+        .filter(
+          (row) =>
+            isBackfillableDate(row.habit, yesterday, today) &&
+            dayStates(row.habit, loaded.history.get(row.habit.id) ?? [], yesterday, yesterday, today)[0]
+              ?.state === 'missed',
+        )
+        .map((row) => ({ habit: row.habit, label: labelOf(row.habit) }));
 
-  const saveBanner: SaveBanner | null =
-    atRiskRow == null
+  const yesterdayBanner: YesterdayBanner | null =
+    blanks.length === 0
       ? null
       : {
-          habitName: atRiskRow.habit.name,
-          ...saveBannerLines(atRiskRow.habit.name),
-          onSave: () => logActivity(atRiskRow.habit.id, atRiskRow.progress.remaining),
+          count: blanks.length,
+          title: yesterdayBannerTitle(blanks.map((blank) => blank.habit.name)),
+          single: blanks.length === 1 ? blanks[0].habit : null,
+          blanks,
         };
 
   /**
    * May a **free log** be written to the day on screen? True only on today (#16).
    *
    * Reading a past day's free logs is unrestricted — they show in that day's feed —
-   * but creating one is not: the canvas names the composer's free tab `오늘 일기`
-   * (`design/parts/Today.logic.js:135`), §6.2 B4 describes the date control entirely
-   * in habit terms ("A non-today entry is a **backfill** and follows the §6.3 rules"),
-   * and §6.3 is about repairing `missed` days — which a free log cannot do, since it
+   * but creating one is not: §6.2 B4 describes backfill entirely in habit terms, and
+   * §6.3 is about repairing `missed` days — which a free log cannot do, since it
    * touches no day state at all. The §6.3 noon pin is `HabitEntry`-typed
    * (`nextBackfillTimestamp`), so a past-dated free log would need a second copy of
    * that convention for a need no AC states (CLAUDE.md §2).
    *
    * Taken off the date control rather than recomputed: "is the day on screen today?"
    * already has one encoding here (`isBackfill`), and a second would be free to drift.
-   * Local, not returned: the screen reads `targetOptions` and `resolvesToFree`, which
-   * are the two things this rule decides.
    */
   const freeLogAvailable = !dateControl.isBackfill;
-
-  const targetOptions: TargetOption[] = [
-    ...(freeLogAvailable ? [{ value: FREE_TARGET, label: FREE_TARGET_LABEL }] : []),
-    ...loaded.rows.map((row) => ({ value: row.habit.id, label: row.habit.name })),
-  ];
-
-  function resolvesToFree(selectedId: string | null): boolean {
-    return freeLogAvailable && (selectedId === FREE_TARGET || loaded.rows.length === 0);
-  }
 
   async function logFree(
     type: LogType,
@@ -837,16 +958,162 @@ export function useToday({
     reload();
   }
 
+  /**
+   * The sheet state (§6.2): only *what is open*. The habit, its day's affordances and
+   * the list's rows are read from the loaded snapshot each render.
+   */
+  const [intent, setIntent] = useState<SheetIntent | null>(null);
+
+  /** The habit a record or skip sheet is about, on its day, with that day's affordances. */
+  function sheetTarget(habitId: string, day: SheetDay) {
+    if (day === 'yesterday') {
+      const blank = blanks.find((b) => b.habit.id === habitId);
+      if (blank == null) return null;
+      const dayRow = dayStates(
+        blank.habit,
+        loaded.history.get(habitId) ?? [],
+        yesterday,
+        yesterday,
+        today,
+      )[0];
+      return { habit: blank.habit, affordances: logAffordances(blank.habit, dayRow) };
+    }
+    const row = rowFor(habitId);
+    return row == null ? null : { habit: row.habit, affordances: row as LogAffordances };
+  }
+
+  function sheetOf(open: SheetIntent | null): TodaySheet | null {
+    if (open == null) return null;
+    switch (open.kind) {
+      case 'yesterdayList':
+        return blanks.length === 0
+          ? null
+          : {
+              kind: 'yesterdayList',
+              eyebrow: longDateLabel(yesterday, weekdayOf(yesterday)),
+              title: TODAY_COPY.yesterdayListTitle,
+              blanks,
+            };
+      case 'freeLog':
+        return { kind: 'freeLog' };
+      case 'edit': {
+        const item = loaded.feed.find((row) => feedItemId(row) === open.id);
+        if (item == null) return null;
+        return item.kind === 'habit' ? { kind: 'editEntry', item } : { kind: 'editFree', item };
+      }
+      case 'skip': {
+        const target = sheetTarget(open.habitId, open.day);
+        if (target == null) return null;
+        return {
+          kind: 'skip',
+          habit: target.habit,
+          day: open.day,
+          eyebrow: labelOf(target.habit),
+          title: skipSheetTitle(open.day === 'today' ? '오늘' : '어제'),
+        };
+      }
+      case 'record': {
+        const target = sheetTarget(open.habitId, open.day);
+        if (target == null) return null;
+        const { habit, affordances } = target;
+        const dayWord = open.day === 'today' ? '오늘' : '어제';
+        const isCount = habit.kind === 'count';
+        const { sum } = affordances.progress;
+        return {
+          kind: 'record',
+          habit,
+          day: open.day,
+          title: labelOf(habit),
+          sumLabel: isCount && open.day === 'today' ? recordSumLabel(sum, habit.floorUnit) : null,
+          isCount,
+          unit: habit.floorUnit,
+          defaultAmount: affordances.defaultAmount,
+          // B3: a new row is stamped now, or at noon on a backfill.
+          timeLabel: open.day === 'today' ? nowLabel(localClock(now())) : backfillTimeLabel(dayWord),
+          skipLabel: affordances.skippable ? skipSheetTitle(dayWord) : null,
+          resultLine: (amount: number) =>
+            recordResultLine({
+              sum,
+              amount,
+              floor: habit.floor,
+              // The target the engine honours: count only, strictly above the floor.
+              target: isCount && habit.target != null && habit.target > habit.floor ? habit.target : undefined,
+              unit: habit.floorUnit,
+              dayWord,
+            }),
+        };
+      }
+    }
+  }
+
+  const sheet = sheetOf(intent);
+
+  /** Is the sheet opened next one of the yesterday list's own? */
+  function cameFromList(): boolean {
+    return intent?.kind === 'yesterdayList' || ((intent?.kind === 'record' || intent?.kind === 'skip') && intent.fromList);
+  }
+
+  function openRecord(habitId: string, day: SheetDay = 'today') {
+    setIntent({ kind: 'record', habitId, day, fromList: cameFromList() });
+  }
+
+  function openSkip(habitId: string, day: SheetDay = 'today') {
+    setIntent({ kind: 'skip', habitId, day, fromList: cameFromList() });
+  }
+
+  /**
+   * Where a record or skip sheet goes once it is done or closed: back to the yesterday
+   * list while another habit is still blank, else nowhere. Counted from the blanks
+   * known now, less the one just filled, so it does not wait for the reload.
+   */
+  function after(open: SheetIntent, filled: string | null): SheetIntent | null {
+    if (open.kind !== 'record' && open.kind !== 'skip') return null;
+    if (!open.fromList) return null;
+    return blanks.some((blank) => blank.habit.id !== filled) ? { kind: 'yesterdayList' } : null;
+  }
+
+  function closeSheet() {
+    setIntent((open) => (open == null ? null : after(open, null)));
+  }
+
+  async function recordFromSheet(amount: number, note?: string): Promise<void> {
+    if (sheet?.kind !== 'record' || intent == null) return;
+    const opts = { note, date: sheet.day === 'yesterday' ? yesterday : undefined };
+    await quick.logActivity(sheet.habit, amount, opts);
+    setIntent(after(intent, sheet.day === 'yesterday' ? sheet.habit.id : null));
+  }
+
+  async function skipFromSheet(reason: SkipReason, note?: string): Promise<void> {
+    if (sheet?.kind !== 'skip' || intent == null) return;
+    const opts = { note, date: sheet.day === 'yesterday' ? yesterday : undefined };
+    await quick.logSkip(sheet.habit, reason, opts);
+    setIntent(after(intent, sheet.day === 'yesterday' ? sheet.habit.id : null));
+  }
+
+  const questsDone = loaded.rows.filter((row) => isFloorMet(row.day?.state)).length;
+
   return {
     date,
     dateControl,
-    saveBanner,
+    dateLabel: longDateLabel(date, weekdayOf(date)),
+    countChip: loaded.rows.length === 0 ? null : countChipLabel(loaded.rows.length, questsDone),
+    foldLabel: foldLabel(loaded.feed.length),
+    yesterdayBanner,
+    sheet,
+    openRecord,
+    openSkip,
+    openYesterdayList: () => setIntent({ kind: 'yesterdayList' }),
+    openFreeLog: () => setIntent({ kind: 'freeLog' }),
+    openFeedItem: (id: string) => setIntent({ kind: 'edit', id }),
+    closeSheet,
+    recordFromSheet,
+    skipFromSheet,
+    celebration: quick.celebration,
+    dismissCelebration: quick.dismissCelebration,
     loading,
     rows: loaded.rows,
     feed: loaded.feed,
-    questsDone: loaded.rows.filter(
-      (row) => isFloorMet(row.day?.state),
-    ).length,
+    questsDone,
     logCount: loaded.feed.length,
     xpToday: loaded.xpToday,
     logActivity,
@@ -854,8 +1121,6 @@ export function useToday({
     editEntry: quick.editEntry,
     removeEntry,
     deletePreview,
-    targetOptions,
-    resolvesToFree,
     logFree,
     editFreeLog,
     removeFreeLog,

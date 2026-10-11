@@ -11,16 +11,27 @@ import {
   SKIP_REASON_LABELS,
   STATUS_LIGHT_GLYPHS,
   STATUS_LIGHT_WORDS,
+  TODAY_COPY,
   TOOLTIPS,
+  cardBadge,
+  cardProgressLine,
   celebrationLine,
+  countChipLabel,
+  cueLine,
   deleteConfirmLines,
+  foldLabel,
+  freeLogTimeLabel,
   milestoneBonusLine,
+  nowLabel,
+  recordResultLine,
+  recordSumLabel,
   rowRewardLine,
-  saveBannerLines,
   signInCopy,
+  skipSheetTitle,
   skipToastLines,
   starLine,
   undoToastLines,
+  yesterdayBannerTitle,
   type UndoToastFacts,
 } from './copy';
 
@@ -39,9 +50,9 @@ import {
 const CANVAS_ORDER = ['깜빡함', '너무 힘듦', '예외', '안 내킴'];
 
 /**
- * Every value `stateLabel` can return (`app/today.tsx`). Listed here because
- * `jest.config.js` cannot import from `app/`: the confirm's miss clause must not
- * reuse any of them, and `못 함` — `stateLabel('skip')` — is the one it collided with.
+ * Every day-state label a caller can pass as `stateAfterLabel`: the shared
+ * `DAY_STATE_WORDS` (Today) and the old labels the habit detail screen still uses until
+ * its own redesign ticket. The confirm's miss clause must not reuse any of them.
  */
 const STATE_LABELS = [
   '성공',
@@ -50,6 +61,12 @@ const STATE_LABELS = [
   '못 함',
   '기록 없음 · 실패',
   '아직 기록 없음',
+  '했어요',
+  '목표까지 했어요',
+  '조금 했어요',
+  '못 했어요',
+  '기록 없음',
+  '아직이에요',
 ];
 
 describe('SKIP_REASON_LABELS', () => {
@@ -96,7 +113,7 @@ describe('deleteConfirmLines', () => {
 
   it('warns about the erased miss only when the miss is erased (AC 6)', () => {
     expect(deleteConfirmLines({ ...facts, carriesMiss: true })).toEqual([
-      '실패로 세던 기록이 바로 이 줄이라, 지우면 그 실패는 더 세지 않아요.',
+      '못 했다고 찍은 기록이 바로 이 줄이라, 지우면 그날을 못 한 날로 세지 않아요.',
     ]);
     expect(deleteConfirmLines(facts)).toEqual([]);
   });
@@ -111,7 +128,7 @@ describe('deleteConfirmLines', () => {
     });
 
     expect(lines).toEqual([
-      '실패로 세던 기록이 바로 이 줄이라, 지우면 그 실패는 더 세지 않아요.',
+      '못 했다고 찍은 기록이 바로 이 줄이라, 지우면 그날을 못 한 날로 세지 않아요.',
       '지운 뒤 오늘: 못 함',
     ]);
     // The miss clause says what the row was *counted as* and what stops. Reusing the
@@ -133,7 +150,7 @@ describe('deleteConfirmLines', () => {
 
     expect(lines).toHaveLength(3);
     expect(lines[0]).toContain('남는 기록이 없어요');
-    expect(lines[1]).toContain('더 세지 않아요');
+    expect(lines[1]).toContain('못 한 날로 세지 않아요');
     expect(lines[2]).toBe('지운 뒤 오늘: 아직 기록 없음');
   });
 
@@ -357,25 +374,6 @@ describe('celebration copy (§6.2 Streak celebration)', () => {
   });
 });
 
-describe('saveBannerLines — the at-risk banner, split where the canvas splits it (#18)', () => {
-  it('names the habit in the bold lead and keeps the invitation in the rest', () => {
-    expect(saveBannerLines('명상')).toEqual({
-      lead: '어제 명상 기록을 놓쳤어요.',
-      rest: '오늘 한 번이면 흐름이 이어져요. 어제도 지금 채워 넣을 수 있어요.',
-    });
-  });
-
-  /**
-   * The reason the canvas's `{이름}을` is not copied literally: the object particle
-   * would have to be 를 after a vowel, and neither form is right for both. Making the
-   * name a modifier of an invariant noun is grammatical for every habit name.
-   */
-  it('reads the same for a vowel-final name, which 을 would have broken', () => {
-    expect(saveBannerLines('요가').lead).toBe('어제 요가 기록을 놓쳤어요.');
-    expect(saveBannerLines('푸시업 30').lead).toBe('어제 푸시업 30 기록을 놓쳤어요.');
-  });
-});
-
 describe('signInCopy — 로그인 가능한 플랫폼인가 (#51)', () => {
   /**
    * 이 파일에 있는 이유가 곧 이 테스트다: 화면에 두면 `jest.config.js` 의 `src/**` 가
@@ -566,11 +564,101 @@ describe('TOOLTIPS — `?` 툴팁 문구 (§6.8 표)', () => {
     });
   });
 
+  it('오늘 화면의 툴팁에는 실패, XP, 스탯이 없다', () => {
+    for (const tip of [TOOLTIPS.yesterdayBanner, TOOLTIPS.freeLog]) {
+      expect(tip).not.toMatch(/실패|XP|스탯/);
+    }
+  });
+
   it('툴팁은 두 문장 이하다 (§6.8)', () => {
     for (const tip of Object.values(TOOLTIPS)) {
       // 마침표로만 끊는다. "! 칸은" 의 `!` 는 하루 상태 표시이지 문장 끝이 아니다.
       const sentences = tip.split(/(?<=\.)\s+/).filter((part) => part.length > 0);
       expect(sentences.length).toBeLessThanOrEqual(2);
     }
+  });
+});
+
+/** 오늘 화면의 문구 (SPEC §6.2, #127). 훅이 이 함수로 문구를 만든다. */
+describe('오늘 화면 문구 (§6.2)', () => {
+  it('고정 낱말은 SPEC과 아트보드 그대로다', () => {
+    expect(TODAY_COPY).toMatchObject({
+      title: '오늘 할 일',
+      fill: '채우기',
+      did: '했어요',
+      didNot: '못 했어요',
+      yesterdayListTitle: '어제 기록이 빈 습관',
+      freeLogButton: '끄적이기',
+      freeLogTitle: '✏️ 끄적이기',
+      freeLogSubmit: '남기기',
+      notePlaceholder: '메모 (선택)',
+      record: '기록하기',
+      skipHint: '이유를 누르면 바로 기록돼요.',
+    });
+  });
+
+  it('개수 칩은 "3개 중 1개 했어요"다', () => {
+    expect(countChipLabel(3, 1)).toBe('✅ 3개 중 1개 했어요');
+  });
+
+  it('어제 배너 제목은 빈 습관이 하나면 이름을, 둘 이상이면 개수를 말한다 (#135)', () => {
+    expect(yesterdayBannerTitle(['명상'])).toBe('🌙 어제 명상 기록이 비어 있어요.');
+    expect(yesterdayBannerTitle(['독서', '명상', '스트레칭'])).toBe('🌙 어제 기록이 빈 습관 3개');
+  });
+
+  it('접힌 기록과 시트 머리 문구', () => {
+    expect(foldLabel(2)).toBe('오늘 기록 2개');
+    expect(skipSheetTitle('오늘')).toBe('오늘 못 했어요 · 왜?');
+    expect(skipSheetTitle('어제')).toBe('어제 못 했어요 · 왜?');
+    expect(recordSumLabel(6, '쪽')).toBe('지금 6쪽');
+    expect(nowLabel('14:20')).toBe('지금 14:20');
+    expect(freeLogTimeLabel('14:20')).toBe('지금 14:20 · 날짜와 시각 바꾸기');
+  });
+
+  it('카드의 표시와 진행 줄', () => {
+    expect(cardBadge('done')).toBe('✓ 했어요');
+    expect(cardBadge('over')).toBe('★ 목표까지 했어요');
+    expect(cardBadge('skip')).toBe('− 못 했어요');
+    expect(cardBadge('partial')).toBeNull();
+    expect(cardBadge('pending')).toBeNull();
+    expect(cardProgressLine({ sum: 6, floor: 10, unit: '쪽' })).toBe('6 / 10쪽');
+    expect(cardProgressLine({ sum: 30, floor: 10, unit: '쪽', target: 30 })).toBe('30쪽 · 목표 30쪽');
+    expect(cueLine('자기 전, 침대 옆에서')).toBe('🕐 자기 전, 침대 옆에서');
+  });
+
+  describe('recordResultLine — 이 양이 오늘 몫에 무엇을 하는지 (C7a)', () => {
+    const base = { sum: 0, floor: 10, unit: '쪽', dayWord: '오늘' };
+
+    it('최소량을 채우는 양이면 오늘 몫을 채운다고 한다', () => {
+      expect(recordResultLine({ ...base, sum: 6, amount: 4 })).toBe('이걸로 오늘 몫을 채워요 ✓');
+      expect(recordResultLine({ ...base, amount: 10, dayWord: '어제' })).toBe('이걸로 어제 몫을 채워요 ✓');
+    });
+
+    it('모자라면 남는 양을 말한다', () => {
+      expect(recordResultLine({ ...base, sum: 2, amount: 3 })).toBe('최소량까지 5쪽 남아요');
+    });
+
+    it('목표를 넘기는 양이면 목표를 말한다', () => {
+      expect(recordResultLine({ ...base, amount: 30, target: 30 })).toBe('이걸로 목표까지 넘겨요 ★');
+      expect(recordResultLine({ ...base, sum: 12, amount: 20, target: 30 })).toBe('이걸로 목표까지 넘겨요 ★');
+    });
+
+    it('이미 채운 날이면 그렇다고 말한다', () => {
+      expect(recordResultLine({ ...base, sum: 12, amount: 2 })).toBe('오늘 몫은 이미 채웠어요');
+      expect(recordResultLine({ ...base, sum: 31, amount: 2, target: 30 })).toBe('오늘 몫은 이미 채웠어요');
+    });
+  });
+
+  it('오늘 화면 문구에는 실패, XP, 스탯이 없다', () => {
+    const all = [
+      ...(Object.values(TODAY_COPY).filter((value) => typeof value === 'string') as string[]),
+      countChipLabel(3, 1),
+      yesterdayBannerTitle(['명상']),
+      yesterdayBannerTitle(['독서', '명상']),
+      foldLabel(2),
+      recordResultLine({ sum: 0, floor: 10, unit: '쪽', dayWord: '오늘', amount: 3 }),
+      ...Object.values(DAY_STATE_WORDS),
+    ];
+    for (const line of all) expect(line).not.toMatch(/실패|XP|스탯/);
   });
 });
