@@ -1,5 +1,5 @@
 import { act, renderHook, waitFor } from '@testing-library/react-native';
-import { createElement, type ReactNode } from 'react';
+import { createElement, type ComponentProps, type ReactNode } from 'react';
 
 import { RepositoryProvider } from '@/context/RepositoryContext';
 import { LocalRepository, MemoryKV, type HabitRepository } from '@/data';
@@ -65,7 +65,9 @@ function daysEndingAt(end: string, n: number): string[] {
 
 function wrapperFor(repository: HabitRepository) {
   return function Wrapper({ children }: { children: ReactNode }) {
-    return createElement(RepositoryProvider, { repository, children });
+    // `children` goes in as the third argument; the cast covers the prop it fills at runtime.
+    const props = { repository } as ComponentProps<typeof RepositoryProvider>;
+    return createElement(RepositoryProvider, props, children);
   };
 }
 

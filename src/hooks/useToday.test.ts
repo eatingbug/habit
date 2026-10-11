@@ -1,5 +1,5 @@
 import { act, renderHook, waitFor } from '@testing-library/react-native';
-import { createElement, type ReactNode } from 'react';
+import { createElement, type ComponentProps, type ReactNode } from 'react';
 
 import { FREE_LOG_NO_TEXT_NOTE } from '@/config/copy';
 import { TUNING } from '@/config/tuning';
@@ -60,7 +60,9 @@ function binary(over: Partial<Habit> = {}): Habit {
 
 function wrapperFor(repository: HabitRepository) {
   return function Wrapper({ children }: { children: ReactNode }) {
-    return createElement(RepositoryProvider, { repository, children });
+    // `children` goes in as the third argument; the cast covers the prop it fills at runtime.
+    const props = { repository } as ComponentProps<typeof RepositoryProvider>;
+    return createElement(RepositoryProvider, props, children);
   };
 }
 
