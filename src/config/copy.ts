@@ -684,11 +684,11 @@ export function milestoneBonusLine(stars: number): string {
 }
 
 /**
- * The habit's icon: its stat's icon (`TUNING.stats`), since a habit has no icon field
- * yet (#127; the New habit ticket adds one). `🌱` when `statId` names no configured stat.
+ * The habit's icon: the one picked on the New habit screen (#130), else its stat's icon
+ * (`TUNING.stats`). `🌱` when `statId` names no configured stat.
  */
-export function habitIcon(habit: Pick<Habit, 'statId'>): string {
-  return TUNING.stats.find((stat) => stat.id === habit.statId)?.icon ?? '🌱';
+export function habitIcon(habit: Pick<Habit, 'statId' | 'icon'>): string {
+  return habit.icon ?? TUNING.stats.find((stat) => stat.id === habit.statId)?.icon ?? '🌱';
 }
 
 /** "10월 9일" — a date by month and day, for copy that names a past day. */
