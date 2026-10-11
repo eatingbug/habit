@@ -433,14 +433,15 @@ describe('useQuickLog', () => {
    * toast describes the log that actually landed.
    */
   describe('the log-time reward on the toast (#17, §6.2 Undo toast copy)', () => {
-    it('holds the amount and 별, and says the day is filled', async () => {
+    it('holds the amount and 별 alone when the log raises the streak — the banner speaks', async () => {
       const { result } = quickLog(await repositoryWith());
 
       await log(result, habit(), 5);
 
       expect(result.current.toast?.message).toBe('기록됨');
       expect(result.current.toast?.detail).toBe(`+5쪽 · 별 +${TUNING.xpPerFloorCompletion}`);
-      expect(result.current.toast?.sub).toBe('오늘 몫을 채웠어요');
+      expect(result.current.toast?.sub).toBeUndefined();
+      expect(result.current.celebration).not.toBeNull();
     });
 
     it('says how much is left to the floor on a partial log (AC 7)', async () => {
@@ -451,6 +452,7 @@ describe('useQuickLog', () => {
       // No 별 part: a `partial` day earns nothing (§4.2).
       expect(result.current.toast?.detail).toBe('+3쪽');
       expect(result.current.toast?.sub).toBe('조금이라도 했어요 · 최소량까지 2쪽 남았어요');
+      expect(result.current.celebration).toBeNull();
     });
 
     it('says the same on a partial backfill, which names no day', async () => {
@@ -470,6 +472,8 @@ describe('useQuickLog', () => {
 
       expect(result.current.toast?.detail).toBe(`+2쪽 · 별 +${2 * TUNING.xpPerAboveFloorUnit}`);
       expect(result.current.toast?.sub).toBe('더 했어요');
+      // The second log does not raise the streak, so the first banner is not replaced.
+      expect(result.current.celebration?.entryId).not.toBe(result.current.toast?.entryId);
     });
 
     it('says the target was passed when a later log passes it', async () => {
@@ -489,6 +493,7 @@ describe('useQuickLog', () => {
 
       await log(result, habit(), 5);
 
+      expect(result.current.celebration).toBeNull();
       expect(result.current.toast?.sub).toBe('그날 몫을 채웠어요');
     });
 
@@ -561,6 +566,7 @@ describe('useQuickLog', () => {
       expect(result.current.toast?.message).toBe('기록됨');
       expect(result.current.toast?.detail).toBe(SKIP_REASON_LABELS.cue);
       expect(result.current.toast?.sub).toBe('쉬었어요');
+      expect(result.current.celebration).toBeNull();
     });
 
     it('adds the note after 이유: on a skip that carries one', async () => {
@@ -579,6 +585,207 @@ describe('useQuickLog', () => {
 
       expect(result.current.toast?.detail).toBe(SKIP_REASON_LABELS.exception);
       expect(result.current.toast?.sub).toBe('예외라서 연속은 그대로예요');
+    });
+  });
+
+  /**
+   * Streak celebration (§6.2 Streak celebration, #127). One condition: the habit's
+   * current streak went up. Today's logs and backfills both follow it.
+   */
+  describe('the streak celebration (§6.2)', () => {
+    const reading = habit({ statId: 'intelligence' });
+
+    function floorDays(...daysAgo: number[]): HabitEntry[] {
+      return daysAgo.map((n) =>
+        seededRow({
+          id: `d${n}`,
+          date: addDays(TODAY, -n),
+          timestamp: `${addDays(TODAY, -n)}T07:00:00.000Z`,
+          actual: 5,
+        }),
+      );
+    }
+
+    it('drops a banner naming the habit, its new streak and this week', async () => {
+      const { result } = quickLog(await repositoryWith([reading], floorDays(1)));
+
+      await log(result, reading, 5);
+
+      const celebration = result.current.celebration;
+      expect(celebration).toMatchObject({
+        kind: 'banner',
+        entryId: result.current.toast?.entryId,
+        streak: 2,
+        line: '📖 독서 오늘 몫을 채웠어요',
+      });
+      expect(celebration?.starLine).toBeUndefined();
+      // 2026-03-01 is a Sunday, so it opens the week and only it is done this week.
+      expect(celebration?.week).toEqual([
+        { label: '일', done: true, today: true },
+        { label: '월', done: false, today: false },
+        { label: '화', done: false, today: false },
+        { label: '수', done: false, today: false },
+        { label: '목', done: false, today: false },
+        { label: '금', done: false, today: false },
+        { label: '토', done: false, today: false },
+      ]);
+    });
+
+    it('shows nothing for a partial log, which raises no streak', async () => {
+      const { result } = quickLog(await repositoryWith([reading], floorDays(1)));
+
+      await log(result, reading, 3);
+
+      expect(result.current.celebration).toBeNull();
+    });
+
+    it('adds a ★ line to the same banner when one log meets both floor and target', async () => {
+      const target = habit({ statId: 'intelligence', target: 8 });
+      const { result } = quickLog(await repositoryWith([target]));
+
+      await log(result, target, 8);
+
+      expect(result.current.celebration).toMatchObject({
+        kind: 'banner',
+        streak: 1,
+        starLine: `★ 목표까지 넘겼어요 · 별 +${TUNING.xpBonusTargetExceed}`,
+      });
+    });
+
+    it('changes the copy when a backfill of yesterday raises the streak', async () => {
+      const yesterday = addDays(TODAY, -1);
+      const { result } = quickLog(await repositoryWith([reading], floorDays(2, 3)), yesterday);
+
+      await log(result, reading, 5);
+
+      expect(result.current.celebration).toMatchObject({
+        kind: 'banner',
+        streak: 3,
+        line: '📖 독서 어제를 채워서 3일 연속이 됐어요',
+      });
+    });
+
+    it('names an older backfilled date by its date', async () => {
+      // Days 1 and 3 are done; filling day 2 joins them into a run of three.
+      const twoDaysAgo = addDays(TODAY, -2);
+      const { result } = quickLog(await repositoryWith([reading], floorDays(1, 3)), twoDaysAgo);
+
+      await log(result, reading, 5);
+
+      expect(result.current.celebration?.line).toBe('📖 독서 2월 27일을 채워서 3일 연속이 됐어요');
+    });
+
+    it('shows a popup on day 5 instead, with no bonus line for a count habit', async () => {
+      const born = habit({ statId: 'intelligence', createdAt: `${addDays(TODAY, -10)}T09:00:00.000Z` });
+      const { result } = quickLog(await repositoryWith([born], floorDays(1, 2, 3, 4)));
+
+      await log(result, born, 5);
+
+      expect(result.current.celebration).toMatchObject({ kind: 'milestone', streak: 5 });
+      // `xpStreakBonus` has no day 5, so this day earns no bonus.
+      expect(result.current.celebration?.bonusLine).toBeUndefined();
+    });
+
+    it('puts the bonus 별 line in the popup when the day earns it', async () => {
+      const meditation = habit({
+        id: 'b1',
+        name: '명상',
+        statId: 'willpower',
+        kind: 'binary',
+        floor: 1,
+        floorUnit: 'time',
+        createdAt: `${addDays(TODAY, -10)}T09:00:00.000Z`,
+      });
+      const days = [1, 2, 3, 4].map((n) =>
+        seededRow({
+          id: `m${n}`,
+          habitId: 'b1',
+          date: addDays(TODAY, -n),
+          timestamp: `${addDays(TODAY, -n)}T07:00:00.000Z`,
+          actual: 1,
+        }),
+      );
+      const { result } = quickLog(await repositoryWith([meditation], days));
+
+      await log(result, meditation, 1);
+
+      expect(result.current.celebration).toMatchObject({
+        kind: 'milestone',
+        streak: 5,
+        line: '🧘 명상 오늘 몫을 채웠어요',
+        bonusLine: `기념일 보너스 · 별 +${TUNING.binaryStreakMilestones[5]}`,
+      });
+    });
+
+    it('celebrates one habit and one date once, even after a delete and a re-add', async () => {
+      const { result } = quickLog(await repositoryWith([reading]));
+
+      await log(result, reading, 5);
+      expect(result.current.celebration).not.toBeNull();
+      await act(async () => {
+        await result.current.undoLast();
+        result.current.dismissCelebration();
+      });
+
+      await log(result, reading, 5);
+
+      expect(result.current.celebration).toBeNull();
+      expect(result.current.toast?.sub).toBe('더 했어요');
+    });
+
+    it('replaces the open banner at once when another habit raises its streak', async () => {
+      const other = habit({ id: 'h2', name: '턱걸이', statId: 'strength' });
+      const { result } = quickLog(await repositoryWith([reading, other]));
+
+      await log(result, reading, 5);
+      await log(result, other, 5);
+
+      expect(result.current.celebration?.line).toBe('💪 턱걸이 오늘 몫을 채웠어요');
+      expect(result.current.celebration?.entryId).toBe(result.current.toast?.entryId);
+    });
+
+    it('never celebrates a skip', async () => {
+      const { result } = quickLog(await repositoryWith([reading], floorDays(1)));
+
+      await skip(result, reading, 'exception');
+
+      expect(result.current.celebration).toBeNull();
+    });
+
+    describe('closing by itself', () => {
+      beforeEach(() => {
+        jest.useFakeTimers();
+      });
+      afterEach(() => {
+        jest.useRealTimers();
+      });
+
+      it('closes a milestone popup after 3 seconds', async () => {
+        const born = habit({ statId: 'intelligence', createdAt: `${addDays(TODAY, -10)}T09:00:00.000Z` });
+        const { result } = quickLog(await repositoryWith([born], floorDays(1, 2, 3, 4)));
+
+        await log(result, born, 5);
+        await act(async () => {
+          jest.advanceTimersByTime(2_999);
+        });
+        expect(result.current.celebration?.kind).toBe('milestone');
+
+        await act(async () => {
+          jest.advanceTimersByTime(1);
+        });
+        expect(result.current.celebration).toBeNull();
+      });
+
+      it('closes a banner with the undo toast window', async () => {
+        const { result } = quickLog(await repositoryWith([reading]));
+
+        await log(result, reading, 5);
+        await act(async () => {
+          jest.advanceTimersByTime(TUNING.undoToastMs);
+        });
+
+        expect(result.current.celebration).toBeNull();
+      });
     });
   });
 
