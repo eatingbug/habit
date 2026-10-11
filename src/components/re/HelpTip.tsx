@@ -32,7 +32,7 @@ export interface HelpTipProps {
 }
 
 const BOX = 32;
-/** Grows the 32px box to `TAP_TARGET` on every side. */
+/** What grows the 32px box to `TAP_TARGET` on every side. */
 const SLOP = (TAP_TARGET - BOX) / 2;
 const GUTTER = 16;
 const MAX_WIDTH = 280;
@@ -82,7 +82,6 @@ export function HelpTip({ text, children, tone = 'muted', accessibilityLabel, st
         onPress={() => (mode === 'tap' ? close() : open('tap'))}
         onHoverIn={() => mode == null && open('hover')}
         onHoverOut={() => mode === 'hover' && close()}
-        hitSlop={children == null ? SLOP : undefined}
         accessibilityRole="button"
         accessibilityLabel={accessibilityLabel ?? ICON_LABELS.help}
         accessibilityState={{ expanded: mode != null }}
@@ -105,7 +104,8 @@ export function HelpTip({ text, children, tone = 'muted', accessibilityLabel, st
             style={[
               styles.bubble,
               {
-                top: anchor.y + anchor.height + ARROW + 2,
+                // Under the drawn 32px box, not under the larger touch area.
+                top: anchor.y + anchor.height - (children == null ? SLOP : 0) + ARROW + 2,
                 left,
                 maxWidth: bubbleWidth,
                 backgroundColor: redesign.text,
@@ -133,7 +133,15 @@ export function HelpIcon({ tone = 'muted' }: { tone?: 'muted' | 'onFill' }) {
 }
 
 const styles = StyleSheet.create({
-  box: { width: BOX, height: BOX, alignItems: 'center', justifyContent: 'center' },
+  // The pressable itself is `TAP_TARGET` square, pulled in by a negative margin so it
+  // takes the 32px box's place in the layout. `hitSlop` alone is not honoured on web.
+  box: {
+    width: TAP_TARGET,
+    height: TAP_TARGET,
+    margin: -SLOP,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   wrap: { minHeight: TAP_TARGET },
   // `.tip` — `--r-sm`, padding 10/12, 14px at weight 600, line height 1.5.
   bubble: {
