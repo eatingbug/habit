@@ -40,9 +40,9 @@ import {
 const CANVAS_ORDER = ['깜빡함', '너무 힘듦', '예외', '안 내킴'];
 
 /**
- * Every value `stateLabel` can return (`app/today.tsx`). Listed here because
- * `jest.config.js` cannot import from `app/`: the confirm's miss clause must not
- * reuse any of them, and `못 함` — `stateLabel('skip')` — is the one it collided with.
+ * Every day-state label a caller can pass as `stateAfterLabel`: the shared
+ * `DAY_STATE_WORDS` (Today) and the old labels the habit detail screen still uses until
+ * its own redesign ticket. The confirm's miss clause must not reuse any of them.
  */
 const STATE_LABELS = [
   '성공',
@@ -51,6 +51,12 @@ const STATE_LABELS = [
   '못 함',
   '기록 없음 · 실패',
   '아직 기록 없음',
+  '했어요',
+  '목표까지 했어요',
+  '조금 했어요',
+  '못 했어요',
+  '기록 없음',
+  '아직이에요',
 ];
 
 describe('SKIP_REASON_LABELS', () => {
@@ -97,7 +103,7 @@ describe('deleteConfirmLines', () => {
 
   it('warns about the erased miss only when the miss is erased (AC 6)', () => {
     expect(deleteConfirmLines({ ...facts, carriesMiss: true })).toEqual([
-      '실패로 세던 기록이 바로 이 줄이라, 지우면 그 실패는 더 세지 않아요.',
+      '못 했다고 찍은 기록이 바로 이 줄이라, 지우면 그날을 못 한 날로 세지 않아요.',
     ]);
     expect(deleteConfirmLines(facts)).toEqual([]);
   });
@@ -112,7 +118,7 @@ describe('deleteConfirmLines', () => {
     });
 
     expect(lines).toEqual([
-      '실패로 세던 기록이 바로 이 줄이라, 지우면 그 실패는 더 세지 않아요.',
+      '못 했다고 찍은 기록이 바로 이 줄이라, 지우면 그날을 못 한 날로 세지 않아요.',
       '지운 뒤 오늘: 못 함',
     ]);
     // The miss clause says what the row was *counted as* and what stops. Reusing the
@@ -134,7 +140,7 @@ describe('deleteConfirmLines', () => {
 
     expect(lines).toHaveLength(3);
     expect(lines[0]).toContain('남는 기록이 없어요');
-    expect(lines[1]).toContain('더 세지 않아요');
+    expect(lines[1]).toContain('못 한 날로 세지 않아요');
     expect(lines[2]).toBe('지운 뒤 오늘: 아직 기록 없음');
   });
 
