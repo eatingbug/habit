@@ -1021,7 +1021,8 @@ Skip reason sheet (`ReTodaySkip`, #120):
 
 - Head: "✏️ 끄적이기" with a `?`.
 - Four kind chips: 메모, 잘한 일, 기분, 떠오른 생각. Picking one is optional. The default is 떠오른 생각.
-- A text field, the time button "지금 14:20 · 날짜와 시각 바꾸기" and the button "남기기".
+- A text field, the time button "지금 14:20 · 시간 바꾸기" and the button "남기기".
+- Free logs are for today only. The time button changes the time, never the date.
 
 Streak celebration (`ReTodayStreak`, `ReTodayMilestone`, #97, #99):
 
@@ -1092,9 +1093,10 @@ Behaviour rules (from v3.1 §6.2):
     skip at once. Optional free-text note above the chips. (Reasons are diagnostic — Part D.)
   - **Time (B3).** A new habit entry is always stamped now, or noon on a backfill. The
     record sheet shows the time as a plain label ("지금 14:20"), not a control. Free logs
-    and edits of an existing entry default to **now**, with the time behind a small
-    "지금 HH:MM · 날짜와 시각 바꾸기" button that reveals the picker only to override
-    (rare — `timestamp` is ordering/tiebreak only, §3.3).
+    are today-only and default to **now**, with the time behind a small
+    "지금 HH:MM · 시간 바꾸기" button. An edit of an existing entry keeps its time behind
+    a small "HH:MM · 시간 바꾸기" button. Either button reveals the picker only to
+    override the time, never the date (rare — `timestamp` is ordering/tiebreak only, §3.3).
   - Log button — calls `upsertEntry` or `upsertFreeLog` (always a fresh `id`; the
     sheet never overwrites another day's rows — multiple per day are expected).
   - **Log-time reward feedback (C1).** On a successful log, Today shows an immediate,
