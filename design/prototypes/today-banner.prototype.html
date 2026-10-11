@@ -1,18 +1,20 @@
 <!doctype html>
 <!--
   PROTOTYPE. Throwaway. Not production code.
-  Question: does the combined yesterday banner on the redesigned Today screen (#114, SPEC §6.2, §4.3 C2)
-  show the right buttons, title and visibility for every yesterday x today combination?
+  Issue #135 「어제 기록이 빈 습관의 표시 방식」.
+  Question: with 1 to 6 habits, how should Today show the habits whose yesterday has no record,
+  without cluttering the screen? Three layouts (A grouped banner, B per-card chip, C slim strip) share one state model.
   The script block with id "logic" mirrors src/domain/classify.ts and src/domain/streak.ts (atRiskToday) in plain JS.
+  atRiskToday stays in the domain and is shown only in the state panel. Nothing on screen reads it.
   Lives on branch prototype/today-banner only. Do not merge.
 -->
 <html lang="ko">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>오늘 배너 프로토타입</title>
+<title>어제 빈 기록 프로토타입</title>
 <style>
-/* Copied from design/_tokens.redesign.css: tokens, .row/.grow/.b/.ic/.q, .btn, .banner, .tip */
+/* Copied from design/_tokens.redesign.css: tokens and the rules the Today board uses */
 :root, [data-theme="light"]{
   --bg:#F4F6FB; --surface:#FFFFFF; --surface2:#F0F2F7; --inset:#EEF0F5;
   --text:#15171F; --muted:#4A4F60; --faint:#9AA0AE;
@@ -44,59 +46,85 @@
 }
 *{box-sizing:border-box}
 html,body{margin:0}
-body{background:var(--bg); color:var(--text); font-family:var(--sans); font-size:17px; line-height:1.5; -webkit-font-smoothing:antialiased}
+body{background:var(--bg); color:var(--text); font-family:var(--sans); font-size:17px; line-height:1.5; -webkit-font-smoothing:antialiased; font-variant-numeric:tabular-nums}
 button{font:inherit; color:inherit; background:none; border:0; padding:0; cursor:pointer}
-.b{font-weight:600}
+.t-label{font-size:14px; font-weight:700; line-height:1.4}
+.t-title{font-size:20px; font-weight:800; line-height:1.25}
+.t-display{font-size:30px; font-weight:800; line-height:1.25; letter-spacing:-.02em; margin:0}
 .muted{color:var(--muted)}
+.b{font-weight:600}
+.page{flex:1; padding:24px 20px 28px; display:flex; flex-direction:column; gap:12px}
 .row{display:flex; align-items:center; gap:10px}
+.spread{display:flex; align-items:center; justify-content:space-between; gap:10px}
 .grow{flex:1; min-width:0}
 .ic{width:24px; height:24px; fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; flex:none}
+.iconbtn{width:48px; height:48px; border-radius:var(--r-sm); display:inline-flex; align-items:center; justify-content:center; color:var(--muted); flex:none}
 .q{position:relative; width:32px; height:32px; display:inline-flex; align-items:center; justify-content:center; color:var(--muted); flex:none; vertical-align:middle}
 .q .ic{width:20px; height:20px}
 .q::after{content:""; position:absolute; inset:-8px}
+.tabbar{display:flex; background:var(--surface); border-top:1px solid var(--border); padding:4px 0 10px}
+.tabbar button{flex:1; min-height:56px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; color:var(--muted)}
+.tabbar .on{color:var(--accent-ink)}
+.card{background:var(--surface); border:2px solid var(--edge); border-radius:var(--r-lg); padding:16px; box-shadow:var(--shadow)}
+.card.ok{border-color:var(--done)}
+.chip{display:inline-flex; align-items:center; gap:4px; font-size:14px; font-weight:700; padding:4px 10px; border-radius:999px; white-space:nowrap}
+.chip.count{background:var(--surface); border:2px solid var(--edge); box-shadow:var(--shadow); font-size:17px; padding:8px 14px; align-self:flex-start}
 .btn{min-height:48px; padding:0 16px; border-radius:var(--r-md); font-size:17px; font-weight:800; display:inline-flex; align-items:center; justify-content:center; gap:6px}
 .btn.block{width:100%}
-.btn.pri{background:var(--accent); color:#fff; min-height:56px}
 .btn.line{background:var(--surface); border:2px solid var(--border-strong); color:var(--text)}
+.btn.dash{border:2px dashed var(--border-strong); color:var(--muted); font-weight:700}
+.habit{display:flex; align-items:center; gap:14px}
+.hico{width:52px; height:52px; border-radius:var(--r-md); background:var(--accent-tint); display:flex; align-items:center; justify-content:center; font-size:28px; flex:none}
+.bar{height:10px; border-radius:99px; background:var(--inset); margin-top:6px; overflow:hidden; position:relative}
+.bar i{display:block; height:100%; border-radius:99px; background:var(--accent)}
+.bar.ok i{background:var(--done)}
+.act{width:56px; height:56px; border-radius:50%; background:var(--accent); color:#fff; display:flex; align-items:center; justify-content:center; font-size:26px; font-weight:800; flex:none}
+.act .ic{width:28px; height:28px; stroke-width:2.5}
+.act.ok{background:var(--done)}
+.okb{color:var(--done-ink)}
 .banner{background:var(--warn-tint); color:var(--warn-ink); border-radius:var(--r-lg); padding:14px 16px; display:flex; flex-direction:column; gap:10px}
 .banner .btn{background:var(--surface); color:var(--warn-ink); border:2px solid var(--warn)}
 .banner .q{color:var(--warn-ink)}
-.tip{max-width:280px; background:var(--text); color:var(--surface); border-radius:var(--r-sm); padding:10px 12px; font-size:14px; font-weight:600; line-height:1.5}
+.fold{background:var(--surface); border:2px solid var(--edge); border-radius:var(--r-md); min-height:56px; padding:0 16px; display:flex; align-items:center; justify-content:space-between; font-weight:700; color:var(--muted)}
+.scrim{position:absolute; inset:0; background:var(--scrim)}
+.sheet{position:absolute; left:0; right:0; bottom:0; background:var(--surface); border-radius:28px 28px 0 0; padding:12px 20px 32px; display:flex; flex-direction:column; gap:12px}
+.grab{width:40px; height:5px; border-radius:9px; background:var(--border); align-self:center}
+.field{min-height:56px; border-radius:var(--r-md); border:2px solid var(--border-strong); background:var(--surface); padding:12px 14px; color:var(--text); display:flex; align-items:center}
+.field.ph{color:var(--muted)}
+.pick{min-height:48px; padding:0 14px; border-radius:var(--r-md); border:2px solid var(--border); background:var(--surface); font-weight:700; display:inline-flex; align-items:center; gap:6px}
+.tip{max-width:300px; background:var(--text); color:var(--surface); border-radius:var(--r-sm); padding:10px 12px; font-size:14px; font-weight:600; line-height:1.5}
 
-/* Prototype page chrome (not from the design system) */
-.wrap{max-width:1180px; margin:0 auto; padding:20px 16px 48px}
+/* New in this prototype (B chip, C strip). Not in the design system yet. */
+.chip.blank{position:relative; background:var(--warn-tint); color:var(--warn-ink); border:2px solid var(--warn); margin-top:6px}
+.chip.blank::after{content:""; position:absolute; inset:-8px}
+.strip{width:100%; min-height:48px; padding:0 14px; border-radius:var(--r-md); background:var(--warn-tint); color:var(--warn-ink); display:flex; align-items:center; gap:8px; font-weight:800; font-size:15px}
+.strip .em{font-size:20px; letter-spacing:2px}
+.draft{display:inline-block; font-size:11px; font-weight:800; background:var(--crit); color:#fff; border-radius:6px; padding:1px 6px; margin-right:6px; vertical-align:1px}
+
+/* Prototype page chrome */
+.wrap{max-width:1290px; margin:0 auto; padding:20px 16px 48px}
 .proto-flag{background:var(--crit); color:#fff; font-weight:800; letter-spacing:.08em; padding:6px 12px; border-radius:8px; display:inline-block; font-size:14px}
 h1{font-size:24px; margin:10px 0 4px}
-h2{font-size:15px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin:0 0 10px}
-.lead{color:var(--muted); max-width:820px; margin:0 0 16px}
+h2{font-size:15px; letter-spacing:.06em; color:var(--muted); margin:0 0 10px}
+.lead{color:var(--muted); max-width:860px; margin:0 0 16px}
 .topbar{display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap}
+.vbar{position:sticky; top:0; z-index:20; background:var(--bg); padding:10px 0; display:flex; gap:8px; align-items:center; flex-wrap:wrap; border-bottom:1px solid var(--border); margin-bottom:16px}
 .grid{display:grid; grid-template-columns:400px 1fr; gap:20px; align-items:start}
 @media (max-width:900px){ .grid{grid-template-columns:1fr} }
 .panel{background:var(--surface); border:1px solid var(--border); border-radius:var(--r-md); padding:16px; min-width:0}
-.phone{background:var(--bg); border:2px solid var(--border); border-radius:28px; padding:20px 16px; display:flex; flex-direction:column; gap:12px; max-width:390px}
-.phone .date{font-size:14px; color:var(--muted); font-weight:700}
-.phone .ttl{font-size:24px; font-weight:800; margin:0}
-.nobanner{border:2px dashed var(--border-strong); color:var(--muted); border-radius:var(--r-lg); padding:14px 16px; font-size:14px; font-weight:700; text-align:center}
-.card{background:var(--surface); border:2px solid var(--edge); box-shadow:var(--shadow); border-radius:var(--r-lg); padding:14px 16px; display:flex; gap:12px; align-items:center}
-.hico{width:52px; height:52px; border-radius:var(--r-md); background:var(--accent-tint); display:flex; align-items:center; justify-content:center; font-size:28px; flex:none}
-.bar{height:8px; border-radius:9px; background:var(--inset); margin-top:6px; overflow:hidden}
-.bar i{display:block; height:100%; background:var(--accent)}
-.sheet{background:var(--surface); border:2px solid var(--accent); border-radius:var(--r-lg); padding:14px 16px; display:flex; flex-direction:column; gap:8px}
-.sheet .row .btn{flex:1}
-table.state{width:100%; border-collapse:collapse; font-size:15px}
-table.state th{text-align:left; font-weight:600; color:var(--muted); padding:6px 8px 6px 0; width:44%; vertical-align:top}
-table.state td{padding:6px 0; font-weight:700; vertical-align:top}
+.phone{position:relative; width:390px; max-width:100%; background:var(--bg); border:2px solid var(--border); border-radius:28px; overflow:hidden; display:flex; flex-direction:column; min-height:760px}
+.phones{display:flex; gap:16px; overflow-x:auto; padding-bottom:8px}
+.phones .cap{font-size:14px; font-weight:800; color:var(--muted); margin-bottom:6px}
+table.state{width:100%; border-collapse:collapse; font-size:14px}
+table.state th{text-align:left; font-weight:600; color:var(--muted); padding:6px 8px 6px 0; vertical-align:top}
+table.state td{padding:6px 8px 6px 0; font-weight:700; vertical-align:top}
 table.state tr{border-bottom:1px solid var(--border)}
 tr.changed td{background:var(--accent-tint); color:var(--accent-ink)}
-tr.changed th::after{content:" ← 바뀜"; color:var(--accent-ink)}
-.yes{color:var(--done-ink)} .no{color:var(--muted)}
-.flag{background:var(--crit-tint); color:var(--crit-ink); border:2px solid var(--crit); border-radius:var(--r-sm); padding:10px 12px; font-size:14px; font-weight:700; margin-top:10px}
-.ok{background:var(--done-tint); color:var(--done-ink); border-radius:var(--r-sm); padding:10px 12px; font-size:14px; font-weight:700; margin-top:10px}
-.rows{font-family:ui-monospace,Menlo,monospace; font-size:12px; color:var(--muted); margin-top:8px; white-space:pre-wrap}
+.yes{color:var(--done-ink)} .no{color:var(--muted)} .warnc{color:var(--warn-ink)}
+.domain{color:var(--faint); font-weight:600}
 .group{margin-bottom:12px}
 .group .lbl{font-size:14px; font-weight:700; color:var(--muted); margin-bottom:6px}
-.pbtn{min-height:40px; padding:0 12px; border-radius:10px; border:1px solid var(--border-strong); background:var(--surface); font-size:14px; font-weight:700; margin:0 6px 6px 0}
-.pbtn:hover{border-color:var(--accent)}
+.pbtn{min-height:36px; padding:0 10px; border-radius:10px; border:1px solid var(--border-strong); background:var(--surface); font-size:13px; font-weight:700; margin:0 4px 4px 0}
 .pbtn.on{background:var(--accent); color:#fff; border-color:var(--accent)}
 .tabs{display:flex; flex-wrap:wrap; gap:6px; margin-bottom:12px}
 .tab{min-height:36px; padding:0 12px; border-radius:999px; border:1px solid var(--border); background:var(--surface2); font-size:13px; font-weight:700; color:var(--muted)}
@@ -108,35 +136,38 @@ tr.changed th::after{content:" ← 바뀜"; color:var(--accent-ink)}
 .step button{min-height:40px; padding:0 14px; border-radius:10px; background:var(--accent); color:#fff; font-size:14px; font-weight:700; text-align:left}
 .step button:disabled{background:var(--inset); color:var(--faint); cursor:default}
 .expect{font-size:14px; color:var(--muted); margin-top:4px}
-.cmp{display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:14px}
-.cmp .cap{font-size:13px; font-weight:800; color:var(--muted); margin-bottom:6px}
-input.name{min-height:40px; border-radius:10px; border:1px solid var(--border-strong); background:var(--surface); color:var(--text); padding:0 10px; font:inherit; font-size:14px; width:110px}
+.fprow{display:flex; flex-wrap:wrap; align-items:center; gap:4px; padding:6px 0; border-bottom:1px solid var(--border)}
+.fprow .nm{width:90px; font-weight:800; font-size:14px}
+.fprow .sub{font-size:12px; color:var(--muted); font-weight:700; margin:0 4px 0 8px}
+select{min-height:36px; border-radius:10px; border:1px solid var(--border-strong); background:var(--surface); color:var(--text); font:inherit; font-size:14px; padding:0 8px}
 </style>
 </head>
 <body>
-<svg width="0" height="0" style="position:absolute"><symbol id="i-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></symbol></svg>
+<svg width="0" height="0" style="position:absolute">
+  <symbol id="i-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M12 5v14"/></symbol>
+  <symbol id="i-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+  <symbol id="i-right" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+  <symbol id="i-pencil" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.376 3.622a1 1 0 0 1 3.002 3.002L7.368 18.635a2 2 0 0 1-.855.506l-2.872.838a.5.5 0 0 1-.62-.62l.838-2.872a2 2 0 0 1 .506-.854z"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></symbol>
+  <symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></symbol>
+  <symbol id="i-notebook" viewBox="0 0 24 24"><path d="M2 6h4"/><path d="M2 10h4"/><path d="M2 14h4"/><path d="M2 18h4"/><rect x="4" y="2" width="16" height="20" rx="2"/></symbol>
+</svg>
 
 <div class="wrap">
   <div class="topbar">
     <div>
       <span class="proto-flag">PROTOTYPE · 버리는 코드</span>
-      <h1>오늘 화면 · 합친 어제 배너</h1>
+      <h1>오늘 화면 · 어제 기록이 빈 습관 (#135)</h1>
     </div>
     <button class="pbtn" id="themeBtn">다크 모드</button>
   </div>
-  <p class="lead">질문: 어제와 오늘의 기록 상태가 바뀔 때, 합친 배너가 맞는 버튼과 제목을 보여 주는가? 습관은 하루 최소량 10분인 "명상"이다. 오늘은 2026-10-11, 어제는 2026-10-10이다. 판정 로직은 <code>src/domain/streak.ts</code>의 <code>atRiskToday</code>와 <code>classify.ts</code>를 그대로 옮겼다. 기록은 실제 앱처럼 덧붙이기만 한다.</p>
+  <p class="lead">질문: 습관이 1개에서 6개일 때, 어제 기록이 빈 습관을 오늘 화면에 어떻게 보여야 어지럽지 않은가? A·B·C 세 배치가 같은 상태 모델을 쓴다. 어제가 비면 "했어요"(양 입력) 또는 "못 했어요"(이유 고르기)로 채운다. "오늘 하면 이어져요" 버튼은 없다. <code>atRiskToday</code>는 도메인 계산으로만 상태 표에 남는다. 오늘은 2026-10-11이다.</p>
 
-  <div class="grid">
-    <div>
-      <div class="phone" id="phone"></div>
-    </div>
-    <div class="panel">
-      <h2>지금 상태</h2>
-      <table class="state" id="state"></table>
-      <div id="flags"></div>
-      <div class="rows" id="rows"></div>
-    </div>
-  </div>
+  <div class="vbar" id="vbar"></div>
+
+  <div id="main"></div>
 
   <div class="panel" style="margin-top:20px">
     <h2>둘러보기 (탭을 누르면 처음 상태로 돌아가요)</h2>
@@ -146,15 +177,14 @@ input.name{min-height:40px; border-radius:10px; border:1px solid var(--border-st
 
   <div class="panel" style="margin-top:20px">
     <h2>자유롭게 눌러 보기</h2>
-    <div class="group"><div class="lbl">어제 (2026-10-10) 기록 덧붙이기</div><div id="fpY"></div></div>
-    <div class="group"><div class="lbl">오늘 (2026-10-11) 기록 덧붙이기</div><div id="fpT"></div></div>
-    <div class="group"><div class="lbl">그 밖</div><div id="fpX"></div></div>
+    <div class="group"><div class="lbl">구성 (바꾸면 기록을 새로 깔아요)</div><div id="fpCfg"></div></div>
+    <div class="group"><div class="lbl">습관별 기록 덧붙이기</div><div id="fpHabits"></div></div>
   </div>
 </div>
 
 <script id="logic">
 /* Portable logic. Mirrors src/domain/classify.ts + src/domain/streak.ts#atRiskToday. No DOM here. */
-const BannerLogic = (() => {
+const TodayLogic = (() => {
   const cmp = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
   const dateOf = (iso) => iso.slice(0, 10);
   const addDays = (d, n) => { const t = new Date(d + 'T12:00:00Z'); t.setUTCDate(t.getUTCDate() + n); return t.toISOString().slice(0, 10); };
@@ -209,7 +239,6 @@ const BannerLogic = (() => {
         sum: rows.filter(isActivityRow).reduce((t, e) => t + e.actual, 0),
         isMiss: isMissDay(state, rows),
         skipReason: state === 'skip' ? effectiveSkipReason(rows) : undefined,
-        entries: sortDayRows(rows),
       });
     }
     return out;
@@ -219,7 +248,7 @@ const BannerLogic = (() => {
     return dayStates(habit, entries, cmp(from, birth) < 0 ? birth : from, to, today);
   }
 
-  /* streak.ts atRiskToday, line for line */
+  /* streak.ts atRiskToday, line for line. Domain only: no UI element reads it any more (#135). */
   function atRiskToday(entries, habit, today) {
     if (!isDateInScope(habit, today)) return false;
     const yesterday = addDays(today, -1);
@@ -230,230 +259,272 @@ const BannerLogic = (() => {
     return current != null && (current.state === 'pending' || current.state === 'partial');
   }
 
-  /* SPEC §6.2 read literally: miss yesterday, today pending/partial, hide once floor met
-     "or today is skipped". Read as: the user recorded a skip today. Pauses are not mentioned in §6.2. */
-  function atRiskSpecText(entries, habit, today) {
+  /* Today screen model for many habits. `entries` carry habitId. */
+  function todayModel(habits, entries, today) {
     const y = addDays(today, -1);
-    const yRows = entries.filter((e) => e.date === y);
-    const tRows = entries.filter((e) => e.date === today);
-    const yState = classifyDay(yRows, habit, y, today);
-    const tState = classifyDay(tRows, habit, today, today);
-    if (!isMissDay(yState, yRows)) return false;
-    if (isFloorMet(tState) || tRows.some(isSkipRow)) return false;
-    return tState === 'pending' || tState === 'partial';
+    const rows = habits.map((h) => {
+      const own = entries.filter((e) => e.habitId === h.id);
+      const days = dayStates(h, own, y, today, today);
+      const yd = days.find((d) => d.date === y);
+      const td = days.find((d) => d.date === today);
+      return { habit: h, yd, td, blank: yd != null && yd.state === 'missed', floorMet: td != null && isFloorMet(td.state), atRisk: atRiskToday(own, h, today) };
+    });
+    const blanks = rows.filter((r) => r.blank);
+    return { rows, blanks, doneCount: rows.filter((r) => r.floorMet).length };
   }
 
-  /* Korean particles by final consonant */
-  function hasFinal(word) {
-    const c = word.charCodeAt(word.length - 1) - 0xac00;
-    return c >= 0 && c <= 11171 && c % 28 !== 0;
-  }
-  const eul = (w) => w + (hasFinal(w) ? '을' : '를');
-  const iga = (w) => w + (hasFinal(w) ? '이' : '가');
-  const titles = (name) => ({
-    missed: `🌙 어제 ${name} 기록을 놓쳤어요.`,
-    skipA: `🌙 어제 ${eul(name)} 쉬었어요.`,
-    skipB: `🌙 오늘 하면 ${iga(name)} 이어져요.`,
-  });
-  const TOOLTIP = '하루 놓치는 건 괜찮아요. 어제 했는데 기록만 못 했다면 지금 채워요.';
-
-  /* The combined banner, §6.2 */
-  function banner(entries, habit, today, titleOption) {
-    const y = addDays(today, -1);
-    const days = dayStates(habit, entries, y, today, today);
-    const yd = days.find((d) => d.date === y);
-    const td = days.find((d) => d.date === today);
-    const showFill = yd != null && yd.state === 'missed';
-    const showSave = atRiskToday(entries, habit, today);
-    const shown = showFill || showSave;
-    const t = titles(habit.name);
-    let title = null, titleKey = null;
-    if (shown) {
-      if (yd.state === 'missed') { title = t.missed; titleKey = 'missed'; }
-      else { titleKey = titleOption === 'B' ? 'skipB' : 'skipA'; title = t[titleKey]; }
+  /* What each layout puts on screen. Pure description, rendering is the page's job. */
+  function layout(model, variant) {
+    const n = model.blanks.length;
+    if (variant === 'A') {
+      if (n === 0) return { banner: null };
+      if (n === 1) return { banner: { kind: 'single', title: `🌙 어제 ${model.blanks[0].habit.name} 기록이 비어 있어요.`, habitId: model.blanks[0].habit.id } };
+      return { banner: { kind: 'group', title: `🌙 어제 기록이 빈 습관 ${n}개` } };
     }
-    return { yd, td, showFill, showSave, specSave: atRiskSpecText(entries, habit, today), shown, title, titleKey };
+    if (variant === 'B') return { chips: model.blanks.map((r) => r.habit.id) };
+    if (n === 0) return { strip: null };
+    const em = model.blanks.map((r) => r.habit.emoji);
+    return { strip: { emoji: em.slice(0, 4).join(''), more: n > 4 ? n - 4 : 0 } };
   }
 
-  return { banner, titles, TOOLTIP, addDays, isFloorMet };
+  const TOOLTIP_DRAFT = '기록 없이 지나간 날은 연속이 끊긴 것으로 세요. 했는지 못 했는지 채우면 그 기록으로 다시 계산해요.';
+
+  return { todayModel, layout, addDays, TOOLTIP_DRAFT };
 })();
 </script>
 
 <script>
 /* Throwaway page wiring */
 const TODAY = '2026-10-11';
-const YDAY = BannerLogic.addDays(TODAY, -1);
-const REASON_KO = { forgot: '깜빡함', tooHard: '너무 힘듦', notFeeling: '안 내킴', exception: '예외' };
-const STATE_KO = { missed: '기록 없음 (missed)', pending: '아직 (pending)', partial: '조금 함 (partial)', done: '최소량 채움 (done)', over: '목표 넘김 (over)', skip: '쉼 (skip)' };
+const YDAY = TodayLogic.addDays(TODAY, -1);
+const REASONS = [['forgot', '깜빡함'], ['tooHard', '너무 힘듦'], ['exception', '예외'], ['notFeeling', '안 내킴']];
+const REASON_KO = Object.fromEntries(REASONS);
+const STATE_KO = { missed: '빔 (missed)', pending: '아직', partial: '조금 함', done: '했어요', over: '목표 넘김', skip: '쉼' };
+/* Board order (ReToday): 독서, 턱걸이, 명상, then three more. `today` = default amount logged today. */
+const HABITS = [
+  { id: 'read', name: '독서', emoji: '📖', unit: '쪽', floor: 10, where: '자기 전, 침대 옆에서', today: 6 },
+  { id: 'pullup', name: '턱걸이', emoji: '💪', unit: '회', floor: 5, where: '출근 전, 문틀 바에서', today: 5 },
+  { id: 'meditate', name: '명상', emoji: '🧘', unit: '분', floor: 10, where: '', today: 0 },
+  { id: 'water', name: '물 2L', emoji: '💧', unit: '컵', floor: 8, where: '책상 위 물병', today: 3 },
+  { id: 'stretch', name: '스트레칭', emoji: '🤸', unit: '분', floor: 5, where: '', today: 0 },
+  { id: 'journal', name: '일기', emoji: '📓', unit: '번', floor: 1, where: '잠들기 전', today: 1 },
+].map((h) => ({ ...h, kind: 'count', createdAt: '2026-09-01T09:00:00', pauses: [] }));
+/* Which habits go blank first when the blank count rises. 1 of 3 = 명상, as on the board. */
+const BLANK_ORDER = ['meditate', 'read', 'stretch', 'water', 'journal', 'pullup'];
 
-let S;
-let seq = 0;
-let prevSnap = null;
-let activeTab = 0;
-let stepIdx = 0;
+let S, seq = 0, prevSnap = null, activeTab = 0, stepIdx = 0;
 
-function fresh() {
+function seed(count, blankCount, variant) {
   seq = 0;
-  S = {
-    habit: { name: '명상', kind: 'count', floor: 10, target: 20, createdAt: '2026-09-01T09:00:00', pauses: [] },
-    entries: [], titleOption: 'A', sheet: null, tip: false, last: '처음 상태',
-  };
+  S = { count, blankCount, variant: variant || (S && S.variant) || 'A', entries: [], sheet: null, tip: false, last: '처음 상태' };
+  const shown = HABITS.slice(0, count);
+  const blankIds = BLANK_ORDER.filter((id) => shown.some((h) => h.id === id)).slice(0, blankCount);
+  for (const h of shown) {
+    if (!blankIds.includes(h.id)) addRow(h.id, YDAY, h.floor);
+    if (h.today > 0) addRow(h.id, TODAY, h.today);
+  }
 }
-function addRow(date, actual, skipReason) {
+function addRow(habitId, date, actual, skipReason) {
   seq += 1;
-  const hh = date === TODAY ? '09' : '12';
-  S.entries.push({ id: 'e' + String(seq).padStart(3, '0'), date, actual, skipReason: skipReason || null, timestamp: `${date}T${hh}:00:${String(seq).padStart(2, '0')}` });
+  S.entries.push({ id: 'e' + String(seq).padStart(3, '0'), habitId, date, actual, skipReason: skipReason || null, timestamp: `${date}T${date === TODAY ? '09' : '12'}:00:${String(seq).padStart(2, '0')}` });
 }
+const habitsShown = () => HABITS.slice(0, S.count);
+const H = (id) => HABITS.find((h) => h.id === id);
+const model = () => TodayLogic.todayModel(habitsShown(), S.entries, TODAY);
+
+/* User actions. `v` = which layout the tap came from (matters only in the 변형 비교 tab). */
 const A = {
-  yClear: () => { S.entries = S.entries.filter((e) => e.date !== YDAY); S.last = '어제 기록 비움 (프로토타입용)'; },
-  ySkip: (r) => { addRow(YDAY, 0, r); S.last = `어제 skip · ${REASON_KO[r]} 덧붙임`; },
-  yLog: (n) => { addRow(YDAY, n, null); S.last = `어제 ${n}분 덧붙임`; },
-  tClear: () => { S.entries = S.entries.filter((e) => e.date !== TODAY); S.last = '오늘 기록 비움 (프로토타입용)'; },
-  tSkip: (r) => { addRow(TODAY, 0, r); S.last = `오늘 skip · ${REASON_KO[r]} 덧붙임`; },
-  tLog: (n) => { addRow(TODAY, n, null); S.last = `오늘 ${n}분 덧붙임`; },
-  pause: () => { S.habit.pauses = S.habit.pauses.length ? [] : [{ from: TODAY }]; S.last = S.habit.pauses.length ? '오늘부터 정지 켬' : '정지 끔'; },
-  title: (o) => { S.titleOption = o; S.last = `제목 ${o}안 선택`; },
-  openFill: () => { S.sheet = 'fill'; S.last = '"어제 했어요 · 채우기" 누름 → 어제 기록 시트 열림'; },
-  openSave: () => { S.sheet = 'today'; S.last = '"오늘 하면 이어져요" 누름 → 오늘 기록 시트 열림'; },
+  openList: (v) => { S.sheet = { kind: 'list', v }; S.last = `${v}: 빈 습관 목록 시트 열림`; },
+  openHabit: (v, id) => { S.sheet = { kind: 'habit', id, v }; S.last = `${v}: ${H(id).name} 칩 → 어제 시트 열림`; },
+  openDid: (v, id, back) => { S.sheet = { kind: 'did', id, v, back }; S.last = `${v}: ${H(id).name} "했어요" → 양 고르기 시트`; },
+  openSkip: (v, id, back) => { S.sheet = { kind: 'skip', id, v, back }; S.last = `${v}: ${H(id).name} "못 했어요" → 이유 시트`; },
+  recordDid: (amount) => {
+    const { id, v, back } = S.sheet; addRow(id, YDAY, amount);
+    S.last = `어제 ${H(id).name} ${amount}${H(id).unit} 기록`; afterRecord(v, back);
+  },
+  recordSkip: (reason) => {
+    const { id, v, back } = S.sheet; addRow(id, YDAY, 0, reason);
+    S.last = `어제 ${H(id).name} 못 했어요 · ${REASON_KO[reason]} 기록`; afterRecord(v, back);
+  },
   close: () => { S.sheet = null; S.last = '시트 닫음'; },
-  noop: (msg) => { S.last = msg; },
+  tip: () => { S.tip = !S.tip; S.last = S.tip ? '? 설명 열림' : '? 설명 닫힘'; },
+  variant: (v) => { S.variant = v; S.sheet = null; S.last = `변형 ${v}로 바꿈`; },
+  noop: (m) => { S.last = m; },
 };
+function afterRecord(v, back) {
+  S.sheet = back === 'list' && model().blanks.length > 0 ? { kind: 'list', v } : null;
+  if (S.sheet) S.last += ' → 목록으로 돌아감';
+}
+/* Entry point a layout offers for "fill yesterday": A/C open the list, B opens the first blank chip. */
+function openEntry(v) {
+  const m = model();
+  if (m.blanks.length === 0) return A.noop('빈 습관 없음');
+  if (v === 'B') return A.openHabit(v, m.blanks[0].habit.id);
+  if (v === 'A' && m.blanks.length === 1) return A.noop('A: 빈 습관 1개는 배너 안에 버튼이 바로 있어요');
+  return A.openList(v);
+}
+const backFor = (v) => (v === 'B' ? null : 'list');
 function act(fn, ...args) { A[fn](...args); render(); }
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-function yesterdayLabel(b) {
-  if (!b.yd) return '분류 안 함';
-  return STATE_KO[b.yd.state] + (b.yd.skipReason ? ` · ${REASON_KO[b.yd.skipReason]}` : '');
-}
-function todayLabel(b) {
-  if (!b.td) return '분류 안 함 (정지 중, 기록 없음)';
-  return STATE_KO[b.td.state] + (b.td.skipReason ? ` · ${REASON_KO[b.td.skipReason]}` : '') + ` · ${b.td.sum}/${S.habit.floor}분`;
-}
-const yn = (v) => `<span class="${v ? 'yes' : 'no'}">${v ? '예' : '아니오'}</span>`;
-const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-
-function bannerHTML(title, showFill, showSave, live) {
-  const tip = live && S.tip ? `<div class="tip">${BannerLogic.TOOLTIP}</div>` : '';
-  return `<div class="banner">
-    <div class="row"><span class="grow b">${esc(title)}</span><button class="q" aria-label="설명 보기" ${live ? 'onclick="S.tip=!S.tip;render()"' : ''}><svg class="ic"><use href="#i-help"/></svg></button></div>
-    ${tip}
-    ${showFill ? `<button class="btn block" ${live ? 'onclick="act(\'openFill\')"' : ''}>어제 했어요 · 채우기</button>` : ''}
-    ${showSave ? `<button class="btn block" ${live ? 'onclick="act(\'openSave\')"' : ''}>오늘 하면 이어져요</button>` : ''}
+/* ---------- Phone rendering ---------- */
+function cardHTML(r, v, chip) {
+  const h = r.habit, sum = r.td ? r.td.sum : 0, pct = Math.min(100, Math.round((sum / h.floor) * 100));
+  const skipped = r.td && r.td.state === 'skip';
+  const progress = skipped ? '오늘 쉬어요' : sum === 0 ? '아직이에요' : `${sum} / ${h.floor}${h.unit}`;
+  return `<div class="card habit ${r.floorMet ? 'ok' : ''}">
+    <div class="hico">${h.emoji}</div>
+    <div class="grow">
+      <div class="t-title">${esc(h.name)}${r.floorMet ? ' <span class="t-label okb">✓ 했어요</span>' : ''}</div>
+      ${h.where ? `<div class="muted">🕐 ${esc(h.where)}</div>` : ''}
+      <div class="b" style="margin-top:4px">${progress}</div>
+      ${sum > 0 ? `<div class="bar ${r.floorMet ? 'ok' : ''}"><i style="width:${pct}%"></i></div>` : ''}
+      ${chip ? `<button class="chip blank" onclick="act('openHabit','${v}','${h.id}')">어제 비었어요</button>` : ''}
+    </div>
+    <button class="act ${r.floorMet ? 'ok' : ''}" aria-label="${esc(h.name)} 기록">${r.floorMet ? '✓' : '<svg class="ic"><use href="#i-plus"/></svg>'}</button>
   </div>`;
 }
 
-function render() {
-  const b = BannerLogic.banner(S.entries, S.habit, TODAY, S.titleOption);
-  const sum = b.td ? b.td.sum : 0;
-  const pct = Math.min(100, Math.round((sum / S.habit.floor) * 100));
-  const met = b.td && BannerLogic.isFloorMet(b.td.state);
-
-  let sheet = '';
-  if (S.sheet === 'fill') sheet = `<div class="sheet"><div class="b">어제 ${esc(S.habit.name)} 기록 채우기 (10/10)</div>
-    <div class="row"><button class="btn line" onclick="A.yLog(10);S.sheet=null;S.last='채우기: 어제 10분(최소량) 기록';render()">10분 (최소량)</button>
-    <button class="btn line" onclick="A.yLog(5);S.sheet=null;S.last='채우기: 어제 5분(조금) 기록';render()">5분 (조금)</button></div>
-    <button class="btn" onclick="act('close')">닫기</button></div>`;
-  if (S.sheet === 'today') sheet = `<div class="sheet"><div class="b">오늘 ${esc(S.habit.name)} 기록</div>
-    <div class="row"><button class="btn line" onclick="act('tLog',5)">+5분</button><button class="btn line" onclick="act('tLog',10)">+10분</button></div>
-    <button class="btn" onclick="act('close')">닫기</button></div>`;
-
-  document.getElementById('phone').innerHTML = `
-    <div class="date">10월 11일 일요일</div>
-    <p class="ttl">오늘 할 일</p>
-    ${b.shown ? bannerHTML(b.title, b.showFill, b.showSave, true) : '<div class="nobanner">배너 없음</div>'}
-    ${sheet}
-    <div class="card"><div class="hico">🧘</div><div class="grow">
-      <div style="font-size:20px;font-weight:800">${esc(S.habit.name)}</div>
-      <div class="b">${met ? '✓ 했어요 · ' : ''}${sum} / ${S.habit.floor}분${b.td && b.td.state === 'skip' ? ' · 오늘 쉼' : ''}${!b.td ? ' · 정지 중' : ''}</div>
-      <div class="bar"><i style="width:${pct}%"></i></div></div></div>`;
-
-  const snap = [
-    ['방금 한 일', S.last],
-    ['어제 상태', yesterdayLabel(b)],
-    ['오늘 상태', todayLabel(b)],
-    ['isMiss(어제)', yn(b.yd ? b.yd.isMiss : false)],
-    ['atRiskToday (코드)', yn(b.showSave)],
-    ['atRiskToday (SPEC §6.2 문장)', yn(b.specSave)],
-    ['"어제 했어요 · 채우기" 보임', yn(b.showFill)],
-    ['"오늘 하면 이어져요" 보임', yn(b.showSave)],
-    ['배너', b.shown ? '<span class="yes">보임</span>' : '<span class="no">숨김</span>'],
-    ['제목', b.title ? esc(b.title) + (b.titleKey !== 'missed' ? ` (${S.titleOption}안)` : '') : '—'],
-    ['정지', S.habit.pauses.length ? '오늘부터 정지 중' : '없음'],
-  ];
-  document.getElementById('state').innerHTML = snap.map(([k, v], i) => {
-    const changed = prevSnap && i > 0 && prevSnap[i][1] !== v;
-    return `<tr class="${changed ? 'changed' : ''}"><th>${k}</th><td>${v}</td></tr>`;
-  }).join('');
-  prevSnap = snap;
-
-  let flags = '';
-  if (b.showSave !== b.specSave) {
-    flags += `<div class="flag">⚠ 코드와 SPEC 문장이 다르게 판정해요. 코드 atRiskToday = ${b.showSave ? '참' : '거짓'}, SPEC §6.2 문장 = ${b.specSave ? '참' : '거짓'}.
-      ${S.habit.pauses.length ? '원인: 코드는 정지 중인 날에 atRiskToday를 끈다 (ADR-0003). SPEC §6.2는 정지를 말하지 않는다.' : '원인: 오늘 기록이 있으면 skip을 덧붙여도 그날은 partial로 분류된다 (classify.ts: 활동 기록이 skip보다 앞섬). SPEC은 "today is skipped"면 숨긴다고 쓴다.'}</div>`;
+function sheetHTML(v) {
+  const s = S.sheet;
+  if (!s || s.v !== v) return '';
+  const close = `<button class="iconbtn" aria-label="닫기" onclick="act('close')"><svg class="ic"><use href="#i-x"/></svg></button>`;
+  let body = '';
+  if (s.kind === 'list') {
+    const m = model();
+    body = `<div class="spread"><div><div class="t-title">어제 기록이 빈 습관</div><div class="muted">했는지 못 했는지 골라 주세요.</div></div>${close}</div>` +
+      m.blanks.map((r) => `<div class="row" style="border-top:1px solid var(--border); padding-top:10px">
+        <span class="grow b">${r.habit.emoji} ${esc(r.habit.name)}</span>
+        <button class="btn line" style="min-height:44px" onclick="act('openDid','${v}','${r.habit.id}','list')">했어요</button>
+        <button class="btn line" style="min-height:44px" onclick="act('openSkip','${v}','${r.habit.id}','list')">못 했어요</button></div>`).join('');
   } else {
-    flags += `<div class="ok">이 상태에서는 코드와 SPEC §6.2 문장이 같게 판정해요.</div>`;
+    const h = H(s.id);
+    const head = (title) => `<div class="spread"><div><div class="t-label muted">${h.emoji} ${esc(h.name)} · 어제 10월 10일</div><div class="t-title">${title}</div></div>${close}</div>`;
+    if (s.kind === 'habit') {
+      body = head('어제 기록이 비어 있어요') + `<div class="row"><button class="btn line grow" onclick="act('openDid','${v}','${h.id}',null)">했어요</button><button class="btn line grow" onclick="act('openSkip','${v}','${h.id}',null)">못 했어요</button></div>`;
+    } else if (s.kind === 'did') {
+      const half = Math.max(1, Math.floor(h.floor / 2));
+      body = head('어제 했어요 · 얼마나?') + `<div class="row"><button class="btn line grow" onclick="act('recordDid',${h.floor})">${h.floor}${h.unit} (최소량)</button>` +
+        (h.floor > 1 ? `<button class="btn line grow" onclick="act('recordDid',${half})">${half}${h.unit} (조금)</button>` : '') + '</div>';
+    } else if (s.kind === 'skip') {
+      body = head('어제 못 했어요 · 왜?') + `<div class="field ph">메모 (선택)</div><div class="muted">이유를 누르면 바로 기록돼요.</div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px">${REASONS.map(([k, ko]) => `<button class="pick" style="min-height:56px; justify-content:center" onclick="act('recordSkip','${k}')">${ko}</button>`).join('')}</div>`;
+    }
   }
-  flags += `<div class="flag">⚠ 문구 차이 (항상): SPEC §4.3은 atRiskToday 조건에 "or a streak just broke"를 더 적는다. streak.ts에는 이 조건이 없다. 연속은 미스로만 끊기므로 동작 차이는 찾지 못했다.</div>`;
-  document.getElementById('flags').innerHTML = flags;
-  document.getElementById('rows').textContent = '기록 (덧붙인 순서)\n' + (S.entries.length ? S.entries.map((e) => `${e.date} ${e.timestamp.slice(11)} ${e.skipReason ? 'skip · ' + REASON_KO[e.skipReason] : e.actual + '분'}`).join('\n') : '(없음)');
+  return `<div class="scrim" onclick="act('close')"></div><div class="sheet"><div class="grab"></div>${body}</div>`;
+}
 
+function phoneHTML(v) {
+  const m = model(), L = TodayLogic.layout(m, v);
+  let top = '';
+  if (L.banner) {
+    const b = L.banner;
+    const tip = S.tip ? `<div class="tip"><span class="draft">초안</span>${TodayLogic.TOOLTIP_DRAFT}</div>` : '';
+    top = `<div class="banner"><div class="row"><span class="grow b">${esc(b.title)}</span><button class="q" aria-label="설명 보기" onclick="act('tip')"><svg class="ic"><use href="#i-help"/></svg></button></div>${tip}` +
+      (b.kind === 'single'
+        ? `<div class="row"><button class="btn grow" onclick="act('openDid','A','${b.habitId}',null)">했어요</button><button class="btn grow" onclick="act('openSkip','A','${b.habitId}',null)">못 했어요</button></div>`
+        : `<button class="btn block" onclick="act('openList','A')">채우기</button>`) + '</div>';
+  }
+  if (L.strip) top = `<button class="strip" onclick="act('openList','C')"><span>어제 비었어요</span><span class="em">${L.strip.emoji}</span>${L.strip.more ? `<span>+${L.strip.more}</span>` : ''}<span class="grow"></span><svg class="ic"><use href="#i-right"/></svg></button>`;
+  const chips = L.chips || [];
+  return `<div class="phone">
+    <div class="page">
+      ${v === 'C' ? top : ''}
+      <div><div class="t-label muted">10월 11일 일요일</div><h1 class="t-display">오늘 할 일</h1></div>
+      <span class="chip count">✅ ${m.rows.length}개 중 ${m.doneCount}개 했어요</span>
+      ${v === 'A' ? top : ''}
+      ${m.rows.map((r) => cardHTML(r, v, chips.includes(r.habit.id))).join('')}
+      <div class="fold">오늘 기록 ${S.entries.filter((e) => e.date === TODAY).length}개 <svg class="ic"><use href="#i-down"/></svg></div>
+      <button class="btn dash block"><svg class="ic"><use href="#i-pencil"/></svg>끄적이기</button>
+    </div>
+    <nav class="tabbar"><button class="on"><svg class="ic"><use href="#i-sun"/></svg><span class="t-label">오늘</span></button><button><svg class="ic"><use href="#i-grid"/></svg><span class="t-label">대시보드</span></button><button><svg class="ic"><use href="#i-notebook"/></svg><span class="t-label">글 모음</span></button></nav>
+    ${sheetHTML(v)}
+  </div>`;
+}
+
+/* ---------- State panel ---------- */
+function visibleText(m, v) {
+  const L = TodayLogic.layout(m, v);
+  if (v === 'A') return L.banner ? `배너 (${L.banner.kind === 'single' ? '1개용, 버튼 했어요·못 했어요' : '묶음, 버튼 채우기'}): ${L.banner.title}` : '배너 없음';
+  if (v === 'B') return L.chips.length ? `칩 "어제 비었어요": ${L.chips.map((id) => H(id).name).join(', ')}` : '칩 없음';
+  return L.strip ? `띠: 어제 비었어요 ${L.strip.emoji}${L.strip.more ? ' +' + L.strip.more : ''}` : '띠 없음';
+}
+function stateHTML() {
+  const m = model();
+  const yl = (r) => !r.yd ? '—' : (r.blank ? '<span class="warnc">빔 (missed)</span>' : STATE_KO[r.yd.state] + (r.yd.skipReason ? ' · ' + REASON_KO[r.yd.skipReason] : '') + (r.yd.sum ? ` ${r.yd.sum}${r.habit.unit}` : ''));
+  const tl = (r) => !r.td ? '—' : STATE_KO[r.td.state] + (r.td.sum ? ` ${r.td.sum}/${r.habit.floor}${r.habit.unit}` : '');
+  const rows = m.rows.map((r) => [r.habit.emoji + ' ' + r.habit.name, yl(r), tl(r), r.blank ? '<span class="warnc">예</span>' : '<span class="no">아니오</span>', `<span class="domain">${r.atRisk ? '참' : '거짓'}</span>`]);
+  const sheet = !S.sheet ? '없음' : (S.sheet.kind === 'list' ? '빈 습관 목록' : `${H(S.sheet.id).name} ${{ habit: '어제 시트', did: '양 고르기', skip: '못 한 이유' }[S.sheet.kind]}`) + ` (${S.sheet.v})`;
+  const summary = [
+    ['방금 한 일', S.last], ['습관 수', String(m.rows.length)], ['어제 빈 습관 수', String(m.blanks.length)],
+    ['A 화면', esc(visibleText(m, 'A'))], ['B 화면', esc(visibleText(m, 'B'))], ['C 화면', esc(visibleText(m, 'C'))], ['열린 시트', sheet],
+  ];
+  const snap = JSON.stringify([rows, summary.slice(1)]);
+  const prev = prevSnap ? JSON.parse(prevSnap) : null;
+  prevSnap = snap;
+  const ch = (a, b) => (prev && JSON.stringify(a) !== JSON.stringify(b) ? 'changed' : '');
+  return `<h2>지금 상태</h2>
+    <table class="state"><tr><th>습관</th><th>어제</th><th>오늘</th><th>어제 빔</th><th>atRiskToday<br><span class="domain">도메인만, 화면엔 안 보임</span></th></tr>
+    ${rows.map((r, i) => `<tr class="${ch(r, prev && prev[0][i])}">${r.map((c) => `<td>${c}</td>`).join('')}</tr>`).join('')}</table>
+    <table class="state" style="margin-top:12px">${summary.map(([k, v], i) => `<tr class="${i > 0 ? ch(summary[i], prev && prev[1][i - 1]) : ''}"><th style="width:32%">${k}</th><td>${v}</td></tr>`).join('')}</table>
+    <div class="expect" style="margin-top:10px"><span class="draft">초안</span>A 배너 <code>?</code> 문구: ${TodayLogic.TOOLTIP_DRAFT}</div>`;
+}
+
+/* ---------- Page ---------- */
+function render() {
+  const compare = SCENARIOS[activeTab].compare;
+  document.getElementById('vbar').innerHTML = compare
+    ? '<span class="t-label muted">변형 비교 탭: A·B·C를 나란히 보여요. 세 화면은 같은 상태를 써요.</span>'
+    : '<span class="t-label muted">변형</span>' + [['A', '묶음 배너'], ['B', '카드 칩'], ['C', '맨 위 띠']].map(([v, l]) => `<button class="pbtn ${S.variant === v ? 'on' : ''}" onclick="act('variant','${v}')">${v} · ${l}</button>`).join('');
+  document.getElementById('main').innerHTML = compare
+    ? `<div class="phones">${['A', 'B', 'C'].map((v) => `<div><div class="cap">${v} · ${{ A: '묶음 배너', B: '카드 칩', C: '맨 위 띠' }[v]}</div>${phoneHTML(v)}</div>`).join('')}</div><div class="panel" style="margin-top:16px">${stateHTML()}</div>`
+    : `<div class="grid"><div>${phoneHTML(S.variant)}</div><div class="panel">${stateHTML()}</div></div>`;
   renderScenario();
+  renderFreePlay();
 }
 
-/* Free play */
-function fpButtons(id, list) {
-  document.getElementById(id).innerHTML = list.map(([label, call]) => `<button class="pbtn" onclick="${call}">${label}</button>`).join('');
+function renderFreePlay() {
+  const opt = (n, sel) => `<option ${n === sel ? 'selected' : ''}>${n}</option>`;
+  document.getElementById('fpCfg').innerHTML = `
+    <label class="t-label">습관 수 <select onchange="seed(+this.value, Math.min(S.blankCount, +this.value)); prevSnap=null; render()">${[1, 2, 3, 4, 5, 6].map((n) => opt(n, S.count)).join('')}</select></label>
+    <label class="t-label" style="margin-left:12px">어제 빈 습관 수 <select onchange="seed(S.count, +this.value); prevSnap=null; render()">${Array.from({ length: S.count + 1 }, (_, n) => opt(n, S.blankCount)).join('')}</select></label>
+    <button class="pbtn" style="margin-left:12px" onclick="seed(S.count, S.blankCount); prevSnap=null; render()">기록 새로 깔기</button>`;
+  document.getElementById('fpHabits').innerHTML = habitsShown().map((h) => `<div class="fprow"><span class="nm">${h.emoji} ${esc(h.name)}</span>
+    <span class="sub">어제</span>
+    <button class="pbtn" onclick="S.entries=S.entries.filter(e=>!(e.habitId==='${h.id}'&&e.date===YDAY));S.last='어제 ${h.name} 비움 (프로토타입용)';render()">비우기</button>
+    <button class="pbtn" onclick="addRow('${h.id}',YDAY,${h.floor});S.last='어제 ${h.name} 최소량 기록';render()">했어요</button>
+    ${REASONS.map(([k, ko]) => `<button class="pbtn" onclick="addRow('${h.id}',YDAY,0,'${k}');S.last='어제 ${h.name} 못 했어요 · ${ko}';render()">${ko}</button>`).join('')}
+    <span class="sub">오늘</span>
+    <button class="pbtn" onclick="S.entries=S.entries.filter(e=>!(e.habitId==='${h.id}'&&e.date===TODAY));S.last='오늘 ${h.name} 비움';render()">비우기</button>
+    <button class="pbtn" onclick="addRow('${h.id}',TODAY,${Math.max(1, Math.floor(h.floor / 2))});S.last='오늘 ${h.name} 조금 기록';render()">+조금</button>
+    <button class="pbtn" onclick="addRow('${h.id}',TODAY,0,'forgot');S.last='오늘 ${h.name} skip';render()">skip</button></div>`).join('');
 }
-fpButtons('fpY', [
-  ['비우기 (기록 없음)', "act('yClear')"], ['skip · 깜빡함', "act('ySkip','forgot')"], ['skip · 너무 힘듦', "act('ySkip','tooHard')"],
-  ['skip · 안 내킴', "act('ySkip','notFeeling')"], ['skip · 예외', "act('ySkip','exception')"], ['+5분', "act('yLog',5)"], ['+10분', "act('yLog',10)"],
-]);
-fpButtons('fpT', [
-  ['비우기 (아직)', "act('tClear')"], ['+5분', "act('tLog',5)"], ['+10분', "act('tLog',10)"],
-  ['skip · 깜빡함', "act('tSkip','forgot')"], ['skip · 예외', "act('tSkip','exception')"],
-]);
-document.getElementById('fpX').innerHTML = `
-  <button class="pbtn" onclick="act('title','A')">제목 A안</button><button class="pbtn" onclick="act('title','B')">제목 B안</button>
-  <button class="pbtn" onclick="act('pause')">오늘부터 정지 켜기/끄기</button>
-  <button class="pbtn" onclick="fresh();render()">전체 처음으로</button>
-  <label style="font-size:14px;font-weight:700;color:var(--muted)">습관 이름 <input class="name" value="명상" oninput="S.habit.name=this.value||'명상';S.last='습관 이름 바꿈';render()"></label>`;
 
-/* Guided walkthroughs */
+/* Guided walkthroughs. setup = [habit count, blank count]. */
 const openApp = ['앱을 연다', () => A.noop('앱을 연다 (기록 변화 없음)')];
+const entry = ['어제 채우기 진입점 누르기 (A 채우기 · B 첫 칩 · C 띠)', () => openEntry(S.variant)];
+const did = (id, label) => [label, () => A.openDid(S.variant, id, backFor(S.variant))];
+const skip = (id, label) => [label, () => A.openSkip(S.variant, id, backFor(S.variant))];
 const SCENARIOS = [
-  { name: '1. 놓침 · 오늘 아직', desc: '어제 아무 기록도 없었고 오늘은 아직 안 했다.', expect: '버튼 둘 다 보인다. 제목은 "기록을 놓쳤어요".', steps: [openApp] },
-  { name: '2. 놓침 · 오늘 조금', desc: '어제 기록 없음. 오늘 5분만 했다 (최소량 10분 미만).', expect: 'partial도 아직 이길 수 있는 날이라 버튼 둘 다 보인다.', steps: [openApp, ['오늘 5분 기록', () => A.tLog(5)]] },
-  { name: '3. 놓침 · 오늘 다 함', desc: '어제 기록 없음. 오늘 최소량을 채웠다.', expect: '"오늘 하면 이어져요"는 숨고 "채우기"만 남는다.', steps: [openApp, ['오늘 10분 기록', () => A.tLog(10)]] },
-  { name: '4. 쉼(예외 아님) · 오늘 아직', desc: '어제 "깜빡함"으로 skip했다. 오늘은 아직.', expect: '"오늘 하면 이어져요"만 보인다. 어제가 missed가 아니라 채우기는 없다. 제목 A·B를 비교해 보자.', steps: [['어제 skip · 깜빡함', () => A.ySkip('forgot')], openApp, ['제목 B안으로 바꾸기', () => A.title('B')], ['제목 A안으로 되돌리기', () => A.title('A')]], cmp: true },
-  { name: '5. 예외로 쉼', desc: '어제 "예외" 사유로 skip했다.', expect: '예외는 미스가 아니다. 배너가 뜨지 않는다.', steps: [['어제 skip · 예외', () => A.ySkip('exception')], openApp] },
-  { name: '6. 어제 다 함', desc: '어제 최소량을 채웠다.', expect: '배너가 뜨지 않는다.', steps: [['어제 10분 기록', () => A.yLog(10)], openApp] },
-  { name: '7a. 채우기 → 최소량', desc: '어제 기록 없음. 오늘 아직. 배너의 "채우기"로 어제를 최소량으로 채운다.', expect: '어제가 done이 되면 미스가 아니다. 배너 전체가 사라진다.', steps: [openApp, ['"어제 했어요 · 채우기" 누르기', () => A.openFill()], ['10분(최소량)으로 채우기', () => { A.yLog(10); S.sheet = null; S.last = '채우기: 어제 10분 기록'; }]] },
-  { name: '7b. 채우기 → 조금', desc: '같은 상황에서 어제를 5분만 채운다.', expect: '어제가 partial이 되어도 미스가 아니다. 배너 전체가 사라진다. 오늘 하면 이어져요도 함께 사라지는 점을 확인하자.', steps: [openApp, ['"어제 했어요 · 채우기" 누르기', () => A.openFill()], ['5분(조금)으로 채우기', () => { A.yLog(5); S.sheet = null; S.last = '채우기: 어제 5분 기록'; }]] },
-  { name: '8. 이어져요 → 오늘 채움', desc: '어제 "너무 힘듦"으로 skip. 배너의 "오늘 하면 이어져요"로 오늘 기록 시트를 열고 최소량까지 기록한다.', expect: '5분 뒤에는 아직 보인다. 10분이 되면 배너가 사라진다.', steps: [['어제 skip · 너무 힘듦', () => A.ySkip('tooHard')], ['"오늘 하면 이어져요" 누르기', () => A.openSave()], ['시트에서 +5분', () => A.tLog(5)], ['시트에서 +5분 더', () => A.tLog(5)]] },
-  { name: '9. 조금 한 뒤 skip ⚠', desc: '어제 "안 내킴"으로 skip. 오늘 5분 한 뒤, skip을 눌렀다.', expect: '코드는 오늘을 partial로 본다 (활동이 skip보다 앞섬). 버튼이 남는다. SPEC 문장대로면 숨어야 한다. 빨간 경고를 보자.', steps: [['어제 skip · 안 내킴', () => A.ySkip('notFeeling')], ['오늘 5분 기록', () => A.tLog(5)], ['오늘 skip · 깜빡함', () => A.tSkip('forgot')]] },
-  { name: '10. 오늘 정지 ⚠', desc: '어제 기록 없음. 오늘부터 습관을 정지했다.', expect: '코드는 정지 중이면 atRiskToday를 끈다 (ADR-0003). "채우기"만 남는다. SPEC §6.2는 정지를 말하지 않는다.', steps: [openApp, ['오늘부터 정지', () => A.pause()]] },
-  { name: '제목 비교', desc: '어제 상태별 제목과 `?` 설명 문구를 나란히 본다. 이름 칸을 바꾸면 조사(을/를, 이/가)도 바뀐다.', titles: true, steps: [] },
+  { name: '1. 빈 습관 1개', setup: [3, 1], desc: '습관 3개 중 명상만 어제 기록이 비었다 (ReToday 보드와 같은 구성).', expect: 'A는 "어제 명상 기록이 비어 있어요." 배너에 했어요·못 했어요 버튼. B는 명상 카드에만 칩. C는 띠 하나에 🧘. 변형 바를 눌러 비교하자.', steps: [openApp, ['? 눌러 설명 보기 (A)', () => A.tip()]] },
+  { name: '2. 빈 습관 3개', setup: [6, 3], desc: '습관 6개 중 명상·독서·스트레칭 셋이 비었다.', expect: 'A는 "빈 습관 3개" + 채우기 하나. B는 카드 셋에 칩. C는 띠에 이모지 셋. 진입점을 누르면 A·C는 목록 시트, B는 그 습관 시트가 열린다.', steps: [openApp, entry] },
+  { name: '3. 빈 습관 6개', setup: [6, 6], desc: '습관 6개 모두 어제 기록이 비었다.', expect: 'A 배너는 길이가 그대로다. B는 모든 카드에 칩이 붙어 가장 어지럽다. C는 이모지 4개 뒤에 +2.', steps: [openApp, entry] },
+  { name: '4. 하나씩 채우기', setup: [6, 3], desc: '빈 습관 셋을 차례로 채운다. 독서 했어요, 스트레칭 했어요, 명상 못 했어요.', expect: 'A·C는 기록 뒤 목록으로 돌아온다. 남은 개수가 3→2→1→0으로 줄고, A 배너는 1개가 되면 "어제 명상 기록이 비어 있어요."로 바뀐다. 0이 되면 사라진다.', steps: [openApp, entry, did('read', '독서 "했어요"'), ['10쪽 (최소량) 고르기', () => A.recordDid(10)], did('stretch', '스트레칭 "했어요"'), ['2분 (조금) 고르기', () => A.recordDid(2)], skip('meditate', '명상 "못 했어요"'), ['이유 "깜빡함" 고르기', () => A.recordSkip('forgot')]] },
+  { name: '5. 못 했어요 → 이유', setup: [3, 1], desc: '명상 어제를 "못 했어요"로 채운다.', expect: '이유를 고르면 어제가 skip으로 기록되어 빈 습관이 사라진다. 상태 표의 atRiskToday는 참이 된다 (예외가 아니면 미스). 화면에는 아무것도 뜨지 않는다.', steps: [openApp, skip('meditate', '명상 "못 했어요" 누르기'), ['이유 "너무 힘듦" 고르기', () => A.recordSkip('tooHard')]] },
+  { name: '변형 비교', setup: [6, 3], compare: true, desc: '빈 습관 3개(습관 6개)에서 A·B·C를 나란히 본다. 아무 화면에서나 채우면 세 화면이 함께 바뀐다.', expect: '배너·칩·띠가 화면 위쪽을 얼마나 차지하는지, 카드가 얼마나 어지러운지 보자.', steps: [openApp] },
 ];
 
-function startTab(i) { activeTab = i; stepIdx = 0; fresh(); prevSnap = null; S.last = `"${SCENARIOS[i].name}" 시작 (처음 상태)`; render(); }
+function startTab(i) {
+  activeTab = i; stepIdx = 0;
+  seed(...SCENARIOS[i].setup);
+  prevSnap = null; S.last = `"${SCENARIOS[i].name}" 시작 (처음 상태)`; render();
+}
 function runStep(i) { SCENARIOS[activeTab].steps[i][1](); stepIdx = i + 1; render(); }
-
 function renderScenario() {
   document.getElementById('tabs').innerHTML = SCENARIOS.map((s, i) => `<button class="tab ${i === activeTab ? 'on' : ''}" onclick="startTab(${i})">${s.name}</button>`).join('');
   const sc = SCENARIOS[activeTab];
-  let html = `<div>${esc(sc.desc)}</div>`;
-  if (sc.expect) html += `<div class="expect">볼 것: ${esc(sc.expect)}</div>`;
-  if (sc.steps.length) html += '<div class="steps">' + sc.steps.map(([label], i) =>
-    `<div class="step ${i < stepIdx ? 'done' : ''}"><span class="num">${i < stepIdx ? '✓' : i + 1}</span><button ${i === stepIdx ? '' : 'disabled'} onclick="runStep(${i})">${esc(label)}</button></div>`).join('') + '</div>';
-  if (sc.cmp || sc.titles) {
-    const t = BannerLogic.titles(S.habit.name);
-    html += '<div class="cmp" style="margin-top:16px">';
-    if (sc.titles) html += `<div><div class="cap">어제 기록 없음 (기존 제목)</div>${bannerHTML(t.missed, true, true, false)}</div>`;
-    html += `<div><div class="cap">어제 쉼 · A안 (사용자 선택)</div>${bannerHTML(t.skipA, false, true, false)}</div>`;
-    html += `<div><div class="cap">어제 쉼 · B안 (대안)</div>${bannerHTML(t.skipB, false, true, false)}</div>`;
-    if (sc.titles) html += `<div><div class="cap">\`?\` 설명 문구</div><div class="tip">${BannerLogic.TOOLTIP}</div></div>`;
-    html += '</div>';
-  }
-  document.getElementById('scenario').innerHTML = html;
+  document.getElementById('scenario').innerHTML = `<div>${esc(sc.desc)}</div><div class="expect">볼 것: ${esc(sc.expect)}</div>
+    <div class="steps">${sc.steps.map(([label], i) => `<div class="step ${i < stepIdx ? 'done' : ''}"><span class="num">${i < stepIdx ? '✓' : i + 1}</span><button ${i === stepIdx ? '' : 'disabled'} onclick="runStep(${i})">${esc(label)}</button></div>`).join('')}</div>`;
 }
 
 /* Theme */
@@ -462,9 +533,9 @@ document.getElementById('themeBtn').onclick = () => setTheme(document.documentEl
 const qs = new URLSearchParams(location.search);
 setTheme(qs.get('theme') || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
 
-fresh();
+/* ?tab=N&play=K&v=A|B|C for screenshots */
+seed(3, 1, qs.get('v') || 'A');
 startTab(Math.max(0, Math.min(SCENARIOS.length - 1, Number(qs.get('tab') || 0))));
-/* ?play=N runs the first N steps of the tab, for screenshots */
 for (let i = 0; i < Number(qs.get('play') || 0) && i < SCENARIOS[activeTab].steps.length; i += 1) runStep(i);
 </script>
 </body>
