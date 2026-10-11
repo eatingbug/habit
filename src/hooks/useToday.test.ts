@@ -165,6 +165,23 @@ describe('useToday', () => {
     expect(result.current.xpToday).toBe(TUNING.xpPerFloorCompletion);
   });
 
+  it('picks up a write made on another screen when reloaded (the tab stays mounted)', async () => {
+    const repository = new LocalRepository(await seed([habit()]));
+    const result = await todayScreen(repository);
+    expect(dayOf(result.current, 'h1')?.state).toBe('pending');
+
+    await repository.upsertEntry({
+      id: 'elsewhere',
+      habitId: 'h1',
+      date: TODAY,
+      timestamp: `${TODAY}T09:00:00.000Z`,
+      actual: 5,
+    });
+    act(() => result.current.reload());
+
+    await waitFor(() => expect(dayOf(result.current, 'h1')?.state).toBe('done'));
+  });
+
   it('classifies a sub-floor amount as partial, which is not a miss', async () => {
     const result = await todayScreen(new LocalRepository(await seed([habit()])));
 

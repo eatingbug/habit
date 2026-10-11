@@ -10,6 +10,7 @@ export { Chip, type ChipProps, type ChipVariant } from './Chip';
 export { Field, type FieldProps } from './Field';
 export { GrowthPanel } from './GrowthPanel';
 export { Heatmap, type HeatmapProps } from './Heatmap';
+export { IconButton, type IconButtonProps } from './IconButton';
 export { LogForm, type LogFormProps } from './LogForm';
 export { Pill, type PillProps } from './Pill';
 export {

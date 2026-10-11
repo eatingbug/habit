@@ -1,11 +1,30 @@
-import { createContext, useContext, useMemo, useState, type ReactNode } from 'react';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  useSyncExternalStore,
+  type ReactNode,
+} from 'react';
 import { useColorScheme } from 'react-native';
+
+import { deviceKV, type DeviceKV } from '@/context/deviceKV';
+import type { KVStore } from '@/data';
 
 import { PALETTES as REDESIGN_PALETTES, type Palette as RedesignPalette } from './redesignTokens';
 import { PALETTES, type Palette, type ThemeName } from './tokens';
 
 /** 'system' follows the OS; the explicit values are the manual override (§6.0). */
-type ThemePreference = ThemeName | 'system';
+export type ThemePreference = ThemeName | 'system';
+
+/** The device storage key for the choice. It never goes to the server (#123). */
+const PREFERENCE_KEY = 'habiquest.theme';
+
+function isPreference(value: string | null): value is ThemePreference {
+  return value === 'system' || value === 'light' || value === 'dark';
+}
 
 interface ThemeContextValue {
   name: ThemeName;
@@ -16,16 +35,78 @@ interface ThemeContextValue {
    */
   redesign: RedesignPalette;
   preference: ThemePreference;
+  /** Applies at once and is kept on the device (#126). */
   setPreference: (p: ThemePreference) => void;
-  /** Cycles system → light → dark → system, for the header toggle. */
-  toggle: () => void;
 }
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 
-export function ThemeProvider({ children }: { children: ReactNode }) {
+/** The stored choice when the storage can read synchronously, else `null`. */
+function storedPreferenceSync(
+  storage: KVStore & Partial<Pick<DeviceKV, 'getSync'>>,
+): ThemePreference | null {
+  try {
+    const stored = storage.getSync?.(PREFERENCE_KEY) ?? null;
+    return isPreference(stored) ? stored : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Nothing outside this provider writes the key, so there is nothing to subscribe to. */
+function subscribeNever() {
+  return () => {};
+}
+
+/**
+ * `storage` is for tests, as `RepositoryProvider`'s `repository` is: they pass a
+ * `MemoryKV`. The app uses the device's own storage.
+ */
+export function ThemeProvider({
+  children,
+  storage = deviceKV,
+}: {
+  children: ReactNode;
+  storage?: KVStore & Partial<Pick<DeviceKV, 'getSync'>>;
+}) {
   const osScheme = useColorScheme();
-  const [preference, setPreference] = useState<ThemePreference>('system');
+  /** A choice made in this session, or one the async read delivered. */
+  const [chosen, setChosen] = useState<ThemePreference | null>(null);
+
+  // On web `localStorage` reads synchronously, so the stored theme applies before the
+  // first paint: a reload shows no frame on the OS theme. `useSyncExternalStore` rather
+  // than a `useState` initializer, because the static web export renders on Node with
+  // no storage. The server snapshot (`null`) keeps hydration matching that HTML, and
+  // React re-renders with the client snapshot before paint.
+  const storedSync = useSyncExternalStore(
+    subscribeNever,
+    () => storedPreferenceSync(storage),
+    () => null,
+  );
+  const preference = chosen ?? storedSync ?? 'system';
+
+  // A storage with no synchronous read delivers the choice after the first render.
+  // A storage failure keeps 'system': the theme is a convenience, not a record.
+  useEffect(() => {
+    let cancelled = false;
+    storage
+      .get(PREFERENCE_KEY)
+      .then((stored) => {
+        if (!cancelled && isPreference(stored)) setChosen((current) => current ?? stored);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [storage]);
+
+  const setPreference = useCallback(
+    (p: ThemePreference) => {
+      setChosen(p);
+      storage.set(PREFERENCE_KEY, p).catch(() => {});
+    },
+    [storage],
+  );
 
   const value = useMemo<ThemeContextValue>(() => {
     const name: ThemeName = preference === 'system' ? (osScheme === 'dark' ? 'dark' : 'light') : preference;
@@ -35,10 +116,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       redesign: REDESIGN_PALETTES[name],
       preference,
       setPreference,
-      toggle: () =>
-        setPreference((p) => (p === 'system' ? 'light' : p === 'light' ? 'dark' : 'system')),
     };
-  }, [osScheme, preference]);
+  }, [osScheme, preference, setPreference]);
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 }
