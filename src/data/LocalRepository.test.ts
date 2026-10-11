@@ -72,6 +72,7 @@ describe('LocalRepository — habits', () => {
       target: 30,
       cue: '아침 양치 후',
       identity: '나는 매일 몸을 쓰는 사람',
+      icon: '🏃',
       lifecycle: 'paused',
       pauses: [{ from: '2026-02-01', to: '2026-02-05' }, { from: '2026-03-01' }],
     };
@@ -83,7 +84,7 @@ describe('LocalRepository — habits', () => {
     expect(loadedFull!.pauses![1]).not.toHaveProperty('to');
 
     const loadedBare = (await repo.getHabit('h1'))!;
-    for (const key of ['target', 'cue', 'identity', 'pauses'] as const) {
+    for (const key of ['target', 'cue', 'identity', 'icon', 'pauses'] as const) {
       expect(loadedBare).not.toHaveProperty(key);
     }
   });
