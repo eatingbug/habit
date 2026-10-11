@@ -355,3 +355,7 @@ describe('SPEC §7.3 — scenarios and invariants read through the classifier', 
     expect(after[0].skipReason).toBe('cue');
   });
 });
+
+test('CI failure demo (do not merge)', () => {
+  expect(1).toBe(2);
+});
