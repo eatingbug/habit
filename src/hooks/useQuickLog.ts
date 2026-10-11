@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
 
-import { rewardToastLines, SKIP_REASON_LABELS, WRITE_FAILED_NOTE } from '@/config/copy';
+import { skipToastLines, undoToastLines, UNDO_TOAST_COPY, WRITE_FAILED_NOTE } from '@/config/copy';
 import { TUNING } from '@/config/tuning';
 import { useRepository } from '@/context/RepositoryContext';
 import { buildBackfillActivity, buildBackfillSkip } from '@/domain/backfill';
-import { type ClassifiedDay, isFloorMet } from '@/domain/classify';
+import { type ClassifiedDay, dayStates, isFloorMet } from '@/domain/classify';
 import { dateOf } from '@/domain/dates';
 import {
   computeStatLevel,
@@ -390,29 +390,32 @@ export function useQuickLog({
     const siblings = await statSiblings(habit);
     const effect = describeLogEffect(before, after, habit, siblings);
 
+    // The domain's sum for the day, never a second reduce of our own (C7a).
+    const sumOnDay = dayStates(habit, after, day, day, today)[0]?.sum ?? 0;
+
     setToast({
       entryId,
-      // Unchanged (§6.2 B6): the reward is the two slots beside it, not a new verb.
-      message: '기록됨',
-      ...rewardToastLines({
+      message: UNDO_TOAST_COPY.title,
+      ...undoToastLines({
         habit,
         actual,
-        // Spread field by field, not `...effect`: `rewardToastLines` takes primitives
-        // because `src/config` is below `src/domain` (§2.2), and this hook is UI, so
-        // it is the one layer allowed to read both.
+        // Field by field, not `...effect`: `undoToastLines` takes primitives because
+        // `src/config` is below `src/domain` (§2.2), and this hook is UI, so it is the
+        // one layer allowed to read both.
         xpGained: effect.xpGained,
+        remainingToFloor: effect.showedUp ? Math.max(0, habit.floor - sumOnDay) : 0,
         statLevelUp: effect.statLevelUp,
-        streakMilestoneHit: effect.streakMilestoneHit,
-        pushedToOver: effect.pushedToOver,
-        floorCrossedToday: effect.floorCrossedToday,
-        showedUp: effect.showedUp,
-        isBackfill,
         statName: TUNING.stats.find((stat) => stat.id === habit.statId)?.name,
         // The **number** behind `effect.statLevelUp`, which is only a boolean. Over
         // the same array `describeLogEffect` scored, so the line and the flag can
         // never disagree; §4.2 requires that anything reporting a level use this
         // function rather than reading the thresholds itself.
         statLevel: computeStatLevel(habit.statId, [{ habit, entries: after }, ...siblings]),
+        pushedToOver: effect.pushedToOver,
+        floorCrossed: effect.floorCrossedToday,
+        celebrated: false,
+        alreadyCelebrated: false,
+        isBackfill,
       }),
     });
     onChange();
@@ -452,11 +455,12 @@ export function useQuickLog({
       note: note != null && note.length > 0 ? note : undefined,
     });
 
-    // Canvas copy — `design/parts/Today.logic.js:105` (`toastMain`). The narrow-row
-    // short form in `design/parts/RowSkip.body.html:40` (`못 한 날로 기록 · 깜빡함`)
-    // is the same sentence abbreviated; one wording serves both screens, as the
-    // activity toast's single `기록됨` already does.
-    setToast({ entryId, message: '못 한 날로 기록했어요', detail: SKIP_REASON_LABELS[reason] });
+    // §6.2 Undo toast copy: the same `기록됨`, then the reason, then what it means.
+    setToast({
+      entryId,
+      message: UNDO_TOAST_COPY.title,
+      ...skipToastLines({ reason, note: note != null && note.length > 0 ? note : undefined }),
+    });
     onChange();
   }
 

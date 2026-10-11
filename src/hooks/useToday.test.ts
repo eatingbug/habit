@@ -346,7 +346,7 @@ describe('useToday', () => {
 
       await log(result, 'h1', 5);
       expect(dayOf(result.current, 'h1')?.state).toBe('done');
-      expect(result.current.toast?.detail).toBe(`+5reps · +${TUNING.xpPerFloorCompletion} XP`);
+      expect(result.current.toast?.detail).toBe(`+5reps · 별 +${TUNING.xpPerFloorCompletion}`);
 
       await act(async () => {
         await result.current.undoLast();
@@ -430,7 +430,7 @@ describe('useToday', () => {
 
       await log(result, 'b1', 1);
 
-      expect(result.current.toast?.detail).toBe(`✓ 완료 · +${TUNING.xpPerFloorCompletion} XP`);
+      expect(result.current.toast?.detail).toBe(`✓ 했어요 · 별 +${TUNING.xpPerFloorCompletion}`);
       expect(rowOf(result.current, 'b1').defaultAmount).toBe(1);
     });
   });
