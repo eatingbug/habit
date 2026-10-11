@@ -337,7 +337,7 @@ describe('useDashboard', () => {
       expect(stateOn(result.current.rows[0].cells, TODAY)).toBe('done');
       expect(result.current.rows[0].hasActivityToday).toBe(true);
       expect(result.current.rows[0].defaultAmount).toBe(1);
-      expect(result.current.toast?.detail).toBe(`✓ 완료 · +${TUNING.xpPerFloorCompletion} XP`);
+      expect(result.current.toast?.detail).toBe(`✓ 했어요 · 별 +${TUNING.xpPerFloorCompletion}`);
     });
 
     it('still offers the full floor on a day that holds only a reason-tagged skip', async () => {
@@ -355,7 +355,7 @@ describe('useDashboard', () => {
       const result = await dashboard(new LocalRepository(await seed([habit()])));
 
       await log(result, result.current.rows[0].habit, 5);
-      expect(result.current.toast?.detail).toBe(`+5reps · +${TUNING.xpPerFloorCompletion} XP`);
+      expect(result.current.toast?.detail).toBe(`+5reps · 별 +${TUNING.xpPerFloorCompletion}`);
 
       await act(async () => {
         await result.current.undoLast();

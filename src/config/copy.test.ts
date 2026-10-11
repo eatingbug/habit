@@ -12,11 +12,13 @@ import {
   STATUS_LIGHT_WORDS,
   TOOLTIPS,
   deleteConfirmLines,
-  rewardToastLines,
+  levelUpLine,
   rowRewardLine,
   saveBannerLines,
   signInCopy,
-  type RewardToastFacts,
+  skipToastLines,
+  undoToastLines,
+  type UndoToastFacts,
 } from './copy';
 
 /**
@@ -214,14 +216,13 @@ describe('LOG_TYPE_LABELS', () => {
 });
 
 /**
- * `rewardToastLines` — the log-time toast's copy (#17 AC 6, AC 7).
+ * `undoToastLines` and `skipToastLines` — the undo toast's second and third lines
+ * (SPEC §6.2 Undo toast copy, #127).
  *
- * A pure function over a delta the domain has already decided, so it asserts here in
- * the same seam as the domain: no repository, no render. The facts arrive as plain
- * primitives — `src/config` sits below `src/domain` (SPEC §2.2), so neither the
- * function nor this file imports `LogEffect` — and the fixtures below build them
- * directly. Every branch is covered, because the cascade is a priority order and an
- * untested branch is one that could be unreachable without anything saying so.
+ * Pure functions over facts the domain and the hook have already decided, so they
+ * assert here with no repository and no render. The facts are plain primitives:
+ * `src/config` sits below `src/domain` (SPEC §2.2). Every branch is covered, because the
+ * third line is a priority order and an untested branch could be unreachable.
  */
 const COUNT_HABIT: Habit = {
   id: 'h1',
@@ -236,109 +237,108 @@ const COUNT_HABIT: Habit = {
 
 const BINARY_HABIT: Habit = { ...COUNT_HABIT, id: 'h2', kind: 'binary', floor: 1, floorUnit: 'time' };
 
-type Delta = Pick<
-  RewardToastFacts,
-  'xpGained' | 'floorCrossedToday' | 'pushedToOver' | 'statLevelUp' | 'showedUp' | 'streakMilestoneHit'
->;
-
-const NOTHING_MOVED: Delta = {
+const NOTHING_MOVED: UndoToastFacts = {
+  habit: COUNT_HABIT,
+  actual: 5,
   xpGained: 0,
-  floorCrossedToday: false,
-  pushedToOver: false,
+  remainingToFloor: 0,
   statLevelUp: false,
-  showedUp: false,
+  statName: '지능',
+  statLevel: 3,
+  pushedToOver: false,
+  floorCrossed: false,
+  celebrated: false,
+  alreadyCelebrated: false,
+  isBackfill: false,
 };
 
-function lines(effect: Partial<Delta>, over: Partial<RewardToastFacts> = {}) {
-  return rewardToastLines({
-    habit: COUNT_HABIT,
-    actual: 5,
-    ...NOTHING_MOVED,
-    ...effect,
-    isBackfill: false,
-    statName: '지능',
-    statLevel: 3,
-    ...over,
-  });
+function lines(over: Partial<UndoToastFacts>) {
+  return undoToastLines({ ...NOTHING_MOVED, ...over });
 }
 
-describe('rewardToastLines — the mono detail slot', () => {
-  it('appends the XP the log earned', () => {
-    expect(lines({ xpGained: 60, floorCrossedToday: true }).detail).toBe('+5쪽 · +60 XP');
+describe('undoToastLines — the second line: amount and 별', () => {
+  it('appends the 별 the log earned', () => {
+    expect(lines({ xpGained: 60, floorCrossed: true }).detail).toBe('+5쪽 · 별 +60');
   });
 
-  it('says nothing about XP when the log earned none — the sub line carries that day', () => {
-    expect(lines({ showedUp: true }).detail).toBe('+5쪽');
+  it('drops the 별 part when the log earned none', () => {
+    expect(lines({ actual: 3, remainingToFloor: 2 }).detail).toBe('+3쪽');
   });
 
   it('keeps a binary habit off the unit path, which would read `+1time`', () => {
-    expect(lines({ xpGained: 60, floorCrossedToday: true }, { habit: BINARY_HABIT, actual: 1 }).detail).toBe(
-      '✓ 완료 · +60 XP',
+    expect(lines({ habit: BINARY_HABIT, actual: 1, xpGained: 60, floorCrossed: true }).detail).toBe(
+      '✓ 했어요 · 별 +60',
     );
   });
 });
 
-describe('rewardToastLines — the attributed sub line', () => {
-  it('names the stat and its new level on a level-up', () => {
-    expect(lines({ xpGained: 60, floorCrossedToday: true, statLevelUp: true }).sub).toBe('지능 레벨 3');
+describe('undoToastLines — the third line', () => {
+  it('has none when a banner or popup celebrates the log — the toast holds no streak', () => {
+    expect(lines({ xpGained: 60, floorCrossed: true, celebrated: true }).sub).toBeUndefined();
   });
 
-  it('falls through to the next branch when the stat id names no configured stat', () => {
-    expect(lines({ xpGained: 60, floorCrossedToday: true, statLevelUp: true }, { statName: undefined }).sub).toBe(
-      '최소만큼 했어요 💪',
+  it('says how much is left to the floor on a partial log', () => {
+    expect(lines({ actual: 3, remainingToFloor: 2 }).sub).toBe(
+      '조금이라도 했어요 · 최소량까지 2쪽 남았어요',
     );
   });
 
-  it('names the run length a milestone was reached at', () => {
-    expect(lines({ xpGained: 90, streakMilestoneHit: 5 }).sub).toBe('이어 간 날 5일 보너스');
+  it('says 더 했어요 on another log of a day already celebrated', () => {
+    expect(lines({ actual: 2, xpGained: 12 }).sub).toBe('더 했어요');
+    expect(lines({ floorCrossed: true, alreadyCelebrated: true }).sub).toBe('더 했어요');
   });
 
-  it('reports clearing the target', () => {
-    expect(lines({ xpGained: 120, floorCrossedToday: true, pushedToOver: true }).sub).toBe(
-      '목표까지 넘었어요 🎯',
+  it('says the target was passed', () => {
+    expect(lines({ xpGained: 84, pushedToOver: true }).sub).toBe('목표까지 넘겼어요');
+  });
+
+  it('says the day is filled when the floor is crossed with no celebration', () => {
+    expect(lines({ xpGained: 60, floorCrossed: true }).sub).toBe('오늘 몫을 채웠어요');
+    expect(lines({ xpGained: 60, floorCrossed: true, isBackfill: true }).sub).toBe('그날 몫을 채웠어요');
+  });
+
+  it('names the stat and its new level on a level-up, beside a banner too (#127 decision)', () => {
+    expect(lines({ xpGained: 60, floorCrossed: true, statLevelUp: true, celebrated: true }).sub).toBe(
+      '지능 레벨 3으로 올랐어요',
     );
   });
 
-  it('reports crossing the floor', () => {
-    expect(lines({ xpGained: 60, floorCrossedToday: true }).sub).toBe('최소만큼 했어요 💪');
+  it('reads the level-up particle off how the number is said', () => {
+    expect(levelUpLine('의지', 1)).toBe('의지 레벨 1로 올랐어요');
+    expect(levelUpLine('의지', 2)).toBe('의지 레벨 2로 올랐어요');
+    expect(levelUpLine('의지', 3)).toBe('의지 레벨 3으로 올랐어요');
+    expect(levelUpLine('의지', 6)).toBe('의지 레벨 6으로 올랐어요');
+    expect(levelUpLine('의지', 7)).toBe('의지 레벨 7로 올랐어요');
+    expect(levelUpLine('의지', 10)).toBe('의지 레벨 10으로 올랐어요');
   });
 
-  it('acknowledges a sub-floor log rather than going silent (AC 7)', () => {
-    expect(lines({ showedUp: true }).sub).toBe('오늘 나타났어요');
-  });
-
-  it('says 그 날, not 오늘, on a backfill — the only sentence here that names a day', () => {
-    expect(lines({ showedUp: true }, { isBackfill: true }).sub).toBe('그 날 나타났어요');
-  });
-
-  it("tells a binary habit's second log of the day why it earned nothing", () => {
-    expect(lines({}, { habit: BINARY_HABIT, actual: 1 }).sub).toBe('XP는 하루 한 번만');
-  });
-
-  it('reports intensity above a floor the day had already met', () => {
-    expect(lines({ xpGained: 12 }).sub).toBe('최소보다 더 했어요');
-  });
-
-  it('does not borrow the binary line for a count habit that earned no XP', () => {
-    expect(lines({}).sub).toBe('최소보다 더 했어요');
+  it('falls through when the stat id names no configured stat', () => {
+    expect(lines({ xpGained: 60, floorCrossed: true, statLevelUp: true, statName: undefined }).sub).toBe(
+      '오늘 몫을 채웠어요',
+    );
   });
 });
 
-describe('rewardToastLines — one line, so the branches are a priority order', () => {
-  it('puts a level-up ahead of the milestone that caused it', () => {
-    expect(lines({ xpGained: 90, statLevelUp: true, streakMilestoneHit: 5 }).sub).toBe('지능 레벨 3');
+describe('skipToastLines — a skip puts its reason second (§6.2)', () => {
+  it('says the streak stays on an exception', () => {
+    expect(skipToastLines({ reason: 'exception' })).toEqual({
+      detail: '예외',
+      sub: '예외라서 연속은 그대로예요',
+    });
   });
 
-  it('puts a milestone ahead of the floor crossing on the same log', () => {
-    expect(lines({ xpGained: 150, floorCrossedToday: true, streakMilestoneHit: 5 }).sub).toBe(
-      '이어 간 날 5일 보너스',
-    );
+  it('says 쉬었어요 on any other reason, with the note after 이유: when there is one', () => {
+    expect(skipToastLines({ reason: 'cue' })).toEqual({ detail: '깜빡함', sub: '쉬었어요' });
+    expect(skipToastLines({ reason: 'floor', note: '피곤해요' })).toEqual({
+      detail: '너무 힘듦',
+      sub: '쉬었어요 · 이유: 피곤해요',
+    });
   });
 
-  it('puts clearing the target ahead of crossing the floor, which one log can do at once', () => {
-    expect(lines({ xpGained: 120, floorCrossedToday: true, pushedToOver: true }).sub).toBe(
-      '목표까지 넘었어요 🎯',
-    );
+  it('never says the streak broke', () => {
+    for (const reason of ['cue', 'floor', 'identity'] as const) {
+      expect(skipToastLines({ reason }).sub).not.toMatch(/끊|실패/);
+    }
   });
 });
 
