@@ -1,0 +1,32 @@
+# PR마다 테스트, 타입 검사, lint를 돌린다 (#124).
+#
+# `test:policy`는 넣지 않는다. 실제 Supabase 프로젝트와 키가 필요하다.
+name: ci
+
+on:
+  pull_request:
+    branches: [main, redesign]
+  push:
+    branches: [main, redesign]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm test -- --ci
+      - run: npm run typecheck
+      - run: npm run lint
