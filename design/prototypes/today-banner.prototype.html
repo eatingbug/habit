@@ -1,0 +1,471 @@
+<!doctype html>
+<!--
+  PROTOTYPE. Throwaway. Not production code.
+  Question: does the combined yesterday banner on the redesigned Today screen (#114, SPEC §6.2, §4.3 C2)
+  show the right buttons, title and visibility for every yesterday x today combination?
+  The script block with id "logic" mirrors src/domain/classify.ts and src/domain/streak.ts (atRiskToday) in plain JS.
+  Lives on branch prototype/today-banner only. Do not merge.
+-->
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>오늘 배너 프로토타입</title>
+<style>
+/* Copied from design/_tokens.redesign.css: tokens, .row/.grow/.b/.ic/.q, .btn, .banner, .tip */
+:root, [data-theme="light"]{
+  --bg:#F4F6FB; --surface:#FFFFFF; --surface2:#F0F2F7; --inset:#EEF0F5;
+  --text:#15171F; --muted:#4A4F60; --faint:#9AA0AE;
+  --border:#E6E8EF; --border-strong:#8A90A0; --scrim:rgba(20,20,30,.45);
+  --accent-ink:#1746B8; --accent-tint:#E8F0FF;
+  --done-ink:#0B6B3E; --done-tint:#E3F6EC;
+  --crit-ink:#A82A20; --crit-tint:#FDE5E2;
+  --warn-ink:#6A4B00; --warn-tint:#FFF4D6;
+  --streak-ink:#8F4200; --streak-tint:#FFF0E0;
+  --stat-ink:#5B3FD0; --stat-tint:#EFEAFF;
+  --shadow:0 2px 8px rgba(30,40,80,.06); --lift:0 12px 36px rgba(0,0,0,.18); --edge:transparent;
+}
+[data-theme="dark"]{
+  --bg:#0F1117; --surface:#181B23; --surface2:#1F232D; --inset:#232733;
+  --text:#F2F4F8; --muted:#B4BAC8; --faint:#6B7180;
+  --border:#2C313D; --border-strong:#6B7282; --scrim:rgba(0,0,0,.6);
+  --accent-ink:#8AB4FF; --accent-tint:#1B2A4A;
+  --done-ink:#5FD99A; --done-tint:#14301F;
+  --crit-ink:#FF8A80; --crit-tint:#3A1A1A;
+  --warn-ink:#FFCF5C; --warn-tint:#352A0A;
+  --streak-ink:#FFA45C; --streak-tint:#3A2412;
+  --stat-ink:#A894FF; --stat-tint:#261F45;
+  --shadow:none; --lift:none; --edge:var(--border);
+}
+:root{
+  --accent:#2563EB; --done:#1FA463; --over:#12804B; --crit:#D93A30; --warn:#F5B000; --streak:#D96400;
+  --r-sm:12px; --r-md:16px; --r-lg:22px;
+  --sans:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Noto Sans KR","Malgun Gothic",sans-serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg); color:var(--text); font-family:var(--sans); font-size:17px; line-height:1.5; -webkit-font-smoothing:antialiased}
+button{font:inherit; color:inherit; background:none; border:0; padding:0; cursor:pointer}
+.b{font-weight:600}
+.muted{color:var(--muted)}
+.row{display:flex; align-items:center; gap:10px}
+.grow{flex:1; min-width:0}
+.ic{width:24px; height:24px; fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; flex:none}
+.q{position:relative; width:32px; height:32px; display:inline-flex; align-items:center; justify-content:center; color:var(--muted); flex:none; vertical-align:middle}
+.q .ic{width:20px; height:20px}
+.q::after{content:""; position:absolute; inset:-8px}
+.btn{min-height:48px; padding:0 16px; border-radius:var(--r-md); font-size:17px; font-weight:800; display:inline-flex; align-items:center; justify-content:center; gap:6px}
+.btn.block{width:100%}
+.btn.pri{background:var(--accent); color:#fff; min-height:56px}
+.btn.line{background:var(--surface); border:2px solid var(--border-strong); color:var(--text)}
+.banner{background:var(--warn-tint); color:var(--warn-ink); border-radius:var(--r-lg); padding:14px 16px; display:flex; flex-direction:column; gap:10px}
+.banner .btn{background:var(--surface); color:var(--warn-ink); border:2px solid var(--warn)}
+.banner .q{color:var(--warn-ink)}
+.tip{max-width:280px; background:var(--text); color:var(--surface); border-radius:var(--r-sm); padding:10px 12px; font-size:14px; font-weight:600; line-height:1.5}
+
+/* Prototype page chrome (not from the design system) */
+.wrap{max-width:1180px; margin:0 auto; padding:20px 16px 48px}
+.proto-flag{background:var(--crit); color:#fff; font-weight:800; letter-spacing:.08em; padding:6px 12px; border-radius:8px; display:inline-block; font-size:14px}
+h1{font-size:24px; margin:10px 0 4px}
+h2{font-size:15px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin:0 0 10px}
+.lead{color:var(--muted); max-width:820px; margin:0 0 16px}
+.topbar{display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap}
+.grid{display:grid; grid-template-columns:400px 1fr; gap:20px; align-items:start}
+@media (max-width:900px){ .grid{grid-template-columns:1fr} }
+.panel{background:var(--surface); border:1px solid var(--border); border-radius:var(--r-md); padding:16px; min-width:0}
+.phone{background:var(--bg); border:2px solid var(--border); border-radius:28px; padding:20px 16px; display:flex; flex-direction:column; gap:12px; max-width:390px}
+.phone .date{font-size:14px; color:var(--muted); font-weight:700}
+.phone .ttl{font-size:24px; font-weight:800; margin:0}
+.nobanner{border:2px dashed var(--border-strong); color:var(--muted); border-radius:var(--r-lg); padding:14px 16px; font-size:14px; font-weight:700; text-align:center}
+.card{background:var(--surface); border:2px solid var(--edge); box-shadow:var(--shadow); border-radius:var(--r-lg); padding:14px 16px; display:flex; gap:12px; align-items:center}
+.hico{width:52px; height:52px; border-radius:var(--r-md); background:var(--accent-tint); display:flex; align-items:center; justify-content:center; font-size:28px; flex:none}
+.bar{height:8px; border-radius:9px; background:var(--inset); margin-top:6px; overflow:hidden}
+.bar i{display:block; height:100%; background:var(--accent)}
+.sheet{background:var(--surface); border:2px solid var(--accent); border-radius:var(--r-lg); padding:14px 16px; display:flex; flex-direction:column; gap:8px}
+.sheet .row .btn{flex:1}
+table.state{width:100%; border-collapse:collapse; font-size:15px}
+table.state th{text-align:left; font-weight:600; color:var(--muted); padding:6px 8px 6px 0; width:44%; vertical-align:top}
+table.state td{padding:6px 0; font-weight:700; vertical-align:top}
+table.state tr{border-bottom:1px solid var(--border)}
+tr.changed td{background:var(--accent-tint); color:var(--accent-ink)}
+tr.changed th::after{content:" ← 바뀜"; color:var(--accent-ink)}
+.yes{color:var(--done-ink)} .no{color:var(--muted)}
+.flag{background:var(--crit-tint); color:var(--crit-ink); border:2px solid var(--crit); border-radius:var(--r-sm); padding:10px 12px; font-size:14px; font-weight:700; margin-top:10px}
+.ok{background:var(--done-tint); color:var(--done-ink); border-radius:var(--r-sm); padding:10px 12px; font-size:14px; font-weight:700; margin-top:10px}
+.rows{font-family:ui-monospace,Menlo,monospace; font-size:12px; color:var(--muted); margin-top:8px; white-space:pre-wrap}
+.group{margin-bottom:12px}
+.group .lbl{font-size:14px; font-weight:700; color:var(--muted); margin-bottom:6px}
+.pbtn{min-height:40px; padding:0 12px; border-radius:10px; border:1px solid var(--border-strong); background:var(--surface); font-size:14px; font-weight:700; margin:0 6px 6px 0}
+.pbtn:hover{border-color:var(--accent)}
+.pbtn.on{background:var(--accent); color:#fff; border-color:var(--accent)}
+.tabs{display:flex; flex-wrap:wrap; gap:6px; margin-bottom:12px}
+.tab{min-height:36px; padding:0 12px; border-radius:999px; border:1px solid var(--border); background:var(--surface2); font-size:13px; font-weight:700; color:var(--muted)}
+.tab.on{background:var(--accent); color:#fff; border-color:var(--accent)}
+.steps{display:flex; flex-direction:column; gap:8px; margin-top:12px}
+.step{display:flex; gap:10px; align-items:center}
+.step .num{width:26px; height:26px; border-radius:50%; background:var(--inset); display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:800; flex:none}
+.step.done .num{background:var(--done); color:#fff}
+.step button{min-height:40px; padding:0 14px; border-radius:10px; background:var(--accent); color:#fff; font-size:14px; font-weight:700; text-align:left}
+.step button:disabled{background:var(--inset); color:var(--faint); cursor:default}
+.expect{font-size:14px; color:var(--muted); margin-top:4px}
+.cmp{display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:14px}
+.cmp .cap{font-size:13px; font-weight:800; color:var(--muted); margin-bottom:6px}
+input.name{min-height:40px; border-radius:10px; border:1px solid var(--border-strong); background:var(--surface); color:var(--text); padding:0 10px; font:inherit; font-size:14px; width:110px}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute"><symbol id="i-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></symbol></svg>
+
+<div class="wrap">
+  <div class="topbar">
+    <div>
+      <span class="proto-flag">PROTOTYPE · 버리는 코드</span>
+      <h1>오늘 화면 · 합친 어제 배너</h1>
+    </div>
+    <button class="pbtn" id="themeBtn">다크 모드</button>
+  </div>
+  <p class="lead">질문: 어제와 오늘의 기록 상태가 바뀔 때, 합친 배너가 맞는 버튼과 제목을 보여 주는가? 습관은 하루 최소량 10분인 "명상"이다. 오늘은 2026-10-11, 어제는 2026-10-10이다. 판정 로직은 <code>src/domain/streak.ts</code>의 <code>atRiskToday</code>와 <code>classify.ts</code>를 그대로 옮겼다. 기록은 실제 앱처럼 덧붙이기만 한다.</p>
+
+  <div class="grid">
+    <div>
+      <div class="phone" id="phone"></div>
+    </div>
+    <div class="panel">
+      <h2>지금 상태</h2>
+      <table class="state" id="state"></table>
+      <div id="flags"></div>
+      <div class="rows" id="rows"></div>
+    </div>
+  </div>
+
+  <div class="panel" style="margin-top:20px">
+    <h2>둘러보기 (탭을 누르면 처음 상태로 돌아가요)</h2>
+    <div class="tabs" id="tabs"></div>
+    <div id="scenario"></div>
+  </div>
+
+  <div class="panel" style="margin-top:20px">
+    <h2>자유롭게 눌러 보기</h2>
+    <div class="group"><div class="lbl">어제 (2026-10-10) 기록 덧붙이기</div><div id="fpY"></div></div>
+    <div class="group"><div class="lbl">오늘 (2026-10-11) 기록 덧붙이기</div><div id="fpT"></div></div>
+    <div class="group"><div class="lbl">그 밖</div><div id="fpX"></div></div>
+  </div>
+</div>
+
+<script id="logic">
+/* Portable logic. Mirrors src/domain/classify.ts + src/domain/streak.ts#atRiskToday. No DOM here. */
+const BannerLogic = (() => {
+  const cmp = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
+  const dateOf = (iso) => iso.slice(0, 10);
+  const addDays = (d, n) => { const t = new Date(d + 'T12:00:00Z'); t.setUTCDate(t.getUTCDate() + n); return t.toISOString().slice(0, 10); };
+  function dateRange(from, to) { const out = []; for (let d = from; cmp(d, to) <= 0; d = addDays(d, 1)) out.push(d); return out; }
+
+  const isActivityRow = (e) => e.actual > 0 && e.skipReason == null;
+  const isSkipRow = (e) => e.skipReason != null;
+  const sortDayRows = (rows) => [...rows].sort((a, b) => cmp(a.timestamp, b.timestamp) || cmp(a.id, b.id));
+
+  function isDateInScope(habit, date) {
+    if (cmp(date, dateOf(habit.createdAt)) < 0) return false;
+    for (const p of habit.pauses || []) {
+      if (cmp(date, p.from) < 0) continue;
+      if (p.to == null || cmp(date, p.to) < 0) return false;
+    }
+    return true;
+  }
+  function effectiveTarget(habit) {
+    if (habit.kind !== 'count') return Infinity;
+    if (habit.target == null || habit.target <= habit.floor) return Infinity;
+    return habit.target;
+  }
+  function classifyDay(rows, habit, date, today) {
+    const activity = rows.filter(isActivityRow);
+    if (activity.length === 0) {
+      if (rows.some(isSkipRow)) return 'skip';
+      return date === today ? 'pending' : 'missed';
+    }
+    const sum = activity.reduce((t, e) => t + e.actual, 0);
+    if (sum < habit.floor) return 'partial';
+    return sum >= effectiveTarget(habit) ? 'over' : 'done';
+  }
+  function effectiveSkipReason(rows) {
+    const skips = sortDayRows(rows.filter(isSkipRow));
+    return skips.length === 0 ? undefined : skips[skips.length - 1].skipReason;
+  }
+  function isMissDay(state, rows) {
+    if (state === 'missed') return true;
+    if (state === 'skip') return effectiveSkipReason(rows) !== 'exception';
+    return false;
+  }
+  const isFloorMet = (s) => s === 'done' || s === 'over';
+
+  function dayStates(habit, entries, from, to, today) {
+    const out = [];
+    for (const date of dateRange(from, to)) {
+      const rows = entries.filter((e) => e.date === date);
+      if (rows.length === 0 && !isDateInScope(habit, date)) continue;
+      const state = classifyDay(rows, habit, date, today);
+      out.push({
+        date, state,
+        sum: rows.filter(isActivityRow).reduce((t, e) => t + e.actual, 0),
+        isMiss: isMissDay(state, rows),
+        skipReason: state === 'skip' ? effectiveSkipReason(rows) : undefined,
+        entries: sortDayRows(rows),
+      });
+    }
+    return out;
+  }
+  function classifiedDays(habit, entries, from, to, today) {
+    const birth = dateOf(habit.createdAt);
+    return dayStates(habit, entries, cmp(from, birth) < 0 ? birth : from, to, today);
+  }
+
+  /* streak.ts atRiskToday, line for line */
+  function atRiskToday(entries, habit, today) {
+    if (!isDateInScope(habit, today)) return false;
+    const yesterday = addDays(today, -1);
+    const days = classifiedDays(habit, entries, yesterday, today, today);
+    const previous = days.find((d) => d.date === yesterday);
+    if (previous == null || !previous.isMiss) return false;
+    const current = days.find((d) => d.date === today);
+    return current != null && (current.state === 'pending' || current.state === 'partial');
+  }
+
+  /* SPEC §6.2 read literally: miss yesterday, today pending/partial, hide once floor met
+     "or today is skipped". Read as: the user recorded a skip today. Pauses are not mentioned in §6.2. */
+  function atRiskSpecText(entries, habit, today) {
+    const y = addDays(today, -1);
+    const yRows = entries.filter((e) => e.date === y);
+    const tRows = entries.filter((e) => e.date === today);
+    const yState = classifyDay(yRows, habit, y, today);
+    const tState = classifyDay(tRows, habit, today, today);
+    if (!isMissDay(yState, yRows)) return false;
+    if (isFloorMet(tState) || tRows.some(isSkipRow)) return false;
+    return tState === 'pending' || tState === 'partial';
+  }
+
+  /* Korean particles by final consonant */
+  function hasFinal(word) {
+    const c = word.charCodeAt(word.length - 1) - 0xac00;
+    return c >= 0 && c <= 11171 && c % 28 !== 0;
+  }
+  const eul = (w) => w + (hasFinal(w) ? '을' : '를');
+  const iga = (w) => w + (hasFinal(w) ? '이' : '가');
+  const titles = (name) => ({
+    missed: `🌙 어제 ${name} 기록을 놓쳤어요.`,
+    skipA: `🌙 어제 ${eul(name)} 쉬었어요.`,
+    skipB: `🌙 오늘 하면 ${iga(name)} 이어져요.`,
+  });
+  const TOOLTIP = '하루 놓치는 건 괜찮아요. 어제 했는데 기록만 못 했다면 지금 채워요.';
+
+  /* The combined banner, §6.2 */
+  function banner(entries, habit, today, titleOption) {
+    const y = addDays(today, -1);
+    const days = dayStates(habit, entries, y, today, today);
+    const yd = days.find((d) => d.date === y);
+    const td = days.find((d) => d.date === today);
+    const showFill = yd != null && yd.state === 'missed';
+    const showSave = atRiskToday(entries, habit, today);
+    const shown = showFill || showSave;
+    const t = titles(habit.name);
+    let title = null, titleKey = null;
+    if (shown) {
+      if (yd.state === 'missed') { title = t.missed; titleKey = 'missed'; }
+      else { titleKey = titleOption === 'B' ? 'skipB' : 'skipA'; title = t[titleKey]; }
+    }
+    return { yd, td, showFill, showSave, specSave: atRiskSpecText(entries, habit, today), shown, title, titleKey };
+  }
+
+  return { banner, titles, TOOLTIP, addDays, isFloorMet };
+})();
+</script>
+
+<script>
+/* Throwaway page wiring */
+const TODAY = '2026-10-11';
+const YDAY = BannerLogic.addDays(TODAY, -1);
+const REASON_KO = { forgot: '깜빡함', tooHard: '너무 힘듦', notFeeling: '안 내킴', exception: '예외' };
+const STATE_KO = { missed: '기록 없음 (missed)', pending: '아직 (pending)', partial: '조금 함 (partial)', done: '최소량 채움 (done)', over: '목표 넘김 (over)', skip: '쉼 (skip)' };
+
+let S;
+let seq = 0;
+let prevSnap = null;
+let activeTab = 0;
+let stepIdx = 0;
+
+function fresh() {
+  seq = 0;
+  S = {
+    habit: { name: '명상', kind: 'count', floor: 10, target: 20, createdAt: '2026-09-01T09:00:00', pauses: [] },
+    entries: [], titleOption: 'A', sheet: null, tip: false, last: '처음 상태',
+  };
+}
+function addRow(date, actual, skipReason) {
+  seq += 1;
+  const hh = date === TODAY ? '09' : '12';
+  S.entries.push({ id: 'e' + String(seq).padStart(3, '0'), date, actual, skipReason: skipReason || null, timestamp: `${date}T${hh}:00:${String(seq).padStart(2, '0')}` });
+}
+const A = {
+  yClear: () => { S.entries = S.entries.filter((e) => e.date !== YDAY); S.last = '어제 기록 비움 (프로토타입용)'; },
+  ySkip: (r) => { addRow(YDAY, 0, r); S.last = `어제 skip · ${REASON_KO[r]} 덧붙임`; },
+  yLog: (n) => { addRow(YDAY, n, null); S.last = `어제 ${n}분 덧붙임`; },
+  tClear: () => { S.entries = S.entries.filter((e) => e.date !== TODAY); S.last = '오늘 기록 비움 (프로토타입용)'; },
+  tSkip: (r) => { addRow(TODAY, 0, r); S.last = `오늘 skip · ${REASON_KO[r]} 덧붙임`; },
+  tLog: (n) => { addRow(TODAY, n, null); S.last = `오늘 ${n}분 덧붙임`; },
+  pause: () => { S.habit.pauses = S.habit.pauses.length ? [] : [{ from: TODAY }]; S.last = S.habit.pauses.length ? '오늘부터 정지 켬' : '정지 끔'; },
+  title: (o) => { S.titleOption = o; S.last = `제목 ${o}안 선택`; },
+  openFill: () => { S.sheet = 'fill'; S.last = '"어제 했어요 · 채우기" 누름 → 어제 기록 시트 열림'; },
+  openSave: () => { S.sheet = 'today'; S.last = '"오늘 하면 이어져요" 누름 → 오늘 기록 시트 열림'; },
+  close: () => { S.sheet = null; S.last = '시트 닫음'; },
+  noop: (msg) => { S.last = msg; },
+};
+function act(fn, ...args) { A[fn](...args); render(); }
+
+function yesterdayLabel(b) {
+  if (!b.yd) return '분류 안 함';
+  return STATE_KO[b.yd.state] + (b.yd.skipReason ? ` · ${REASON_KO[b.yd.skipReason]}` : '');
+}
+function todayLabel(b) {
+  if (!b.td) return '분류 안 함 (정지 중, 기록 없음)';
+  return STATE_KO[b.td.state] + (b.td.skipReason ? ` · ${REASON_KO[b.td.skipReason]}` : '') + ` · ${b.td.sum}/${S.habit.floor}분`;
+}
+const yn = (v) => `<span class="${v ? 'yes' : 'no'}">${v ? '예' : '아니오'}</span>`;
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+function bannerHTML(title, showFill, showSave, live) {
+  const tip = live && S.tip ? `<div class="tip">${BannerLogic.TOOLTIP}</div>` : '';
+  return `<div class="banner">
+    <div class="row"><span class="grow b">${esc(title)}</span><button class="q" aria-label="설명 보기" ${live ? 'onclick="S.tip=!S.tip;render()"' : ''}><svg class="ic"><use href="#i-help"/></svg></button></div>
+    ${tip}
+    ${showFill ? `<button class="btn block" ${live ? 'onclick="act(\'openFill\')"' : ''}>어제 했어요 · 채우기</button>` : ''}
+    ${showSave ? `<button class="btn block" ${live ? 'onclick="act(\'openSave\')"' : ''}>오늘 하면 이어져요</button>` : ''}
+  </div>`;
+}
+
+function render() {
+  const b = BannerLogic.banner(S.entries, S.habit, TODAY, S.titleOption);
+  const sum = b.td ? b.td.sum : 0;
+  const pct = Math.min(100, Math.round((sum / S.habit.floor) * 100));
+  const met = b.td && BannerLogic.isFloorMet(b.td.state);
+
+  let sheet = '';
+  if (S.sheet === 'fill') sheet = `<div class="sheet"><div class="b">어제 ${esc(S.habit.name)} 기록 채우기 (10/10)</div>
+    <div class="row"><button class="btn line" onclick="A.yLog(10);S.sheet=null;S.last='채우기: 어제 10분(최소량) 기록';render()">10분 (최소량)</button>
+    <button class="btn line" onclick="A.yLog(5);S.sheet=null;S.last='채우기: 어제 5분(조금) 기록';render()">5분 (조금)</button></div>
+    <button class="btn" onclick="act('close')">닫기</button></div>`;
+  if (S.sheet === 'today') sheet = `<div class="sheet"><div class="b">오늘 ${esc(S.habit.name)} 기록</div>
+    <div class="row"><button class="btn line" onclick="act('tLog',5)">+5분</button><button class="btn line" onclick="act('tLog',10)">+10분</button></div>
+    <button class="btn" onclick="act('close')">닫기</button></div>`;
+
+  document.getElementById('phone').innerHTML = `
+    <div class="date">10월 11일 일요일</div>
+    <p class="ttl">오늘 할 일</p>
+    ${b.shown ? bannerHTML(b.title, b.showFill, b.showSave, true) : '<div class="nobanner">배너 없음</div>'}
+    ${sheet}
+    <div class="card"><div class="hico">🧘</div><div class="grow">
+      <div style="font-size:20px;font-weight:800">${esc(S.habit.name)}</div>
+      <div class="b">${met ? '✓ 했어요 · ' : ''}${sum} / ${S.habit.floor}분${b.td && b.td.state === 'skip' ? ' · 오늘 쉼' : ''}${!b.td ? ' · 정지 중' : ''}</div>
+      <div class="bar"><i style="width:${pct}%"></i></div></div></div>`;
+
+  const snap = [
+    ['방금 한 일', S.last],
+    ['어제 상태', yesterdayLabel(b)],
+    ['오늘 상태', todayLabel(b)],
+    ['isMiss(어제)', yn(b.yd ? b.yd.isMiss : false)],
+    ['atRiskToday (코드)', yn(b.showSave)],
+    ['atRiskToday (SPEC §6.2 문장)', yn(b.specSave)],
+    ['"어제 했어요 · 채우기" 보임', yn(b.showFill)],
+    ['"오늘 하면 이어져요" 보임', yn(b.showSave)],
+    ['배너', b.shown ? '<span class="yes">보임</span>' : '<span class="no">숨김</span>'],
+    ['제목', b.title ? esc(b.title) + (b.titleKey !== 'missed' ? ` (${S.titleOption}안)` : '') : '—'],
+    ['정지', S.habit.pauses.length ? '오늘부터 정지 중' : '없음'],
+  ];
+  document.getElementById('state').innerHTML = snap.map(([k, v], i) => {
+    const changed = prevSnap && i > 0 && prevSnap[i][1] !== v;
+    return `<tr class="${changed ? 'changed' : ''}"><th>${k}</th><td>${v}</td></tr>`;
+  }).join('');
+  prevSnap = snap;
+
+  let flags = '';
+  if (b.showSave !== b.specSave) {
+    flags += `<div class="flag">⚠ 코드와 SPEC 문장이 다르게 판정해요. 코드 atRiskToday = ${b.showSave ? '참' : '거짓'}, SPEC §6.2 문장 = ${b.specSave ? '참' : '거짓'}.
+      ${S.habit.pauses.length ? '원인: 코드는 정지 중인 날에 atRiskToday를 끈다 (ADR-0003). SPEC §6.2는 정지를 말하지 않는다.' : '원인: 오늘 기록이 있으면 skip을 덧붙여도 그날은 partial로 분류된다 (classify.ts: 활동 기록이 skip보다 앞섬). SPEC은 "today is skipped"면 숨긴다고 쓴다.'}</div>`;
+  } else {
+    flags += `<div class="ok">이 상태에서는 코드와 SPEC §6.2 문장이 같게 판정해요.</div>`;
+  }
+  flags += `<div class="flag">⚠ 문구 차이 (항상): SPEC §4.3은 atRiskToday 조건에 "or a streak just broke"를 더 적는다. streak.ts에는 이 조건이 없다. 연속은 미스로만 끊기므로 동작 차이는 찾지 못했다.</div>`;
+  document.getElementById('flags').innerHTML = flags;
+  document.getElementById('rows').textContent = '기록 (덧붙인 순서)\n' + (S.entries.length ? S.entries.map((e) => `${e.date} ${e.timestamp.slice(11)} ${e.skipReason ? 'skip · ' + REASON_KO[e.skipReason] : e.actual + '분'}`).join('\n') : '(없음)');
+
+  renderScenario();
+}
+
+/* Free play */
+function fpButtons(id, list) {
+  document.getElementById(id).innerHTML = list.map(([label, call]) => `<button class="pbtn" onclick="${call}">${label}</button>`).join('');
+}
+fpButtons('fpY', [
+  ['비우기 (기록 없음)', "act('yClear')"], ['skip · 깜빡함', "act('ySkip','forgot')"], ['skip · 너무 힘듦', "act('ySkip','tooHard')"],
+  ['skip · 안 내킴', "act('ySkip','notFeeling')"], ['skip · 예외', "act('ySkip','exception')"], ['+5분', "act('yLog',5)"], ['+10분', "act('yLog',10)"],
+]);
+fpButtons('fpT', [
+  ['비우기 (아직)', "act('tClear')"], ['+5분', "act('tLog',5)"], ['+10분', "act('tLog',10)"],
+  ['skip · 깜빡함', "act('tSkip','forgot')"], ['skip · 예외', "act('tSkip','exception')"],
+]);
+document.getElementById('fpX').innerHTML = `
+  <button class="pbtn" onclick="act('title','A')">제목 A안</button><button class="pbtn" onclick="act('title','B')">제목 B안</button>
+  <button class="pbtn" onclick="act('pause')">오늘부터 정지 켜기/끄기</button>
+  <button class="pbtn" onclick="fresh();render()">전체 처음으로</button>
+  <label style="font-size:14px;font-weight:700;color:var(--muted)">습관 이름 <input class="name" value="명상" oninput="S.habit.name=this.value||'명상';S.last='습관 이름 바꿈';render()"></label>`;
+
+/* Guided walkthroughs */
+const openApp = ['앱을 연다', () => A.noop('앱을 연다 (기록 변화 없음)')];
+const SCENARIOS = [
+  { name: '1. 놓침 · 오늘 아직', desc: '어제 아무 기록도 없었고 오늘은 아직 안 했다.', expect: '버튼 둘 다 보인다. 제목은 "기록을 놓쳤어요".', steps: [openApp] },
+  { name: '2. 놓침 · 오늘 조금', desc: '어제 기록 없음. 오늘 5분만 했다 (최소량 10분 미만).', expect: 'partial도 아직 이길 수 있는 날이라 버튼 둘 다 보인다.', steps: [openApp, ['오늘 5분 기록', () => A.tLog(5)]] },
+  { name: '3. 놓침 · 오늘 다 함', desc: '어제 기록 없음. 오늘 최소량을 채웠다.', expect: '"오늘 하면 이어져요"는 숨고 "채우기"만 남는다.', steps: [openApp, ['오늘 10분 기록', () => A.tLog(10)]] },
+  { name: '4. 쉼(예외 아님) · 오늘 아직', desc: '어제 "깜빡함"으로 skip했다. 오늘은 아직.', expect: '"오늘 하면 이어져요"만 보인다. 어제가 missed가 아니라 채우기는 없다. 제목 A·B를 비교해 보자.', steps: [['어제 skip · 깜빡함', () => A.ySkip('forgot')], openApp, ['제목 B안으로 바꾸기', () => A.title('B')], ['제목 A안으로 되돌리기', () => A.title('A')]], cmp: true },
+  { name: '5. 예외로 쉼', desc: '어제 "예외" 사유로 skip했다.', expect: '예외는 미스가 아니다. 배너가 뜨지 않는다.', steps: [['어제 skip · 예외', () => A.ySkip('exception')], openApp] },
+  { name: '6. 어제 다 함', desc: '어제 최소량을 채웠다.', expect: '배너가 뜨지 않는다.', steps: [['어제 10분 기록', () => A.yLog(10)], openApp] },
+  { name: '7a. 채우기 → 최소량', desc: '어제 기록 없음. 오늘 아직. 배너의 "채우기"로 어제를 최소량으로 채운다.', expect: '어제가 done이 되면 미스가 아니다. 배너 전체가 사라진다.', steps: [openApp, ['"어제 했어요 · 채우기" 누르기', () => A.openFill()], ['10분(최소량)으로 채우기', () => { A.yLog(10); S.sheet = null; S.last = '채우기: 어제 10분 기록'; }]] },
+  { name: '7b. 채우기 → 조금', desc: '같은 상황에서 어제를 5분만 채운다.', expect: '어제가 partial이 되어도 미스가 아니다. 배너 전체가 사라진다. 오늘 하면 이어져요도 함께 사라지는 점을 확인하자.', steps: [openApp, ['"어제 했어요 · 채우기" 누르기', () => A.openFill()], ['5분(조금)으로 채우기', () => { A.yLog(5); S.sheet = null; S.last = '채우기: 어제 5분 기록'; }]] },
+  { name: '8. 이어져요 → 오늘 채움', desc: '어제 "너무 힘듦"으로 skip. 배너의 "오늘 하면 이어져요"로 오늘 기록 시트를 열고 최소량까지 기록한다.', expect: '5분 뒤에는 아직 보인다. 10분이 되면 배너가 사라진다.', steps: [['어제 skip · 너무 힘듦', () => A.ySkip('tooHard')], ['"오늘 하면 이어져요" 누르기', () => A.openSave()], ['시트에서 +5분', () => A.tLog(5)], ['시트에서 +5분 더', () => A.tLog(5)]] },
+  { name: '9. 조금 한 뒤 skip ⚠', desc: '어제 "안 내킴"으로 skip. 오늘 5분 한 뒤, skip을 눌렀다.', expect: '코드는 오늘을 partial로 본다 (활동이 skip보다 앞섬). 버튼이 남는다. SPEC 문장대로면 숨어야 한다. 빨간 경고를 보자.', steps: [['어제 skip · 안 내킴', () => A.ySkip('notFeeling')], ['오늘 5분 기록', () => A.tLog(5)], ['오늘 skip · 깜빡함', () => A.tSkip('forgot')]] },
+  { name: '10. 오늘 정지 ⚠', desc: '어제 기록 없음. 오늘부터 습관을 정지했다.', expect: '코드는 정지 중이면 atRiskToday를 끈다 (ADR-0003). "채우기"만 남는다. SPEC §6.2는 정지를 말하지 않는다.', steps: [openApp, ['오늘부터 정지', () => A.pause()]] },
+  { name: '제목 비교', desc: '어제 상태별 제목과 `?` 설명 문구를 나란히 본다. 이름 칸을 바꾸면 조사(을/를, 이/가)도 바뀐다.', titles: true, steps: [] },
+];
+
+function startTab(i) { activeTab = i; stepIdx = 0; fresh(); prevSnap = null; S.last = `"${SCENARIOS[i].name}" 시작 (처음 상태)`; render(); }
+function runStep(i) { SCENARIOS[activeTab].steps[i][1](); stepIdx = i + 1; render(); }
+
+function renderScenario() {
+  document.getElementById('tabs').innerHTML = SCENARIOS.map((s, i) => `<button class="tab ${i === activeTab ? 'on' : ''}" onclick="startTab(${i})">${s.name}</button>`).join('');
+  const sc = SCENARIOS[activeTab];
+  let html = `<div>${esc(sc.desc)}</div>`;
+  if (sc.expect) html += `<div class="expect">볼 것: ${esc(sc.expect)}</div>`;
+  if (sc.steps.length) html += '<div class="steps">' + sc.steps.map(([label], i) =>
+    `<div class="step ${i < stepIdx ? 'done' : ''}"><span class="num">${i < stepIdx ? '✓' : i + 1}</span><button ${i === stepIdx ? '' : 'disabled'} onclick="runStep(${i})">${esc(label)}</button></div>`).join('') + '</div>';
+  if (sc.cmp || sc.titles) {
+    const t = BannerLogic.titles(S.habit.name);
+    html += '<div class="cmp" style="margin-top:16px">';
+    if (sc.titles) html += `<div><div class="cap">어제 기록 없음 (기존 제목)</div>${bannerHTML(t.missed, true, true, false)}</div>`;
+    html += `<div><div class="cap">어제 쉼 · A안 (사용자 선택)</div>${bannerHTML(t.skipA, false, true, false)}</div>`;
+    html += `<div><div class="cap">어제 쉼 · B안 (대안)</div>${bannerHTML(t.skipB, false, true, false)}</div>`;
+    if (sc.titles) html += `<div><div class="cap">\`?\` 설명 문구</div><div class="tip">${BannerLogic.TOOLTIP}</div></div>`;
+    html += '</div>';
+  }
+  document.getElementById('scenario').innerHTML = html;
+}
+
+/* Theme */
+function setTheme(t) { document.documentElement.setAttribute('data-theme', t); document.getElementById('themeBtn').textContent = t === 'dark' ? '라이트 모드' : '다크 모드'; }
+document.getElementById('themeBtn').onclick = () => setTheme(document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
+const qs = new URLSearchParams(location.search);
+setTheme(qs.get('theme') || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
+
+fresh();
+startTab(Math.max(0, Math.min(SCENARIOS.length - 1, Number(qs.get('tab') || 0))));
+/* ?play=N runs the first N steps of the tab, for screenshots */
+for (let i = 0; i < Number(qs.get('play') || 0) && i < SCENARIOS[activeTab].steps.length; i += 1) runStep(i);
+</script>
+</body>
+</html>
