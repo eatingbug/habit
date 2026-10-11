@@ -7,6 +7,8 @@ import type {
   SkipReason,
 } from '@/models';
 
+import { TUNING } from './tuning';
+
 /**
  * User-facing strings that no single layer can own.
  *
@@ -180,109 +182,172 @@ export function deleteConfirmLines(facts: DeleteConfirmFacts): string[] {
 }
 
 /**
- * The toast's amount half (§6.2 B6 copy). It cannot be built from `floorUnit` alone:
- * a binary habit carries `floorUnit: 'time'`, so `+1${floorUnit}` would render
- * `+1time`. Its detail is the fixed `✓ 완료` instead.
- *
- * It sits here with the rest of the toast's copy rather than in the hook, so the
- * `+1time` guard has exactly one home.
+ * The toast's amount half. It cannot be built from `floorUnit` alone: a binary habit
+ * carries `floorUnit: 'time'`, so `+1${floorUnit}` would render `+1time`. Its amount is
+ * the day-state word `✓ 했어요` instead.
  */
-function detailOf(habit: Habit, actual: number): string {
-  return habit.kind === 'binary' ? '✓ 완료' : `+${actual}${habit.floorUnit}`;
+function amountOf(habit: Habit, actual: number): string {
+  return habit.kind === 'binary' ? `✓ ${DAY_STATE_WORDS.done}` : `+${actual}${habit.floorUnit}`;
 }
 
-/** What the log-time toast needs to know about the log that just landed. */
-export interface RewardToastFacts {
-  /** The habit logged — `kind` and `floorUnit` shape the amount half of `detail`. */
+/** What the undo toast needs to know about the activity log that just landed. */
+export interface UndoToastFacts {
+  /** The habit logged — `kind` and `floorUnit` shape the amount. */
   habit: Habit;
   /** The amount the row records. */
   actual: number;
-  /**
-   * The log's delta, as the primitives the cascade below reads — the caller takes them
-   * off `describeLogEffect`'s `LogEffect` (§4.2 C1) and passes them one by one. The
-   * type itself is not imported: see `rewardToastLines`. `savedAtRiskDay` is on
-   * `LogEffect` and deliberately absent here — no line of this copy reads it.
-   */
+  /** 별 this log earned (`describeLogEffect`'s `xpGained`). */
   xpGained: number;
+  /** How much the day still lacks to its floor after this log. Above 0 only on `partial`. */
+  remainingToFloor: number;
   statLevelUp: boolean;
-  streakMilestoneHit?: number;
-  pushedToOver: boolean;
-  floorCrossedToday: boolean;
-  showedUp: boolean;
-  /** Is the row on a date other than today? Only the "showed up" line reads this. */
-  isBackfill: boolean;
   /**
-   * The habit's stat's display name, or absent when `statId` names no configured stat
-   * — the same data defect `useDashboard`'s optional `stat` describes. The level-up
-   * line is then skipped rather than rendered with a hole in it, and the next branch
-   * speaks instead.
+   * The stat's display name, or absent when `statId` names no configured stat. The
+   * level-up line is then skipped rather than rendered with a hole in it.
    */
   statName?: string;
   /** The stat's level **after** this log — `computeStatLevel`, never recomputed here. */
   statLevel: number;
+  pushedToOver: boolean;
+  /** The log's day went from not floor-met to floor-met. */
+  floorCrossed: boolean;
+  /** A streak banner or milestone popup shows for this log. */
+  celebrated: boolean;
+  /** This habit and date were celebrated before this log (one date celebrates once). */
+  alreadyCelebrated: boolean;
+  /** Is the row on a date other than today? */
+  isBackfill: boolean;
 }
 
 /**
- * The log-time toast's two derived slots — SPEC §4.2 C1 / §6.2, issue #17.
+ * The undo toast's second and third lines for an activity log — SPEC §6.2 Undo toast
+ * copy and C1. The first line is always `기록됨` (B6).
  *
- * Copy, not judgment about scoring: every fact arrives already decided by the domain. It sits
- * in `src/config` for the reason `deleteConfirmLines` does — `jest.config.js` matches
- * `src/**` only, so the same cascade written inside `app/` would be copy no test can
- * reach. And it takes **primitives** for that function's reason too: SPEC §2.2's
- * dependency rule puts `src/config` *below* `src/domain` ("Domain imports only models
- * and config"), so importing `LogEffect` here would invert that direction. The caller
- * is UI, may import both, and passes the fields this cascade reads.
+ * `detail` is the amount, plus ` · 별 +N` only when the log earned 별 ("A log that earns
+ * no 별 drops the 별 part of the second line").
  *
- * `detail` is the mono slot (`Toast`'s `.rx`): the amount, plus ` · +N XP` only when
- * the log actually earned some. A trailing `+0 XP` would be noise on a day whose XP
- * was already banked, and the honest word for that day is the `sub` line instead —
- * nothing goes unacknowledged.
- *
- * `sub` is one plain sentence, so the branches are a priority cascade, rarest first: a
- * level-up outranks a milestone, which outranks the day's own crossings. Copy is the
- * canvas's, from Today's four-way version (`design/parts/Today.logic.js:59`/`:63`) —
- * the one that has the sub-floor branch — plus the Dashboard's already-banked line
- * (`design/parts/Dashboard.logic.js:35`). One wording serves both screens, exactly as
- * the skip toast's does (see `logSkip` in `src/hooks/useQuickLog.ts`).
- *
- * Two lines are **캔버스 출처 없음 — 신규 문구**: the level-up and the milestone. The
- * canvas has no toast for either. `이어 간 날 {N}일 보너스` borrows its vocabulary from
- * `design/parts/YesNo.body.html:18` (`이어 간 날 보너스`), and the level-up line uses
- * the stat name and level the Dashboard's own stat card shows.
- *
- * **The one declared deviation:** the toast's main verb stays `기록됨` even on a log
- * that earned no XP, where both canvases swap their main line
- * (`design/parts/Dashboard.logic.js:35` → `이미 오늘 몫은 끝났어요`;
- * `design/parts/Today.logic.js:58` → `기록했어요 · XP 없음`). SPEC §6.2 B6 specifies that
- * literal string for the undo toast (`기록됨 +N {unit} · 실행취소`), the two canvases do
- * not agree with each other on what replaces it, and one wording serves both screens
- * here as the skip toast's already does. That day is acknowledged on `sub` instead.
- *
- * On a backfill the "showed up" line says `그 날` rather than the canvas's `오늘`
- * (`design/parts/Today.logic.js:59`), a mechanical substitution: it is the only
- * sentence here that names a day, and it would be plainly false beside a row filled
- * onto yesterday. The XP itself is not softened — a backfill earns for real (ADR-0001).
+ * `sub` is one line, so the branches are a priority order:
+ * - a level-up first (C1's "level-up moment"). It is not a streak, so it stays even
+ *   when a banner shows;
+ * - nothing else when a banner or popup celebrates the log: "the toast has no streak.
+ *   It holds the amount, 별 and 실행취소";
+ * - the `partial` row of the table;
+ * - passing the target (C1's "목표까지 넘겼어요"; its 별 is already on the second line);
+ * - the "another log on a day already celebrated" row of the table;
+ * - a floor crossed with no streak rise, e.g. a backfill onto an isolated past day.
+ *   **신규 문구**: the table has no row for it, and "never silence" (C1) needs one.
  */
-export function rewardToastLines(facts: RewardToastFacts): { detail: string; sub?: string } {
+export function undoToastLines(facts: UndoToastFacts): { detail: string; sub?: string } {
+  const detail =
+    amountOf(facts.habit, facts.actual) + (facts.xpGained > 0 ? ` · 별 +${facts.xpGained}` : '');
+
+  let sub: string | undefined;
+  if (facts.statLevelUp && facts.statName != null) {
+    sub = `${facts.statName} 레벨 ${facts.statLevel}`;
+  } else if (facts.celebrated) {
+    sub = undefined;
+  } else if (facts.remainingToFloor > 0) {
+    sub = `조금이라도 했어요 · 최소량까지 ${facts.remainingToFloor}${facts.habit.floorUnit} 남았어요`;
+  } else if (facts.pushedToOver) {
+    sub = '목표까지 넘겼어요';
+  } else if (facts.alreadyCelebrated || !facts.floorCrossed) {
+    sub = '더 했어요';
+  } else {
+    sub = `${facts.isBackfill ? '그날' : '오늘'} 몫을 채웠어요`;
+  }
+  return { detail, sub };
+}
+
+/**
+ * The undo toast's lines for a skip (SPEC §6.2 Undo toast copy): the reason second,
+ * then 예외라서 연속은 그대로예요 for an exception, or 쉬었어요 for any other reason.
+ *
+ * The table's example `쉬었어요 · 이유: 피곤해요` is read as the row's note after 이유:,
+ * since the reason itself is already the second line. With no note it is 쉬었어요 alone.
+ * It never says the streak broke; the streak pill shows that.
+ */
+export function skipToastLines({ reason, note }: { reason: SkipReason; note?: string }): {
+  detail: string;
+  sub: string;
+} {
   return {
-    detail:
-      detailOf(facts.habit, facts.actual) +
-      (facts.xpGained > 0 ? ` · +${facts.xpGained} XP` : ''),
+    detail: SKIP_REASON_LABELS[reason],
     sub:
-      facts.statLevelUp && facts.statName != null
-        ? `${facts.statName} 레벨 ${facts.statLevel}`
-        : facts.streakMilestoneHit != null
-          ? `이어 간 날 ${facts.streakMilestoneHit}일 보너스`
-          : facts.pushedToOver
-            ? '목표까지 넘었어요 🎯'
-            : facts.floorCrossedToday
-              ? '최소만큼 했어요 💪'
-              : facts.showedUp
-                ? `${facts.isBackfill ? '그 날' : '오늘'} 나타났어요`
-                : facts.habit.kind === 'binary' && facts.xpGained === 0
-                  ? 'XP는 하루 한 번만'
-                  : '최소보다 더 했어요',
+      reason === 'exception'
+        ? '예외라서 연속은 그대로예요'
+        : note != null && note.length > 0
+          ? `쉬었어요 · 이유: ${note}`
+          : '쉬었어요',
   };
+}
+
+/** The undo toast's first line (§6.2 B6) and its action. */
+export const UNDO_TOAST_COPY = {
+  title: '기록됨',
+  undo: '실행취소',
+} as const;
+
+/** The streak banner's and the milestone popup's fixed words (§6.2 Streak celebration). */
+export const CELEBRATION_COPY = {
+  /** After the streak number, which is drawn in `streak` ink: "3" + "일 연속!". */
+  streakSuffix: '일 연속!',
+} as const;
+
+/** Weekday labels from Sunday, for the celebration's week and the date headers. */
+export const WEEKDAY_LABELS = ['일', '월', '화', '수', '목', '금', '토'] as const;
+
+/**
+ * The celebration's line under the streak. On today: "📖 독서 오늘 몫을 채웠어요"
+ * (`ReTodayStreak`). On a backfill: the SPEC's "어제를 채워서 13일 연속이 됐어요", after
+ * the habit. `filledDay` is 어제 or "M월 D일"; the object particle follows it (어제를,
+ * 27일을), and every "M월 D일" ends in 일, so the two cases are all there is.
+ */
+export function celebrationLine({
+  icon,
+  name,
+  streak,
+  filledDay,
+}: {
+  icon: string;
+  name: string;
+  streak: number;
+  filledDay?: string;
+}): string {
+  if (filledDay == null) return `${icon} ${name} 오늘 몫을 채웠어요`;
+  const particle = filledDay === '어제' ? '를' : '을';
+  return `${icon} ${name} ${filledDay}${particle} 채워서 ${streak}일 연속이 됐어요`;
+}
+
+/** The ★ line a target crossing adds to the banner or popup (§6.2). */
+export function starLine(stars: number): string {
+  return `★ 목표까지 넘겼어요 · 별 +${stars}`;
+}
+
+/**
+ * The milestone popup's bonus line, shown only when the day earns the bonus (§6.2).
+ * **신규 문구**: the SPEC names the line but not its words.
+ */
+export function milestoneBonusLine(stars: number): string {
+  return `기념일 보너스 · 별 +${stars}`;
+}
+
+/**
+ * The habit's icon: its stat's icon (`TUNING.stats`), since a habit has no icon field
+ * yet (#127; the New habit ticket adds one). `🌱` when `statId` names no configured stat.
+ */
+export function habitIcon(habit: Pick<Habit, 'statId'>): string {
+  return TUNING.stats.find((stat) => stat.id === habit.statId)?.icon ?? '🌱';
+}
+
+/** "10월 9일" — a date by month and day, for copy that names a past day. */
+export function monthDayLabel(date: string): string {
+  const [, month, day] = date.split('-').map(Number);
+  return `${month}월 ${day}일`;
+}
+
+/** "10월 10일 토요일" — the Today header and the yesterday sheet's eyebrow. */
+export function longDateLabel(date: string, weekday: number): string {
+  return `${monthDayLabel(date)} ${WEEKDAY_LABELS[weekday]}요일`;
 }
 
 /** What the feed row's reward line needs to know — see `rowRewardLine`. */
@@ -313,7 +378,7 @@ export interface RowRewardFacts {
  * canvas is authority for the sentence and for nothing inside it. `sum` is the day's
  * running total through the row — the canvas's `after` — not the row's own amount.
  *
- * `+0 XP` **is** printed, unlike `rewardToastLines`, which drops it as noise. This line
+ * `+0 XP` **is** printed, unlike `undoToastLines`, which drops it as noise. This line
  * persists next to the other rows of the same day, where the whole question it has to
  * answer is why one of them earned and the next did not: the floor XP goes to the row
  * that crossed the floor (`attributeDayXP`). A row that stayed silent about its zero
