@@ -61,6 +61,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     try {
       client = createSupabaseClient();
     } catch (cause) {
+      // 클라이언트 생성은 렌더 밖에 둬야 하므로 한 번뿐인 실패를 여기서 알린다.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setSession({
         status: 'misconfigured',
         message: cause instanceof Error ? cause.message : CONFIG_MISSING_NOTE,
