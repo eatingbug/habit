@@ -76,7 +76,7 @@ export default function NewHabit() {
 
         {form.showAmounts && (
           <>
-            <FormField label={copy.labels.floor} help={tooltips.floor} error={errors.floor ?? errors.floorUnit}>
+            <FormField label={copy.labels.floor} help={tooltips.floor} error={[errors.floor, errors.floorUnit]}>
               <View style={styles.row}>
                 <InputField
                   value={form.floor}
