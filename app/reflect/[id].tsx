@@ -4,8 +4,17 @@ import { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Banner, Button, ChoiceChip, DayMark, HelpTip, IconButton, SkipSheet, Toast } from '@/components/re';
-import { ActionField } from '@/components/reflection/ActionField';
+import {
+  Banner,
+  Button,
+  ChoiceChip,
+  DayMark,
+  HelpTip,
+  IconButton,
+  InputField,
+  SkipSheet,
+  Toast,
+} from '@/components/re';
 import { DiagnosisCardView } from '@/components/reflection/DiagnosisCardView';
 import { useReflection, type ReflectionView } from '@/hooks/useReflection';
 import type { ReflectionAction } from '@/models';
@@ -194,14 +203,16 @@ export default function Reflect() {
                 <Text style={[TYPE.body, { color: redesign.muted }]}>{chosen.reason}</Text>
                 {chosen.input != null && (
                   <View style={styles.row}>
-                    <ActionField
-                      value={value}
-                      onChangeText={setValue}
-                      accessibilityLabel={chosen.label}
-                      placeholder={chosen.input.placeholder}
-                      numeric={chosen.input.numeric}
-                      invalid={error != null}
-                    />
+                    <View style={styles.grow}>
+                      <InputField
+                        value={value}
+                        onChangeText={setValue}
+                        accessibilityLabel={chosen.label}
+                        placeholder={chosen.input.placeholder}
+                        keyboardType={chosen.input.numeric ? 'number-pad' : 'default'}
+                        invalid={error != null}
+                      />
+                    </View>
                     {chosen.input.unit != null && (
                       <Text style={[TYPE.body, { color: redesign.muted }]}>{chosen.input.unit}</Text>
                     )}
