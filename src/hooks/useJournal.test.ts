@@ -124,9 +124,29 @@ describe('useJournal — a note and its day', () => {
   /** Each note row as its head, the day's mark and its text. */
   function notes(view: JournalView) {
     return view.groups.flatMap((group) =>
-      group.items.flatMap((item) => (item.kind === 'note' ? [[item.label, item.stateLabel, item.text]] : [])),
+      group.items.flatMap((item) =>
+        item.kind === 'note' ? [[item.label, item.stateChip?.label, item.text]] : [],
+      ),
     );
   }
+
+  it('gives the state chip its tone and each row one accessible name', async () => {
+    const repository = await seed({
+      entries: [
+        activity(READ, YESTERDAY, 4, '22:40', '졸려서 조금만'),
+        skip(MEDITATE, TWO_AGO, 'exception', '21:00', '회식이라 못 했다.'),
+      ],
+      logs: [freeLog(TODAY, 'idea', '점심 먹고 걸었다.', '14:05')],
+    });
+
+    const result = await journal(repository);
+    const [free, partial, skipped] = result.current.groups.flatMap((group) => group.items);
+
+    expect(partial.kind === 'note' && partial.stateChip?.tone).toBe('done');
+    expect(skipped.kind === 'note' && skipped.stateChip?.tone).toBe('neutral');
+    expect(free.accessibilityLabel).toBe(`✏️ 끄적이기 · 떠오른 생각 ${free.time} 점심 먹고 걸었다.`);
+    expect(skipped.accessibilityLabel).toBe(`🧘 명상 − 못 했어요 ${skipped.time} 회식이라 못 했다.`);
+  });
 
   it('shows the habit and that whole day’s state, not the noted row’s alone', async () => {
     const repository = await seed({
