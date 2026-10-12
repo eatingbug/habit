@@ -917,3 +917,51 @@ export function streakCountLabel(streak: number): string {
 export function dayCellLabel(dateLabel: string, state: DayState): string {
   return `${dateLabel} ${DAY_STATE_WORDS[state]}`;
 }
+
+// --- 새 습관 (#130, SPEC §6.6) ----------------------------------------------
+
+/** 새 습관 화면의 문구 (`ReNewHabit`, `ReNewHabitYesNo`). `labels`의 키 순서가 화면의 칸 순서다. */
+export const NEW_HABIT_COPY = {
+  title: '습관 만들기',
+  subtitle: '나중에 언제든 고칠 수 있어요',
+  labels: {
+    name: '이름',
+    kind: '측정 방식',
+    floor: '최소량',
+    target: '목표',
+    cue: SCREEN_WORDS.cue,
+    stat: SCREEN_WORDS.stat,
+    identity: SCREEN_WORDS.identity,
+  },
+  /** 목표, 언제·어디서, 이유 뒤에 붙는다. */
+  optional: '· 선택',
+  placeholders: {
+    name: '예: 턱걸이',
+    floor: '5',
+    floorUnit: '회',
+    target: '10',
+    cue: '예: 아침 커피 마신 뒤, 문틀 바에서',
+    identity: '예: 나는 매일 몸을 쓰는 사람이니까',
+  },
+  kinds: { count: '횟수 · 양', binary: '예 · 아니오' },
+  /** 단위 칸의 접근성 이름. */
+  floorUnitLabel: '단위',
+  submit: '습관 만들기',
+  /** 이름 왼쪽 아이콘 버튼의 접근성 이름이자 아이콘 시트의 제목. */
+  pickIcon: '아이콘 고르기',
+  /** 아이콘 시트에서 고른 아이콘을 지우는 버튼. */
+  useStatIcon: '능력치 아이콘 쓰기',
+  errors: {
+    name: '이름을 적어 주세요.',
+    floor: '최소량은 1 이상의 숫자로 적어 주세요.',
+    floorUnit: '단위를 적어 주세요 (예: 회, 쪽, 분).',
+    target: '목표는 숫자로 적어 주세요.',
+    targetNotAboveFloor: '목표는 최소량보다 커야 해요.',
+  },
+} as const;
+
+/** 아이콘 시트가 늘어놓는 습관 아이콘. 능력치 아이콘 셋을 포함한다. */
+export const NEW_HABIT_ICONS = [
+  '💪', '🏃', '🚶', '🧘', '📖', '✍️', '🧠', '💻',
+  '🎸', '🎨', '💧', '🥗', '😴', '🦷', '🧹', '🌱',
+] as const;
