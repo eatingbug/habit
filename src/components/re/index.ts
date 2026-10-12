@@ -17,6 +17,7 @@ export { InputField, type InputFieldProps } from './InputField';
 export { Pill, type PillProps } from './Pill';
 export { ProgressBar, type ProgressBarProps } from './ProgressBar';
 export { RecordSheet, type RecordSheetProps } from './RecordSheet';
+export { SegmentedControl, type SegmentedControlProps } from './SegmentedControl';
 export { Sheet, type SheetProps } from './Sheet';
 export { SkipSheet, type SkipSheetProps } from './SkipSheet';
 export { StatusLight, type StatusLightProps } from './StatusLight';

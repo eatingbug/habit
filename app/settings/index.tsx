@@ -5,6 +5,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { IconButton } from '@/components';
+import { SegmentedControl } from '@/components/re';
 import { SETTINGS_COPY, SIGN_OUT_LABEL } from '@/config/copy';
 import { useSession } from '@/context/SessionContext';
 import { useSettings } from '@/hooks/useSettings';
@@ -56,27 +57,11 @@ export default function Settings() {
         ]}
       >
         <Text style={[TYPE.label, { color: redesign.muted }]}>{SETTINGS_COPY.themeLabel}</Text>
-        <View style={[styles.seg, { backgroundColor: redesign.inset }]} accessibilityRole="radiogroup">
-          {THEME_OPTIONS.map((option) => {
-            const on = option === theme;
-            return (
-              <Pressable
-                key={option}
-                onPress={() => setTheme(option)}
-                accessibilityRole="radio"
-                accessibilityState={{ selected: on, checked: on }}
-                style={[
-                  styles.segButton,
-                  on && { backgroundColor: redesign.surface, boxShadow: redesign.shadow },
-                ]}
-              >
-                <Text style={[styles.segText, { color: on ? redesign.text : redesign.muted }]}>
-                  {SETTINGS_COPY.themeOptions[option]}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
+        <SegmentedControl
+          options={THEME_OPTIONS.map((option) => ({ value: option, label: SETTINGS_COPY.themeOptions[option] }))}
+          value={theme}
+          onChange={setTheme}
+        />
       </View>
 
       <Pressable
@@ -114,16 +99,6 @@ const styles = StyleSheet.create({
   backRow: { flexDirection: 'row', marginTop: -8, marginHorizontal: -12 },
   // `.card` — `border:2px solid var(--edge)`, `--r-lg`, `padding:16px`; here `gap:6px`.
   card: { borderWidth: 2, borderRadius: RADIUS.lg, padding: 16, gap: 6 },
-  // `.seg` — an `inset` track with `padding:4px`.
-  seg: { flexDirection: 'row', borderRadius: RADIUS.md, padding: 4 },
-  segButton: {
-    flex: 1,
-    minHeight: TAP_TARGET,
-    borderRadius: RADIUS.sm,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  segText: { ...TYPE.body, fontWeight: '700' },
   // `.fold` — `min-height:56px; padding:0 16px; border:2px solid var(--edge)`.
   fold: {
     minHeight: 56,

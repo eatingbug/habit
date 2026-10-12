@@ -4,12 +4,12 @@ import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Button, ChoiceChip, IconButton, InputField } from '@/components/re';
+import { Button, ChoiceChip, IconButton, InputField, SegmentedControl } from '@/components/re';
 import { AmountInput, FormField } from '@/components/newHabit/FormField';
 import { IconSheet } from '@/components/newHabit/IconSheet';
 import { ICON_LABELS } from '@/config/copy';
 import { useNewHabit } from '@/hooks/useNewHabit';
-import { RADIUS, TAP_TARGET, TYPE } from '@/theme/redesignTokens';
+import { RADIUS, TYPE } from '@/theme/redesignTokens';
 import { useTheme } from '@/theme/ThemeProvider';
 
 /**
@@ -72,24 +72,7 @@ export default function NewHabit() {
         </FormField>
 
         <FormField label={copy.labels.kind} help={tooltips.kind}>
-          <View style={[styles.seg, { backgroundColor: redesign.inset }]} accessibilityRole="radiogroup">
-            {form.kindOptions.map((option) => {
-              const on = option.value === form.kind;
-              return (
-                <Pressable
-                  key={option.value}
-                  onPress={() => form.setKind(option.value)}
-                  accessibilityRole="radio"
-                  accessibilityState={{ selected: on, checked: on }}
-                  style={[styles.segButton, on && { backgroundColor: redesign.surface, boxShadow: redesign.shadow }]}
-                >
-                  <Text style={[styles.segText, { color: on ? redesign.text : redesign.muted }]}>
-                    {option.label}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
+          <SegmentedControl options={form.kindOptions} value={form.kind} onChange={form.setKind} />
         </FormField>
 
         {form.showAmounts && (
@@ -214,16 +197,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   iconText: { fontSize: 26, lineHeight: 32 },
-  // `.seg` — an `inset` track with `padding:4px`.
-  seg: { flexDirection: 'row', borderRadius: RADIUS.md, padding: 4 },
-  segButton: {
-    flex: 1,
-    minHeight: TAP_TARGET,
-    borderRadius: RADIUS.sm,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  segText: { ...TYPE.body, fontWeight: '700' },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   // The board's `margin-top:8px` on the primary button.
   submit: { marginTop: 8 },
