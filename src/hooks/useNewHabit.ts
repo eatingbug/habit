@@ -56,8 +56,8 @@ export interface NewHabitView {
   /** The icon on the button left of 이름: the picked one, else the stat's (§6.6). */
   icon: string;
   iconOptions: { icon: string; selected: boolean }[];
-  /** `null` clears the pick, so the stat's icon shows again. */
-  pickIcon(icon: string | null): void;
+  /** `undefined` clears the pick, so the stat's icon shows again (`Habit.icon`). */
+  pickIcon(icon: string | undefined): void;
   /** Per-field messages from the last submit; a field clears its own on change. */
   errors: NewHabitErrors;
   saving: boolean;
@@ -91,7 +91,7 @@ export function useNewHabit(): NewHabitView {
   const [cue, setCue] = useState('');
   const [identity, setIdentity] = useState('');
   const [statId, setStatId] = useState<string>(DEFAULT_STAT_ID);
-  const [pickedIcon, setPickedIcon] = useState<string | null>(null);
+  const [pickedIcon, setPickedIcon] = useState<string | undefined>();
   const [errors, setErrors] = useState<NewHabitErrors>({});
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -226,7 +226,7 @@ export function useNewHabit(): NewHabitView {
     setIdentity,
     statId,
     pickStat: setStatId,
-    icon: habitIcon({ statId, icon: pickedIcon ?? undefined }),
+    icon: habitIcon({ statId, icon: pickedIcon }),
     iconOptions: NEW_HABIT_ICONS.map((icon) => ({ icon, selected: icon === pickedIcon })),
     pickIcon: setPickedIcon,
     errors,
