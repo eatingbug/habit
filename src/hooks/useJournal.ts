@@ -2,7 +2,6 @@ import { useCallback, useEffect, useState } from 'react';
 
 import {
   dayStateBadge,
-  habitIcon,
   journalDateLabel,
   journalFreeLogLabel,
   JOURNAL_COPY,
@@ -14,9 +13,10 @@ import { dayStates } from '@/domain/classify';
 import { compareDates, weekdayOf } from '@/domain/dates';
 import { sortByDomainOrder } from '@/domain/feed';
 import { localClock, localToday } from '@/lib/device';
-import type { DayState, Habit } from '@/models';
+import type { DayState } from '@/models';
 
 import { useFailure, type Failure } from './failure';
+import { labelOf } from './recordSheet';
 
 /**
  * 글 모음 — SPEC §6.4, the `ReJournal` artboard (#132). Free logs and notes, read back.
@@ -153,11 +153,6 @@ const EMPTY: Loaded = { habitChips: [], rows: [] };
  * logs (which have no habit, §3.4) and notes are both read from here.
  */
 const ALL_TIME_START = '1970-01-01';
-
-/** "📖 독서" — a habit's chip and its notes' head. */
-function labelOf(habit: Habit): string {
-  return `${habitIcon(habit)} ${habit.name}`;
-}
 
 export function useJournal({ today = localToday() }: { today?: string } = {}): JournalView {
   const repository = useRepository();
