@@ -110,8 +110,8 @@ export const TUNING = {
   /** Weeks of history the growth chart draws (§6.3, C4). */
   growthChartWeeks: 12,
 
-  /** Heatmap width on the Dashboard row (§6.1). */
-  heatmapDays: 20,
+  /** Heatmap width: Habit Detail's 최근 3주, 7 columns by 3 rows (§6.5), and the Dashboard row. */
+  heatmapDays: 21,
 
   /**
    * How long the 실행취소 toast stays live after a new row from the log form (§6.2 B6).
