@@ -24,33 +24,6 @@ function form(repository: HabitRepository = new LocalRepository(new MemoryKV()))
   return { result, repository };
 }
 
-describe('useNewHabit — 능력치', () => {
-  it('saves the default stat when the user never picks one', async () => {
-    const { result, repository } = form();
-
-    act(() => {
-      result.current.setName('턱걸이');
-      result.current.setFloor('5');
-      result.current.setFloorUnit('회');
-    });
-    let saved = false;
-    await act(async () => {
-      saved = await result.current.submit();
-    });
-
-    expect(saved).toBe(true);
-    const [habit] = await repository.getHabits();
-    expect(habit).toMatchObject({
-      name: '턱걸이',
-      statId: 'strength',
-      kind: 'count',
-      floor: 5,
-      floorUnit: '회',
-      lifecycle: 'forming',
-    });
-  });
-});
-
 /** Fills the required count fields so a submit can pass. */
 function fillRequired(result: ReturnType<typeof form>['result']) {
   act(() => {
@@ -67,6 +40,25 @@ async function submit(result: ReturnType<typeof form>['result']): Promise<boolea
   });
   return saved;
 }
+
+describe('useNewHabit — 능력치', () => {
+  it('saves the default stat when the user never picks one', async () => {
+    const { result, repository } = form();
+    fillRequired(result);
+
+    expect(await submit(result)).toBe(true);
+
+    const [habit] = await repository.getHabits();
+    expect(habit).toMatchObject({
+      name: '턱걸이',
+      statId: 'strength',
+      kind: 'count',
+      floor: 5,
+      floorUnit: '회',
+      lifecycle: 'forming',
+    });
+  });
+});
 
 describe('useNewHabit — 측정 방식', () => {
   it('hides 최소량 and 목표 for 예 · 아니오 and shows them again for 횟수 · 양', () => {
