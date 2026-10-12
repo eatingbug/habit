@@ -2,13 +2,23 @@ import { useEffect, useRef, useState } from 'react';
 
 import {
   COMPONENT_LABELS,
+  DAY_WORDS,
   DECLINE_BADGE,
   declineEvidence,
   declineMessage,
+  diagnosisBadge,
+  habitIcon,
   LOAD_FAILED_NOTE,
+  moreDiagnosesLabel,
+  proposalLine,
+  reflectionTitle,
   REFLECTION_ACTION_LABELS,
   REFLECTION_ACTION_REASONS,
   SAVE_FAILED_NOTE,
+  shortDateLabel,
+  skipSheetTitle,
+  WEEKDAY_LABELS,
+  weekdayDateLabel,
   WRITE_FAILED_NOTE,
 } from '@/config/copy';
 import { useRepository } from '@/context/RepositoryContext';
@@ -22,6 +32,7 @@ import { decliningWeeks, guardLevel } from '@/domain/statusLight';
 import { localToday, newId } from '@/lib/device';
 import type {
   DayState,
+  DiagnosisComponent,
   DiagnosisFlag,
   Habit,
   HabitDesignSnapshot,
@@ -39,9 +50,10 @@ import { useQuickLog, type QuickLogToast } from './useQuickLog';
  * The Reflection screen's data path — SPEC §6.4, issue #21.
  *
  * The hook is the test seam, as on every other screen (jest.config.js: hooks + an
- * in-memory repository, `testMatch` is `<rootDir>/src/**`): which mark a mirror cell
- * wears, which actions are offered, which one is pre-selected and what a commit writes
- * are all decided here. `app/reflect/[id].tsx` places words and decides nothing.
+ * in-memory repository, `testMatch` is `<rootDir>/src/**`): which state a mirror cell
+ * shows, which card opens, which actions are offered, which one is pre-selected and
+ * what a commit writes are all decided here, and every word the screen shows is made
+ * here (#131). `app/reflect/[id].tsx` places words and decides nothing.
  *
  * The diagnosis itself is not re-derived: `diagnose` (#20) names the flags,
  * `suggestAction` picks the prescription, and `decliningWeeks` supplies the one 🔴 that
@@ -50,58 +62,46 @@ import { useQuickLog, type QuickLogToast } from './useQuickLog';
  * through `useQuickLog` like every other row.
  */
 
-const WEEKDAY_SHORT = ['일', '월', '화', '수', '목', '금', '토'];
-
-/** One day of the mirror (`design/parts/Reflection.body.html:23–31`). */
+/** One day of the mirror (`ReReflection`, §6.7). */
 export interface MirrorCell {
   date: string;
-  /** `월`…`일` — the cell's header (`.mw`). */
-  weekday: string;
+  /** The word under the mark: `월`…`일`, or `오늘` for today. */
+  label: string;
   /**
    * The day's computed state, or `null` for a day the habit does not classify — before
    * its birth, or paused with no rows (ADR-0003). The mirror still draws the cell, so
-   * it is always 7 wide.
+   * it is always 7 wide. The mark itself is the common day-state mark (§6.0).
    */
   state: DayState | null;
-  /**
-   * What the cell says (`.mv`). `missed` is the outline `·` and `skip` the filled `✕`
-   * (`Reflection.body.html:32`): both are misses and only the second carries a reason,
-   * so they never share a mark. A day with activity shows its sum, or `✓` on a binary
-   * habit, which has no quantity (§4.5's yes/no refinement). Empty when `state` is null.
-   */
-  mark: string;
 }
 
 /** A note written on a mirrored day — the "journal notes" §6.4 puts beside the mirror. */
 export interface MirrorNote {
   date: string;
+  /** "3/24". */
+  label: string;
   text: string;
 }
 
-/** One diagnosis card (§6.4): the flag plus what the screen needs to render it. */
-export interface FlagCard {
-  flag: DiagnosisFlag;
-  /** The badge's word (`Reflection.body.html:37`). */
-  componentLabel: string;
-  /**
-   * The weekly-totals chart (#15), on a `load` flag only — Rule 3's stagnation is a
-   * claim about weeks, so the weeks are its evidence (§6.4, CONCEPT §6.2 rule 4).
-   */
-  chart: GrowthChart | null;
-}
-
 /**
- * The Established decline 🔴 (§4.6), which `diagnose` never flags. Without this card
- * that light would open onto a screen with nothing to cite.
+ * One diagnosis card (§6.7): a flag from `diagnose`, or the Established decline 🔴
+ * (§4.6), which `diagnose` never flags — without that card the light would open onto a
+ * screen with nothing to cite.
  */
-export interface DeclineCard {
-  /** The completed-week totals the light read, oldest first. */
-  totals: number[];
-  badge: string;
-  /** Always `critical`: the card stands for a 🔴 (§4.6). */
+export interface DiagnosisCard {
+  /** The flag's component, or `decline`. Unique among the cards. */
+  key: DiagnosisComponent | 'decline';
+  /** `critical` for Rule 4 and for the decline card, `warning` otherwise. */
   severity: Severity;
+  /** The severity's mark and the component's name: "▲ 언제·어디서" (§6.7 Diagnosis copy). */
+  badge: string;
   message: string;
+  /** Always shown in the open card's body — the guard against rubber-stamping (§6.7). */
   evidence: string;
+  /**
+   * The weekly-totals chart (#15), on a `load` flag and the decline card only — both
+   * are claims about weeks, so the weeks are their evidence (§6.7, CONCEPT §6.2 rule 4).
+   */
   chart: GrowthChart | null;
 }
 
@@ -119,12 +119,21 @@ export interface ActionOption {
   current: string;
 }
 
-/** ADR-0002's question as the screen asks it (`Reflection.body.html:9–20`). */
+/** ADR-0002's question as the screen asks it (`ReReflection`, §6.7). */
 export interface RecoverPrompt {
   /** `이 N일, 하셨나요?` — N counts the dates still listed. */
   question: string;
-  /** The `missed` dates still unanswered, ascending. */
-  dates: string[];
+  /** The `missed` dates still unanswered, ascending, each with its "3/25 (수)". */
+  rows: { date: string; label: string }[];
+}
+
+/** The skip reason sheet that 안 했어요 opens for one date (§6.2 B5). */
+export interface AskingSheet {
+  date: string;
+  /** "💪 턱걸이". */
+  eyebrow: string;
+  /** "3/25 (수) 못 했어요 · 왜?". */
+  title: string;
 }
 
 export interface ReflectionView {
@@ -133,11 +142,20 @@ export interface ReflectionView {
   failure: Failure | null;
   /** `null` when the id names no stored habit. */
   habit: Habit | null;
+  /** "{습관 이름}, 잠깐 볼까요". Empty while there is no habit. */
+  title: string;
   /** The last 7 days ending today, oldest first. */
   mirror: MirrorCell[];
   notes: MirrorNote[];
-  flags: FlagCard[];
-  decline: DeclineCard | null;
+  /**
+   * The most severe card, the one §6.7 opens. Ties keep `diagnose`'s order, with the
+   * decline card after every flag. `null` when there is no card.
+   */
+  lead: DiagnosisCard | null;
+  /** Every other card, in the same order, folded under `moreLabel`. */
+  folded: DiagnosisCard[];
+  /** "다른 점 N개 더 보기", or `null` when nothing is folded. */
+  moreLabel: string | null;
   /**
    * Is there any card at all? False on a 🔴 made only of `missed` days, which carries
    * no flag by design (ADR-0002) — the screen then says so instead of an empty section.
@@ -149,6 +167,8 @@ export interface ReflectionView {
   options: ActionOption[];
   /** The action the commit will apply — `suggested` until the user picks another. */
   chosen: ReflectionAction;
+  /** "✓ 이렇게 해 볼까요: {chosen's label}". Empty while there is no habit. */
+  proposal: string;
   /** Ignores an action the habit does not offer. */
   choose(action: ReflectionAction): void;
   /**
@@ -169,12 +189,14 @@ export interface ReflectionView {
   recover: RecoverPrompt | null;
   /** "했어요": appends one activity row at the floor, noon-pinned (§6.3). */
   fill(date: string): Promise<void>;
-  /** "안 했어요": opens the reason chips under `date`. Writes nothing yet. */
+  /** "안 했어요": opens the skip reason sheet for `date`. Writes nothing yet. */
   askWhy(date: string): void;
-  /** The date whose reason chips are open, or `null`. */
-  asking: string | null;
-  /** The chip tap: appends the skip row carrying `reason`, and closes the chips. */
-  skip(date: string, reason: SkipReason): Promise<void>;
+  /** The open skip reason sheet, or `null`. */
+  asking: AskingSheet | null;
+  /** Closes the sheet without writing. */
+  cancelAsk(): void;
+  /** The chip tap: appends the skip row carrying `reason` and `note`, and closes the sheet. */
+  skip(date: string, reason: SkipReason, note?: string): Promise<void>;
   /**
    * An answer is being written. `fill` and `skip` ignore a second call until the list
    * that reflects the first has loaded — two taps would otherwise both read the date
@@ -185,6 +207,8 @@ export interface ReflectionView {
   toast: QuickLogToast | null;
   undoLast(): Promise<void>;
 }
+
+const SEVERITY_RANK: Record<Severity, number> = { ok: 0, warning: 1, critical: 2 };
 
 const FIELDS: Partial<Record<ReflectionAction, ActionField>> = {
   fill_cue: 'cue',
@@ -218,23 +242,11 @@ function mirrorFor(habit: Habit, entries: HabitEntry[], today: string): MirrorCe
     dayStates(habit, entries, dates[0], dates[dates.length - 1], today).map((day) => [day.date, day]),
   );
 
-  return dates.map((date) => {
-    const day = classified.get(date);
-    const weekday = WEEKDAY_SHORT[weekdayOf(date)];
-    if (day == null) return { date, weekday, state: null, mark: '' };
-
-    const mark =
-      day.state === 'pending'
-        ? '오늘'
-        : day.state === 'missed'
-          ? '·'
-          : day.state === 'skip'
-            ? '✕'
-            : habit.kind === 'binary'
-              ? '✓'
-              : String(day.sum);
-    return { date, weekday, state: day.state, mark };
-  });
+  return dates.map((date) => ({
+    date,
+    label: date === today ? DAY_WORDS.today : WEEKDAY_LABELS[weekdayOf(date)],
+    state: classified.get(date)?.state ?? null,
+  }));
 }
 
 function notesFor(entries: HabitEntry[], today: string): MirrorNote[] {
@@ -242,10 +254,10 @@ function notesFor(entries: HabitEntry[], today: string): MirrorNote[] {
   return entries
     .filter((entry) => entry.date >= from && entry.date <= today && entry.note)
     .sort((a, b) => a.date.localeCompare(b.date) || a.timestamp.localeCompare(b.timestamp))
-    .map((entry) => ({ date: entry.date, text: entry.note! }));
+    .map((entry) => ({ date: entry.date, label: shortDateLabel(entry.date), text: entry.note! }));
 }
 
-function declineFor(habit: Habit, entries: HabitEntry[], today: string): DeclineCard | null {
+function declineFor(habit: Habit, entries: HabitEntry[], today: string): DiagnosisCard | null {
   const totals = decliningWeeks(habit, entries, today);
   if (totals == null) return null;
 
@@ -253,13 +265,34 @@ function declineFor(habit: Habit, entries: HabitEntry[], today: string): Decline
   // honoured target; otherwise the guard fell back to the floor itself.
   const level = guardLevel(habit);
   return {
-    totals,
-    badge: DECLINE_BADGE,
+    key: 'decline',
     severity: 'critical',
+    badge: diagnosisBadge('critical', DECLINE_BADGE),
     message: declineMessage(totals.length),
     evidence: declineEvidence(totals, level > habit.floor ? 'target' : 'floor', level),
     chart: growthChart(habit, entries, today),
   };
+}
+
+/** Every card, most severe first (§6.7). */
+function cardsFor(
+  habit: Habit,
+  entries: HabitEntry[],
+  today: string,
+  flags: DiagnosisFlag[],
+): DiagnosisCard[] {
+  const cards: DiagnosisCard[] = flags.map((flag) => ({
+    key: flag.component,
+    severity: flag.severity,
+    badge: diagnosisBadge(flag.severity, COMPONENT_LABELS[flag.component]),
+    message: flag.message,
+    evidence: flag.evidence,
+    chart: flag.component === 'load' ? growthChart(habit, entries, today) : null,
+  }));
+  const decline = declineFor(habit, entries, today);
+  if (decline != null) cards.push(decline);
+  // `sort` is stable, so equal severities keep the order above.
+  return cards.sort((a, b) => SEVERITY_RANK[b.severity] - SEVERITY_RANK[a.severity]);
 }
 
 /** The habit the chosen action would write, or the input's error. */
@@ -273,7 +306,7 @@ function applied(
   switch (action) {
     case 'fill_cue':
     case 'adjust_cue':
-      return text.length > 0 ? { next: { ...habit, cue: text } } : { error: '언제 할지를 적어 주세요.' };
+      return text.length > 0 ? { next: { ...habit, cue: text } } : { error: '언제·어디서를 적어 주세요.' };
     case 'fill_identity':
       return text.length > 0
         ? { next: { ...habit, identity: text } }
@@ -366,8 +399,9 @@ export function useReflection(
   const suggested = habit == null ? 'keep' : suggestAction(flags, habit);
   const offered = habit == null ? [] : offeredActions(habit);
   const chosen = picked != null && offered.includes(picked) ? picked : suggested;
-  const decline = habit == null ? null : declineFor(habit, entries, today);
+  const [lead = null, ...folded] = habit == null ? [] : cardsFor(habit, entries, today, flags);
   const prompt = habit == null || !prompting ? null : backfillPrompt(habit, entries, today);
+  const chosenLabel = REFLECTION_ACTION_LABELS[chosen];
 
   /** One answer. The guard lifts when the reload lands, or here if the write failed. */
   async function answer(write: (subject: Habit) => Promise<void>): Promise<void> {
@@ -418,18 +452,13 @@ export function useReflection(
     // 실행취소의 실패는 `useQuickLog` 가 들고 있다 — 한 배너 자리를 둘이 나눠 쓴다.
     failure: failure ?? quick.failure,
     habit,
+    title: habit == null ? '' : reflectionTitle(habit.name),
     mirror: habit == null ? [] : mirrorFor(habit, entries, today),
     notes: habit == null ? [] : notesFor(entries, today),
-    flags:
-      habit == null
-        ? []
-        : flags.map((flag) => ({
-            flag,
-            componentLabel: COMPONENT_LABELS[flag.component],
-            chart: flag.component === 'load' ? growthChart(habit, entries, today) : null,
-          })),
-    decline,
-    diagnosed: flags.length > 0 || decline != null,
+    lead,
+    folded,
+    moreLabel: folded.length === 0 ? null : moreDiagnosesLabel(folded.length),
+    diagnosed: lead != null,
     suggested,
     options:
       habit == null
@@ -445,6 +474,7 @@ export function useReflection(
             };
           }),
     chosen,
+    proposal: habit == null ? '' : proposalLine(chosenLabel),
     choose: (action) => {
       if (offered.includes(action)) setPicked(action);
     },
@@ -453,15 +483,27 @@ export function useReflection(
     recover:
       prompt == null || prompt.dates.length === 0
         ? null
-        : { question: prompt.question, dates: prompt.dates },
+        : {
+            question: prompt.question,
+            rows: prompt.dates.map((date) => ({ date, label: weekdayDateLabel(date, weekdayOf(date)) })),
+          },
     fill: (date) => answer((subject) => quick.logActivity(subject, subject.floor, { date })),
     askWhy: setAsking,
-    asking,
-    skip: (date, reason) =>
-      answer(async (subject) => {
-        await quick.logSkip(subject, reason, { date });
-        setAsking(null);
-      }),
+    asking:
+      habit == null || asking == null
+        ? null
+        : {
+            date: asking,
+            eyebrow: `${habitIcon(habit)} ${habit.name}`,
+            title: skipSheetTitle(weekdayDateLabel(asking, weekdayOf(asking))),
+          },
+    cancelAsk: () => setAsking(null),
+    skip: async (date, reason, note) => {
+      await answer((subject) => quick.logSkip(subject, reason, { date, note }));
+      // Closed either way: a failure is said once, in the banner, and the date stays
+      // listed to be answered again.
+      setAsking(null);
+    },
     answering,
     toast: quick.toast,
     undoLast: quick.undoLast,

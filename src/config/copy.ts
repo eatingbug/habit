@@ -866,3 +866,57 @@ export function recordResultLine({
   if (sum < floor) return `이걸로 ${dayWord} 몫을 채워요 ✓`;
   return `${dayWord} 몫은 이미 채웠어요`;
 }
+
+/**
+ * 회고 화면 (SPEC §6.7, `ReReflection`, #131). 진단 카드의 성분 이름과 처방 이름은
+ * 위의 `COMPONENT_LABELS` 와 `REFLECTION_ACTION_LABELS` 에 있다.
+ */
+
+/**
+ * 진단 카드의 배지: 심각도 모양과 성분 이름 ("▲ 언제·어디서"). 모양은 상태등과 같다.
+ * `critical` 은 손봐야 해요의 ▲, 나머지는 살펴보세요의 ◆ 다.
+ */
+export function diagnosisBadge(severity: 'ok' | 'warning' | 'critical', name: string): string {
+  const glyph = severity === 'critical' ? STATUS_LIGHT_GLYPHS.intervention : STATUS_LIGHT_GLYPHS.caution;
+  return `${glyph} ${name}`;
+}
+
+/** 접힌 진단 카드를 펼치는 버튼 (§6.7). */
+export function moreDiagnosesLabel(count: number): string {
+  return `다른 점 ${count}개 더 보기`;
+}
+
+/** 회고 화면의 제목: "명상, 잠깐 볼까요". */
+export function reflectionTitle(habitName: string): string {
+  return `${habitName}, 잠깐 볼까요`;
+}
+
+/** 추천 행동의 머리: "✓ 이렇게 해 볼까요: 언제·어디서 정하기". */
+export function proposalLine(actionLabel: string): string {
+  return `✓ 이렇게 해 볼까요: ${actionLabel}`;
+}
+
+/** "10/8" — 저널 메모의 날짜. */
+export function shortDateLabel(date: string): string {
+  const [, month, day] = date.split('-').map(Number);
+  return `${month}/${day}`;
+}
+
+/** "10/5 (월)" — 백필 질문의 날짜 줄. `weekday` 는 일요일이 0이다. */
+export function weekdayDateLabel(date: string, weekday: number): string {
+  return `${shortDateLabel(date)} (${WEEKDAY_LABELS[weekday]})`;
+}
+
+/** 회고 화면의 고정 문구 (`ReReflection`). 툴팁은 `TOOLTIPS.reflection*` 이다. */
+export const REFLECTION_COPY = {
+  back: '뒤로',
+  did: DAY_STATE_WORDS.done,
+  didNot: '안 했어요',
+  recoverNote: '했어요를 누르면 그날이 성공으로 바뀌고 연속도 다시 이어져요.',
+  sevenDays: '최근 7일은 이랬어요',
+  howItReads: '이렇게 보여요',
+  /** 캔버스 출처 없음. 기록 없는 날만 있는 🔴 는 진단이 없다 (ADR-0002). */
+  nothingToFlag: '지금 기록으로는 짚을 것이 없어요. 기록이 없는 날을 채우면 더 정확히 볼 수 있어요.',
+  commit: '이대로 고칠게요',
+  notFound: '습관을 찾을 수 없어요.',
+} as const;
