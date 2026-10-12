@@ -15,6 +15,8 @@ export interface InputFieldProps {
   /** A fixed width, e.g. the New habit amount box (`width:120px`). Absent: the box sizes as before. */
   width?: number;
   keyboardType?: KeyboardTypeOptions;
+  /** Draws the `crit` border while an error about the value is shown. */
+  invalid?: boolean;
 }
 
 /** `.field` — a 56-tall box on `surface` with a 2px `borderStrong` border, `body` text. */
@@ -27,6 +29,7 @@ export function InputField({
   editable = true,
   width,
   keyboardType,
+  invalid = false,
 }: InputFieldProps) {
   const { redesign } = useTheme();
 
@@ -45,7 +48,11 @@ export function InputField({
         styles.field,
         multiline && styles.multiline,
         width != null && { width },
-        { color: redesign.text, backgroundColor: redesign.surface, borderColor: redesign.borderStrong },
+        {
+          color: redesign.text,
+          backgroundColor: redesign.surface,
+          borderColor: invalid ? redesign.crit : redesign.borderStrong,
+        },
       ]}
     />
   );
