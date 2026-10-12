@@ -503,16 +503,16 @@ describe('the recover-first prompt (#22, ADR-0002)', () => {
         wrapper: wrapperFor(repository),
       });
       await waitFor(() => expect(dashboard.result.current.loading).toBe(false));
-      const { streak: value } = dashboard.result.current.rows[0];
+      const { streakLabel: value } = dashboard.result.current.rows[0];
       dashboard.unmount();
       return value;
     };
-    expect(await streak()).toBe(1);
+    expect(await streak()).toBe('🔥 1');
 
     const { result } = await render(repository);
     for (const date of GAP) await settle(() => result.current.fill(date));
 
-    expect(await streak()).toBe(40);
+    expect(await streak()).toBe('🔥 40');
   });
 
   it('stays open for the rest of the visit once the run is broken, listing what is left', async () => {

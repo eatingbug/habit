@@ -33,10 +33,7 @@ export function StatsSheet({ sheet, onClose }: { sheet: StatsSheetView; onClose:
               <View
                 style={[
                   styles.fill,
-                  {
-                    width: `${Math.round(Math.min(1, Math.max(0, row.barFraction)) * 100)}%`,
-                    backgroundColor: redesign.statInk,
-                  },
+                  { width: row.barWidth, backgroundColor: redesign.statInk },
                 ]}
               />
             </View>

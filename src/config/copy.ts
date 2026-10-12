@@ -904,7 +904,7 @@ export function statLineLabel(stats: { icon: string; level: number }[]): string 
 }
 
 /** "손볼 습관 1개" — the head over the habit rows. It has no `?` (§6.8). */
-export function shakyHabitsLabel(count: number): string {
+export function needsAttentionLabel(count: number): string {
   return `손볼 습관 ${count}개`;
 }
 

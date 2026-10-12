@@ -7,7 +7,7 @@ import {
   LOAD_FAILED_NOTE,
   longDateLabel,
   monthDayLabel,
-  shakyHabitsLabel,
+  needsAttentionLabel,
   starsToNextLevelLabel,
   statLevelLabel,
   statLineLabel,
@@ -75,17 +75,13 @@ export interface DashboardDay {
 
 export interface DashboardRow {
   habit: Habit;
-  /** Absent when `habit.statId` names no configured stat — a data defect, not a state. */
-  stat?: Stat;
   /** "📖 독서". A row shows no stat (§6.3). */
   label: string;
   week: DashboardDay[];
   /**
-   * Consecutive floor-met days ending today (§4.2). Read from the whole history, so a
-   * backfill re-joins the runs on either side of a filled day (ADR-0001).
+   * "🔥 12" — consecutive floor-met days ending today (§4.2). Read from the whole
+   * history, so a backfill re-joins the runs on either side of a filled day (ADR-0001).
    */
-  streak: number;
-  /** "🔥 12". */
   streakLabel: string;
   /** The row's status light (§4.6), drawn as shape and word by `StatusLight`. */
   statusLight: StatusLight;
@@ -93,8 +89,8 @@ export interface DashboardRow {
   reflectable: boolean;
 }
 
-/** One stat's figures (#17). The screen applies words to them through the views below. */
-export interface StatProgress {
+/** One stat's figures (#17). The views below turn them into words and bar widths. */
+interface StatProgress {
   stat: Stat;
   /** `levelForXP(computeStatXP(...))` — §4.2's one level definition. */
   level: number;
@@ -112,8 +108,8 @@ export interface LevelCardView {
   title: string;
   /** "💪 3 · 📖 2 · 🧘 4", or `null` with no habits (`ReDashboardEmpty`). */
   statLine: string | null;
-  /** The bar, measured on the stat that will raise the character level next. */
-  barFraction: number;
+  /** The bar's fill, "62%" — measured on the stat that will raise the character level next. */
+  barWidth: BarWidth;
   /** "다음 레벨까지 별 120개". */
   nextLine: string;
 }
@@ -125,7 +121,8 @@ export interface StatSheetRow {
   title: string;
   /** "레벨 3". */
   levelLabel: string;
-  barFraction: number;
+  /** The bar's fill, "35%". */
+  barWidth: BarWidth;
   /** The shown habits tied to the stat, "턱걸이 · 스쿼트". Empty when there is none. */
   habits: string;
   /** "다음 레벨까지 별 90개". */
@@ -159,19 +156,19 @@ export interface DashboardView {
   dateLabel: string;
   /** Sorted by status light: 손봐야 해요, 살펴보세요, then 괜찮아요 (§6.3). */
   rows: DashboardRow[];
-  /** One per `TUNING.stats`, in its order. Empty while `loading`. */
-  stats: StatProgress[];
-  /** The highest stat level (§4.2, CONTEXT 캐릭터 레벨). */
-  characterLevel: number;
   level: LevelCardView;
   /**
-   * 🟡 and 🔴 among the shown habits — `aggregateStatusCount`'s two counts summed.
-   * Paused habits count nothing by construction (ADR-0003).
+   * "손볼 습관 N개" — 🟡 and 🔴 among the shown habits, `aggregateStatusCount`'s two
+   * counts summed. Paused habits count nothing by construction (ADR-0003). `null` with
+   * no rows: a failed read must not claim "0개".
    */
-  shaky: number;
-  /** "손볼 습관 N개". */
-  shakyLabel: string;
+  needsAttentionLabel: string | null;
   loading: boolean;
+  /**
+   * No habit to show, and the read did not fail: the empty screen (`ReDashboardEmpty`).
+   * False while a failure is set, which would otherwise claim there are no habits (#51).
+   */
+  empty: boolean;
   /**
    * A failed read or a failed undo, or `null`. While it is set the screen says the
    * failure instead of the empty state: rows being empty then means "not read", not
@@ -205,8 +202,11 @@ export interface DashboardView {
   reload(): void;
 }
 
-function statFor(statId: string): Stat | undefined {
-  return TUNING.stats.find((stat) => stat.id === statId);
+/** A bar's fill as a width, "62%" — clamped to 0–100. */
+export type BarWidth = `${number}%`;
+
+function barWidthOf(fraction: number): BarWidth {
+  return `${Math.round(Math.min(1, Math.max(0, fraction)) * 100)}%`;
 }
 
 /** A stat's four numbers, from its XP. See `StatProgress` for each. */
@@ -245,10 +245,10 @@ interface Loaded {
   /** Each shown habit's rows, from its birth (or the week's start) through today. */
   history: Map<string, HabitEntry[]>;
   stats: StatProgress[];
-  shaky: number;
+  needsAttention: number;
 }
 
-const EMPTY: Loaded = { rows: [], history: new Map(), stats: [], shaky: 0 };
+const EMPTY: Loaded = { rows: [], history: new Map(), stats: [], needsAttention: 0 };
 
 type SheetIntent =
   | { kind: 'record' | 'skip'; habitId: string; date: string }
@@ -314,7 +314,7 @@ export function useDashboard({
         // Stats read **every** habit, archived included: archiving must not claw back
         // what a recorded day earned (ADR-0003).
         stats: TUNING.stats.map((stat) => statProgress(stat, all)),
-        shaky: count.caution + count.intervention,
+        needsAttention: count.caution + count.intervention,
       });
       clear();
       setLoading(false);
@@ -342,7 +342,7 @@ export function useDashboard({
   const level: LevelCardView = {
     title: characterLevelLabel(characterLevel),
     statLine: rows.length === 0 ? null : statLineLabel(stats.map((s) => ({ icon: s.stat.icon, level: s.level }))),
-    barFraction: leading?.barFraction ?? 0,
+    barWidth: barWidthOf(leading?.barFraction ?? 0),
     nextLine,
   };
 
@@ -372,7 +372,7 @@ export function useDashboard({
           id: s.stat.id,
           title: `${s.stat.icon} ${s.stat.name}`,
           levelLabel: statLevelLabel(s.level),
-          barFraction: s.barFraction,
+          barWidth: barWidthOf(s.barFraction),
           habits: rows
             .filter((row) => row.habit.statId === s.stat.id)
             .map((row) => row.habit.name)
@@ -419,12 +419,10 @@ export function useDashboard({
   return {
     dateLabel: longDateLabel(today, weekdayOf(today)),
     rows,
-    stats,
-    characterLevel,
     level,
-    shaky: loaded.shaky,
-    shakyLabel: shakyHabitsLabel(loaded.shaky),
+    needsAttentionLabel: rows.length === 0 ? null : needsAttentionLabel(loaded.needsAttention),
     loading,
+    empty: !loading && rows.length === 0 && failure == null && quick.failure == null,
     // A failed undo is `useQuickLog`'s; the two share one banner.
     failure: failure ?? quick.failure,
     sheet,
@@ -448,11 +446,9 @@ function rowOf(habit: Habit, entries: HabitEntry[], window: string[], today: str
     dayStates(habit, entries, window[0], window[window.length - 1], today).map((d) => [d.date, d.state]),
   );
   const statusLight = deriveStatusLight(habit, entries, today);
-  const streak = computeStreak(entries, habit, today);
 
   return {
     habit,
-    stat: statFor(habit.statId),
     label: labelOf(habit),
     week: window.map((date) => {
       const state = states.get(date) ?? null;
@@ -464,8 +460,7 @@ function rowOf(habit: Habit, entries: HabitEntry[], window: string[], today: str
         tappable: state != null && isBackfillableDate(habit, date, today),
       };
     }),
-    streak,
-    streakLabel: streakCountLabel(streak),
+    streakLabel: streakCountLabel(computeStreak(entries, habit, today)),
     statusLight,
     reflectable: statusLight === 'intervention',
   };

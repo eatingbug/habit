@@ -13,7 +13,6 @@ import { useTheme } from '@/theme/ThemeProvider';
  */
 export function LevelCard({ level, onPress }: { level: LevelCardView; onPress: () => void }) {
   const { redesign } = useTheme();
-  const width = `${Math.round(Math.min(1, Math.max(0, level.barFraction)) * 100)}%` as const;
 
   return (
     <Pressable
@@ -31,7 +30,7 @@ export function LevelCard({ level, onPress }: { level: LevelCardView; onPress: (
       </View>
       {level.statLine != null && <Text style={[TYPE.bodyStrong, styles.white]}>{level.statLine}</Text>}
       <View style={styles.track}>
-        <View style={[styles.fill, { width }]} />
+        <View style={[styles.fill, { width: level.barWidth }]} />
       </View>
       <Text style={[TYPE.label, styles.white]}>{level.nextLine}</Text>
     </Pressable>

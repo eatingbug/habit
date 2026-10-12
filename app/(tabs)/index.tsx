@@ -47,11 +47,10 @@ export default function Dashboard() {
   );
 
   const newHabit = () => router.push('/habit/new');
-  const empty = view.rows.length === 0 && view.failure == null;
 
   return (
     <View style={[styles.fill, { backgroundColor: redesign.bg }]}>
-      <ScrollView style={styles.fill} contentContainerStyle={[styles.page, empty && styles.grow]}>
+      <ScrollView style={styles.fill} contentContainerStyle={[styles.page, view.empty && styles.grow]}>
         <View style={styles.top}>
           <View>
             <Text style={[TYPE.label, { color: redesign.muted }]}>{view.dateLabel}</Text>
@@ -79,8 +78,7 @@ export default function Dashboard() {
           <>
             <LevelCard level={view.level} onPress={view.openStats} />
 
-            {/* Not when the read failed: that would claim there are no habits (#51). */}
-            {empty ? (
+            {view.empty ? (
               <View style={styles.empty}>
                 <Text style={styles.emptyEmoji}>{DASHBOARD_COPY.emptyEmoji}</Text>
                 <Text style={[TYPE.title, { color: redesign.text }]}>{DASHBOARD_COPY.empty}</Text>
@@ -88,9 +86,9 @@ export default function Dashboard() {
               </View>
             ) : (
               <>
-                {view.rows.length > 0 && (
+                {view.needsAttentionLabel != null && (
                   <Text style={[TYPE.title, styles.headLine, { color: redesign.text }]} accessibilityRole="header">
-                    {view.shakyLabel}
+                    {view.needsAttentionLabel}
                   </Text>
                 )}
                 {view.rows.map((row) => (

@@ -168,7 +168,6 @@ describe('useDashboard', () => {
 
     expect(result.current.rows).toHaveLength(1);
     expect(rowOf(result).label).toBe('💪 팔굽혀펴기');
-    expect(rowOf(result).stat?.name).toBe('힘');
   });
 
   it('still shows the habit through a fresh LocalRepository over the same store', async () => {
@@ -193,6 +192,41 @@ describe('useDashboard', () => {
     const result = await dashboard(new LocalRepository(kv));
 
     expect(result.current.rows.map((row) => row.habit.id)).toEqual(['paused']);
+  });
+
+  describe('the empty screen (ReDashboardEmpty)', () => {
+    it('is empty with no habits, and has no head over the rows', async () => {
+      const result = await dashboard(new LocalRepository(new MemoryKV()));
+
+      expect(result.current.empty).toBe(true);
+      expect(result.current.needsAttentionLabel).toBeNull();
+    });
+
+    it('is not empty while it is still loading', () => {
+      const { result } = renderHook(() => useDashboard({ today: TODAY }), {
+        wrapper: wrapperFor(new LocalRepository(new MemoryKV())),
+      });
+
+      expect(result.current.loading).toBe(true);
+      expect(result.current.empty).toBe(false);
+    });
+
+    it('is not empty with a habit', async () => {
+      const result = await dashboard(new LocalRepository(await seed([habit()])));
+
+      expect(result.current.empty).toBe(false);
+    });
+
+    it('is not empty when the read failed: that would claim there are no habits (#51)', async () => {
+      const repository = new LocalRepository(await seed([habit()]));
+      jest.spyOn(repository, 'getHabits').mockRejectedValueOnce(new Error('offline'));
+      const result = await dashboard(repository);
+
+      expect(result.current.failure).not.toBeNull();
+      expect(result.current.rows).toEqual([]);
+      expect(result.current.empty).toBe(false);
+      expect(result.current.needsAttentionLabel).toBeNull();
+    });
   });
 
   describe('the order of the rows (§6.3: 🔴 on top)', () => {
@@ -251,7 +285,6 @@ describe('useDashboard', () => {
         new LocalRepository(await seed([habit()], dates.map((date) => activity('h1', date, 5)))),
       );
 
-      expect(rowOf(result).streak).toBe(4);
       expect(rowOf(result).streakLabel).toBe('🔥 4');
     });
 
@@ -412,14 +445,14 @@ describe('useDashboard', () => {
       const repository = new LocalRepository(await seed([habit()], entries));
       const { result, seen } = await dashboardWatchingLoading(repository);
       expect(stateOn(result, YESTERDAY)).toBe('missed');
-      expect(rowOf(result).streak).toBe(0);
+      expect(rowOf(result).streakLabel).toBe('🔥 0');
       const settledAt = seen.length;
 
       await record(result, YESTERDAY, 5, '  밤에  ');
 
       expect(result.current.sheet).toBeNull();
       expect(stateOn(result, YESTERDAY)).toBe('done');
-      expect(rowOf(result).streak).toBe(5);
+      expect(rowOf(result).streakLabel).toBe('🔥 5');
       expect(result.current.toast).toMatchObject({ message: '기록됨' });
       // The row never blanked out while it reloaded.
       expect(seen.slice(settledAt)).not.toContain(true);
@@ -436,11 +469,11 @@ describe('useDashboard', () => {
       const result = await dashboard(
         new LocalRepository(await seed([habit()], [...entries, activity('h1', TODAY, 5)])),
       );
-      expect(rowOf(result).streak).toBe(1);
+      expect(rowOf(result).streakLabel).toBe('🔥 1');
 
       await record(result, YESTERDAY, 5);
 
-      expect(rowOf(result).streak).toBe(4);
+      expect(rowOf(result).streakLabel).toBe('🔥 4');
       expect(result.current.celebration).toMatchObject({
         kind: 'banner',
         streak: 4,
@@ -551,14 +584,13 @@ describe('useDashboard', () => {
       );
       const result = await dashboard(new LocalRepository(kv));
 
-      expect(result.current.shaky).toBe(2);
-      expect(result.current.shakyLabel).toBe('손볼 습관 2개');
+      expect(result.current.needsAttentionLabel).toBe('손볼 습관 2개');
     });
 
     it('reads "손볼 습관 0개" when nothing needs attention', async () => {
       const result = await dashboard(new LocalRepository(await seed([habit()], everyDayDone('h1'))));
 
-      expect(result.current.shakyLabel).toBe('손볼 습관 0개');
+      expect(result.current.needsAttentionLabel).toBe('손볼 습관 0개');
     });
 
     it('a paused habit demands nothing, however bare its record (ADR-0003)', async () => {
@@ -567,7 +599,7 @@ describe('useDashboard', () => {
 
       expect(result.current.rows).toHaveLength(1);
       expect(rowOf(result).statusLight).toBe('stable');
-      expect(result.current.shaky).toBe(0);
+      expect(result.current.needsAttentionLabel).toBe('손볼 습관 0개');
     });
 
     it('an archived habit is neither a row nor a number in the head', async () => {
@@ -578,18 +610,18 @@ describe('useDashboard', () => {
       const result = await dashboard(new LocalRepository(kv));
 
       expect(result.current.rows.map((row) => row.habit.id)).toEqual(['h1']);
-      expect(result.current.shaky).toBe(1);
+      expect(result.current.needsAttentionLabel).toBe('손볼 습관 1개');
     });
 
     it('recomputes the light and the count as soon as a log lands', async () => {
       const result = await dashboard(new LocalRepository(await seed([habit()])));
       expect(rowOf(result).statusLight).toBe('intervention');
-      expect(result.current.shaky).toBe(1);
+      expect(result.current.needsAttentionLabel).toBe('손볼 습관 1개');
 
       await record(result, TODAY, 5);
 
       expect(rowOf(result).statusLight).not.toBe('intervention');
-      expect(result.current.shakyLabel).toBe('손볼 습관 0개');
+      expect(result.current.needsAttentionLabel).toBe('손볼 습관 0개');
     });
   });
 
@@ -608,10 +640,14 @@ describe('useDashboard', () => {
       return 5 + (xp - TUNING.xpPerFloorCompletion) / TUNING.xpPerAboveFloorUnit;
     }
 
-    function statOf(view: DashboardView, statId: string) {
-      const card = view.stats.find((entry) => entry.stat.id === statId);
-      if (card == null) throw new Error(`no stat for ${statId}`);
-      return card;
+    /** One stat as the stat sheet shows it. */
+    function statRow(result: Result, statId: string) {
+      act(() => result.current.openStats());
+      const sheet = result.current.sheet;
+      if (sheet?.kind !== 'stats') throw new Error('no stat sheet');
+      const row = sheet.rows.find((entry) => entry.id === statId);
+      if (row == null) throw new Error(`no stat for ${statId}`);
+      return row;
     }
 
     const [, FIRST, SECOND, THIRD] = TUNING.statLevelThresholds;
@@ -637,11 +673,10 @@ describe('useDashboard', () => {
       const result = await threeStats();
       const toNext = TUNING.statLevelThresholds[4] - (THIRD + TUNING.statLevelThresholds[4]) / 2;
 
-      expect(result.current.characterLevel).toBe(3);
       expect(result.current.level).toEqual({
         title: '캐릭터 레벨 3',
         statLine: '💪 1 · 📖 2 · 🧘 3',
-        barFraction: 0.5,
+        barWidth: '50%',
         nextLine: `다음 레벨까지 별 ${toNext}개`,
       });
     });
@@ -652,7 +687,7 @@ describe('useDashboard', () => {
       expect(result.current.level).toEqual({
         title: '캐릭터 레벨 0',
         statLine: null,
-        barFraction: 0,
+        barWidth: '0%',
         nextLine: `다음 레벨까지 별 ${FIRST}개`,
       });
     });
@@ -667,7 +702,7 @@ describe('useDashboard', () => {
       );
       const result = await dashboard(new LocalRepository(kv));
 
-      expect(result.current.characterLevel).toBe(1);
+      expect(result.current.level.title).toBe('캐릭터 레벨 1');
       expect(result.current.level.nextLine).toBe('다음 레벨까지 별 60개');
     });
 
@@ -677,8 +712,8 @@ describe('useDashboard', () => {
         new LocalRepository(await seed([habit()], [activity('h1', YESTERDAY, amountWorth(top))])),
       );
 
-      expect(statOf(result.current, 'strength').xpToNextLevel).toBeNull();
-      expect(result.current.level).toMatchObject({ barFraction: 1, nextLine: '최고 레벨이에요' });
+      expect(statRow(result, 'strength').nextLine).toBe('최고 레벨이에요');
+      expect(result.current.level).toMatchObject({ barWidth: '100%', nextLine: '최고 레벨이에요' });
     });
 
     it('opens the stat sheet: one bar per stat with its level, habits and 별 left', async () => {
@@ -695,7 +730,7 @@ describe('useDashboard', () => {
             id: 'strength',
             title: '💪 힘',
             levelLabel: '레벨 1',
-            barFraction: 0,
+            barWidth: '0%',
             habits: '턱걸이',
             nextLine: `다음 레벨까지 별 ${SECOND - FIRST}개`,
           },
@@ -703,7 +738,7 @@ describe('useDashboard', () => {
             id: 'intelligence',
             title: '📖 지능',
             levelLabel: '레벨 2',
-            barFraction: 0,
+            barWidth: '0%',
             habits: '독서',
             nextLine: `다음 레벨까지 별 ${THIRD - SECOND}개`,
           },
@@ -711,7 +746,7 @@ describe('useDashboard', () => {
             id: 'willpower',
             title: '🧘 의지',
             levelLabel: '레벨 3',
-            barFraction: 0.5,
+            barWidth: '50%',
             habits: '명상',
             nextLine: result.current.level.nextLine,
           },
@@ -741,10 +776,11 @@ describe('useDashboard', () => {
         new LocalRepository(await seed([habit()], [activity('h1', YESTERDAY, amountWorth(FIRST / 2))])),
       );
 
-      const card = statOf(result.current, 'strength');
-      expect(card.level).toBe(0);
-      expect(card.xpToNextLevel).toBe(FIRST / 2);
-      expect(card.barFraction).toBeCloseTo(0.5);
+      expect(statRow(result, 'strength')).toMatchObject({
+        levelLabel: '레벨 0',
+        barWidth: '50%',
+        nextLine: `다음 레벨까지 별 ${FIRST / 2}개`,
+      });
     });
 
     it('sums every habit mapped to the stat, neither one reaching the level alone', async () => {
@@ -753,7 +789,9 @@ describe('useDashboard', () => {
         [activity('h1', YESTERDAY, amountWorth(FIRST / 2)), activity('h2', YESTERDAY, amountWorth(FIRST / 2))],
       );
 
-      expect(statOf((await dashboard(new LocalRepository(kv))).current, 'strength').level).toBe(1);
+      const result = await dashboard(new LocalRepository(kv));
+
+      expect(statRow(result, 'strength').levelLabel).toBe('레벨 1');
     });
 
     it('keeps an archived habit\'s XP — archiving must not undo a level', async () => {
@@ -761,19 +799,21 @@ describe('useDashboard', () => {
         [habit({ id: 'h2', name: '스쿼트', lifecycle: 'archived' }), habit()],
         [activity('h2', YESTERDAY, amountWorth(FIRST / 2)), activity('h1', YESTERDAY, amountWorth(FIRST / 2))],
       );
-      const view = (await dashboard(new LocalRepository(kv))).current;
+      const result = await dashboard(new LocalRepository(kv));
 
-      expect(view.rows.map((row) => row.habit.id)).toEqual(['h1']);
-      expect(statOf(view, 'strength').level).toBe(1);
+      expect(result.current.rows.map((row) => row.habit.id)).toEqual(['h1']);
+      expect(statRow(result, 'strength').levelLabel).toBe('레벨 1');
     });
 
     it('moves the level card as soon as a log lands', async () => {
       const result = await dashboard(new LocalRepository(await seed([habit()])));
-      expect(result.current.level.barFraction).toBe(0);
+      expect(result.current.level.barWidth).toBe('0%');
 
       await record(result, TODAY, 5);
 
-      expect(statOf(result.current, 'strength').xp).toBe(TUNING.xpPerFloorCompletion);
+      expect(statRow(result, 'strength').nextLine).toBe(
+        `다음 레벨까지 별 ${FIRST - TUNING.xpPerFloorCompletion}개`,
+      );
       expect(result.current.level.nextLine).toBe(
         `다음 레벨까지 별 ${FIRST - TUNING.xpPerFloorCompletion}개`,
       );
