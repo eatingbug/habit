@@ -46,7 +46,9 @@ export function JournalEntry({ item, divider, onPress }: JournalEntryProps) {
         {item.kind === 'note' ? (
           <View style={styles.row}>
             <Text style={[TYPE.label, { color: redesign.text }]}>{item.label}</Text>
-            <Chip label={item.stateLabel} tone={STATE_TONE[item.state]} />
+            {item.state != null && item.stateLabel != null && (
+              <Chip label={item.stateLabel} tone={STATE_TONE[item.state]} />
+            )}
           </View>
         ) : (
           <Text style={[TYPE.label, styles.shrink, { color: redesign.muted }]}>{item.label}</Text>
