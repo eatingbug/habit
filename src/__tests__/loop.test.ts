@@ -53,8 +53,9 @@ async function dashboard(repository: HabitRepository, today: string) {
 
 async function markDone(repository: HabitRepository, today: string): Promise<void> {
   const result = await dashboard(repository, today);
+  act(() => result.current.openRecord(result.current.rows[0].habit.id, today));
   await act(async () => {
-    await result.current.logActivity(result.current.rows[0].habit, 1);
+    await result.current.recordFromSheet(1);
   });
 }
 

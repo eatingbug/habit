@@ -421,7 +421,8 @@ describe('commit (§6.4, AC 8, AC 10)', () => {
 
     const before = await light();
     expect(before.statusLight).toBe('caution');
-    expect(before.reflectable).toBe(true);
+    // §6.3: only a 🔴 row has 회고하기. A 🟡 reaches Reflection from Habit Detail's ⋯.
+    expect(before.reflectable).toBe(false);
 
     const { result } = await render(repository);
     expect(await commit(() => result.current, 'fill_cue', '아침 커피 뒤')).toBeNull();
