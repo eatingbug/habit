@@ -4,6 +4,7 @@ import type {
   Habit,
   LogType,
   ReflectionAction,
+  Severity,
   SkipReason,
 } from '@/models';
 
@@ -694,8 +695,14 @@ export function habitIcon(habit: Pick<Habit, 'statId' | 'icon'>): string {
 
 /** "10월 9일" — a date by month and day, for copy that names a past day. */
 export function monthDayLabel(date: string): string {
-  const [, month, day] = date.split('-').map(Number);
+  const { month, day } = monthAndDay(date);
   return `${month}월 ${day}일`;
+}
+
+/** The month and day of a `YYYY-MM-DD` date, as numbers. */
+function monthAndDay(date: string): { month: number; day: number } {
+  const [, month, day] = date.split('-').map(Number);
+  return { month, day };
 }
 
 /** "10월 10일 토요일" — the Today header and the yesterday sheet's eyebrow. */
@@ -1011,7 +1018,7 @@ export function dayStateBadge(state: DayState): string {
  * 진단 카드의 배지: 심각도 모양과 성분 이름 ("▲ 언제·어디서"). 모양은 상태등과 같다.
  * `critical` 은 손봐야 해요의 ▲, 나머지는 살펴보세요의 ◆ 다.
  */
-export function diagnosisBadge(severity: 'ok' | 'warning' | 'critical', name: string): string {
+export function diagnosisBadge(severity: Severity, name: string): string {
   const glyph = severity === 'critical' ? STATUS_LIGHT_GLYPHS.intervention : STATUS_LIGHT_GLYPHS.caution;
   return `${glyph} ${name}`;
 }
@@ -1033,7 +1040,7 @@ export function proposalLine(actionLabel: string): string {
 
 /** "10/8" — 저널 메모의 날짜. */
 export function shortDateLabel(date: string): string {
-  const [, month, day] = date.split('-').map(Number);
+  const { month, day } = monthAndDay(date);
   return `${month}/${day}`;
 }
 
