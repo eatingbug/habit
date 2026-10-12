@@ -12,7 +12,8 @@ export interface FormFieldProps {
   optional?: string;
   /** The `?` tooltip copy (§6.8). */
   help?: string;
-  error?: string;
+  /** One message, or several drawn one per line (e.g. a floor and its unit). */
+  error?: string | (string | undefined)[];
   children: ReactNode;
 }
 
@@ -23,6 +24,7 @@ export interface FormFieldProps {
  */
 export function FormField({ label, optional, help, error, children }: FormFieldProps) {
   const { redesign } = useTheme();
+  const messages = (Array.isArray(error) ? error : [error]).filter((message) => message != null);
 
   return (
     <View style={styles.field}>
@@ -34,7 +36,11 @@ export function FormField({ label, optional, help, error, children }: FormFieldP
         {help != null && <HelpTip text={help} />}
       </View>
       {children}
-      {error != null && <Text style={[TYPE.label, { color: redesign.critInk }]}>{error}</Text>}
+      {messages.map((message) => (
+        <Text key={message} style={[TYPE.label, { color: redesign.critInk }]}>
+          {message}
+        </Text>
+      ))}
     </View>
   );
 }
