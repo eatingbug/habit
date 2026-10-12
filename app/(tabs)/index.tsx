@@ -6,15 +6,13 @@ import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { HabitRow } from '@/components/dashboard/HabitRow';
 import { LevelCard } from '@/components/dashboard/LevelCard';
 import { StatsSheet } from '@/components/dashboard/StatsSheet';
-import { Banner, Button, IconButton, RecordSheet, SkipSheet, Toast } from '@/components/re';
-import { MilestonePopup } from '@/components/today/MilestonePopup';
-import { StreakBanner } from '@/components/today/StreakBanner';
+import { Banner, Button, IconButton, RecordSheet, SkipSheet } from '@/components/re';
+import { LogOverlay, TOAST_CLEARANCE } from '@/components/today/LogOverlay';
 import {
   DASHBOARD_COPY,
   LOADING_NOTE,
   RETRY_LABEL,
   SETTINGS_COPY,
-  UNDO_TOAST_COPY,
 } from '@/config/copy';
 import { useDashboard } from '@/hooks/useDashboard';
 import { TYPE } from '@/theme/redesignTokens';
@@ -28,9 +26,6 @@ import { useTheme } from '@/theme/ThemeProvider';
  * which sheet is open are `useDashboard`'s. There are no component render tests
  * (jest.config.js), so a judgment written here would be one no test can reach.
  */
-
-/** Room under the scroll for the floating toast. */
-const TOAST_CLEARANCE = 112;
 
 export default function Dashboard() {
   const { redesign } = useTheme();
@@ -114,20 +109,12 @@ export default function Dashboard() {
         )}
       </ScrollView>
 
-      {toast != null && (
-        <Toast
-          title={toast.message}
-          lines={[toast.detail, toast.sub]}
-          actionLabel={UNDO_TOAST_COPY.undo}
-          onAction={() => void view.undoLast()}
-        />
-      )}
-      {celebration?.kind === 'banner' && (
-        <StreakBanner celebration={celebration} onDismiss={view.dismissCelebration} />
-      )}
-      {celebration?.kind === 'milestone' && (
-        <MilestonePopup celebration={celebration} onDismiss={view.dismissCelebration} />
-      )}
+      <LogOverlay
+        toast={toast}
+        onUndo={() => void view.undoLast()}
+        celebration={celebration}
+        onDismissCelebration={view.dismissCelebration}
+      />
 
       {sheet?.kind === 'record' && (
         <RecordSheet
