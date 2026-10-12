@@ -11,7 +11,7 @@ import {
 } from '@/config/copy';
 import { useRepository } from '@/context/RepositoryContext';
 import { dayStates } from '@/domain/classify';
-import { compareDates, dateOf, weekdayOf } from '@/domain/dates';
+import { compareDates, weekdayOf } from '@/domain/dates';
 import { sortByDomainOrder } from '@/domain/feed';
 import { localClock, localToday } from '@/lib/device';
 import type { DayState, Habit } from '@/models';
@@ -53,10 +53,13 @@ export interface JournalNoteItem {
   habitId: string;
   /** "📖 독서". */
   label: string;
-  /** That day's state for the habit (§6.0 Day-state marks), from every row of the day. */
-  state: DayState;
-  /** "✓ 했어요" — the state's mark and word. */
-  stateLabel: string;
+  /**
+   * That day's state for the habit (§6.0 Day-state marks), from every row of the day.
+   * `null` when the classifier gives the date none: the note shows with no state chip.
+   */
+  state: DayState | null;
+  /** "✓ 했어요" — the state's mark and word, or `null` with no state. */
+  stateLabel: string | null;
   time: string;
   text: string;
   /** Where a tap goes: the habit's Habit Detail (§6.4). */
@@ -122,10 +125,10 @@ interface Loaded {
 const EMPTY: Loaded = { habitChips: [], rows: [] };
 
 /**
- * The earliest date a free log is read from. A free log has no habit (§3.4), so no
- * `createdAt` bounds it; the repository takes a range, and this one holds every log.
+ * The start of "all time" for a repository range read. The list hides nothing, so free
+ * logs (which have no habit, §3.4) and notes are both read from here.
  */
-const FREE_LOGS_FROM = '1970-01-01';
+const ALL_TIME_START = '1970-01-01';
 
 /** "📖 독서" — a habit's chip and its notes' head. */
 function labelOf(habit: Habit): string {
@@ -150,13 +153,22 @@ export function useJournal({ today = localToday() }: { today?: string } = {}): J
 
       const notes = await Promise.all(
         habits.map(async (habit) => {
-          const entries = await repository.getEntries(habit.id, dateOf(habit.createdAt), today);
+          // From all time, not from `createdAt`: a row dated before the habit's birth is
+          // still the user's note, and the list hides no note.
+          const entries = await repository.getEntries(habit.id, ALL_TIME_START, today);
           const noted = entries.filter((entry) => (entry.note ?? '').trim().length > 0);
           if (noted.length === 0) return [];
-          const days = dayStates(habit, entries, dateOf(habit.createdAt), today, today);
+          // From the earliest row, so every noted date is classified. A date with rows is
+          // classified even outside the habit's scope (before birth, inside a pause).
+          const first = entries.reduce(
+            (lowest, entry) => (compareDates(entry.date, lowest) < 0 ? entry.date : lowest),
+            today,
+          );
+          const days = dayStates(habit, entries, first, today, today);
           const stateOn = new Map(days.map((day) => [day.date, day.state]));
           return noted.map((entry): Row => {
-            const state = stateOn.get(entry.date) as DayState;
+            // `null` only if the classifier had no opinion on the date; the note still shows.
+            const state = stateOn.get(entry.date) ?? null;
             return {
               date: entry.date,
               timestamp: entry.timestamp,
@@ -167,7 +179,7 @@ export function useJournal({ today = localToday() }: { today?: string } = {}): J
                 habitId: habit.id,
                 label: labelOf(habit),
                 state,
-                stateLabel: dayStateBadge(state),
+                stateLabel: state == null ? null : dayStateBadge(state),
                 time: localClock(entry.timestamp),
                 text: (entry.note ?? '').trim(),
                 href: `/habit/${habit.id}`,
@@ -177,7 +189,7 @@ export function useJournal({ today = localToday() }: { today?: string } = {}): J
         }),
       );
 
-      const logs = (await repository.getFreeLogs(FREE_LOGS_FROM, today)).map(
+      const logs = (await repository.getFreeLogs(ALL_TIME_START, today)).map(
         (log): Row => ({
           date: log.date,
           timestamp: log.timestamp,

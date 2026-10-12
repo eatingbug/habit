@@ -149,6 +149,30 @@ describe('useJournal — a note and its day', () => {
     ]);
   });
 
+  it('shows a note on a paused day, with that day’s state', async () => {
+    const paused = habit({ pauses: [{ from: YESTERDAY }], lifecycle: 'paused' });
+    const repository = await seed({
+      habits: [paused],
+      entries: [activity(paused, YESTERDAY, 4, '22:40', '쉬는 중에도 조금')],
+    });
+
+    const result = await journal(repository);
+
+    expect(notes(result.current)).toEqual([['📖 독서', '½ 조금 했어요', '쉬는 중에도 조금']]);
+  });
+
+  it('shows a note dated before the habit was created', async () => {
+    const late = habit({ createdAt: `${TODAY}T09:00:00.000Z` });
+    const repository = await seed({
+      habits: [late],
+      entries: [activity(late, TWO_AGO, 10, '20:00', '만들기 전에 한 날')],
+    });
+
+    const result = await journal(repository);
+
+    expect(notes(result.current)).toEqual([['📖 독서', '✓ 했어요', '만들기 전에 한 날']]);
+  });
+
   it('leaves out habit rows with no note, and the habits that are archived', async () => {
     const archived = habit({ id: 'old', name: '달리기', lifecycle: 'archived' });
     const repository = await seed({
