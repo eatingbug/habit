@@ -572,11 +572,12 @@ describe('useHabitDetail — the panel order (D6)', () => {
 });
 
 describe('useHabitDetail — backfill (D10, D14)', () => {
-  it('ends the heatmap ribbon on today', async () => {
+  it('draws the last 21 days, three weeks, ending on today (§6.5 Heatmap)', async () => {
     const result = await detail(await seed(habit({ createdAt: `${TODAY}T00:00:00.000Z` })));
     const cells = result.current.heatmap;
 
-    expect(cells).toHaveLength(TUNING.heatmapDays);
+    expect(cells).toHaveLength(21);
+    expect(cells[0].date).toBe(addDays(TODAY, -20));
     expect(cells[cells.length - 1].date).toBe(TODAY);
   });
 
