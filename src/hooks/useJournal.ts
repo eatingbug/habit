@@ -1,3 +1,4 @@
+import type { Href } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 
 import {
@@ -45,7 +46,7 @@ export interface JournalFreeItem {
   /** The row's accessible name: its words in reading order. */
   accessibilityLabel: string;
   /** Where a tap goes: Today (§6.4). */
-  href: string;
+  href: Href;
 }
 
 /** A note's row: a habit entry's 메모, with that day's state. */
@@ -64,7 +65,7 @@ export interface JournalNoteItem {
   text: string;
   accessibilityLabel: string;
   /** Where a tap goes: the habit's Habit Detail (§6.4). */
-  href: string;
+  href: Href;
 }
 
 export type JournalItem = JournalFreeItem | JournalNoteItem;
@@ -101,23 +102,34 @@ export interface JournalGroup {
 }
 
 /**
- * One filter chip: 전체, 끄적이기, then "📖 독서" per habit. A free log's kind is not a
- * filter (§6.4).
+ * What the list is narrowed to: every row, the free logs (끄적이기), or one habit's
+ * notes. A free log's kind is not a filter (§6.4).
  */
+export type JournalFilter = { kind: 'all' } | { kind: 'free' } | { kind: 'habit'; habitId: string };
+
+/** One filter chip: 전체, 끄적이기, then "📖 독서" per habit. */
 export interface JournalChip {
-  /** What `select` takes: `'all'`, `'free'` (free logs) or a habit's id (its notes). */
-  id: string;
+  /** A stable React key: `all`, `free` or `habit:{id}`. */
+  key: string;
+  /** What `select` takes. */
+  filter: JournalFilter;
   label: string;
   selected: boolean;
 }
+
+function keyOf(filter: JournalFilter): string {
+  return filter.kind === 'habit' ? `habit:${filter.habitId}` : filter.kind;
+}
+
+const ALL: JournalFilter = { kind: 'all' };
 
 export interface JournalView {
   /** "10월 10일 토요일" — the header above "글 모음". */
   dateLabel: string;
   title: string;
   chips: JournalChip[];
-  /** Pick a chip by its `id`. */
-  select(id: string): void;
+  /** Pick a chip by its `filter`. */
+  select(filter: JournalFilter): void;
   /** The rows under the selected filter, newest date first. */
   groups: JournalGroup[];
   /** No free log and no note at all: the empty screen (`JOURNAL_COPY.empty*`). */
@@ -141,7 +153,7 @@ interface Row {
 
 interface Loaded {
   /** The habit chips, in the repository's habit order. */
-  habitChips: { id: string; label: string }[];
+  habitChips: { filter: JournalFilter; label: string }[];
   /** Every row, newest first by the domain order. */
   rows: Row[];
 }
@@ -158,7 +170,7 @@ export function useJournal({ today = localToday() }: { today?: string } = {}): J
   const repository = useRepository();
   const { failure, report, clear } = useFailure();
   const [loaded, setLoaded] = useState<Loaded>(EMPTY);
-  const [selected, setSelected] = useState('all');
+  const [selected, setSelected] = useState<JournalFilter>(ALL);
   const [loading, setLoading] = useState(true);
   const [version, setVersion] = useState(0);
 
@@ -239,7 +251,10 @@ export function useJournal({ today = localToday() }: { today?: string } = {}): J
         setLoaded({
           habitChips: habits
             .filter((habit) => habit.lifecycle !== 'archived')
-            .map((habit) => ({ id: habit.id, label: labelOf(habit) })),
+            .map((habit) => ({
+              filter: { kind: 'habit' as const, habitId: habit.id },
+              label: labelOf(habit),
+            })),
           rows: sortByDomainOrder([...notes.flat(), ...logs]).reverse(),
         });
         clear();
@@ -262,24 +277,31 @@ export function useJournal({ today = localToday() }: { today?: string } = {}): J
   // while loading, and not after a failed read, which would claim the user has no rows.
   const empty = !loading && failure == null && loaded.rows.length === 0;
 
-  const options = [
-    { id: 'all', label: JOURNAL_COPY.all },
-    { id: 'free', label: JOURNAL_COPY.freeLogs },
+  const options: { filter: JournalFilter; label: string }[] = [
+    { filter: ALL, label: JOURNAL_COPY.all },
+    { filter: { kind: 'free' }, label: JOURNAL_COPY.freeLogs },
     ...loaded.habitChips,
   ];
   // A habit archived since it was picked has no chip left, so the filter falls back to 전체.
-  const filter = options.some((option) => option.id === selected) ? selected : 'all';
+  const filter = options.some((option) => keyOf(option.filter) === keyOf(selected)) ? selected : ALL;
   const chips: JournalChip[] = empty
     ? []
-    : options.map((option) => ({ ...option, selected: option.id === filter }));
+    : options.map((option) => ({
+        ...option,
+        key: keyOf(option.filter),
+        selected: keyOf(option.filter) === keyOf(filter),
+      }));
 
-  const shown = loaded.rows.filter(({ item }) =>
-    filter === 'all'
-      ? true
-      : filter === 'free'
-        ? item.kind === 'free'
-        : item.kind === 'note' && item.habitId === filter,
-  );
+  const shown = loaded.rows.filter(({ item }) => {
+    switch (filter.kind) {
+      case 'all':
+        return true;
+      case 'free':
+        return item.kind === 'free';
+      case 'habit':
+        return item.kind === 'note' && item.habitId === filter.habitId;
+    }
+  });
 
   const groups: JournalGroup[] = [];
   for (const row of [...shown].sort((a, b) => compareDates(b.date, a.date))) {

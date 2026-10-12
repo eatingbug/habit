@@ -1,4 +1,4 @@
-import { useFocusEffect, useRouter, type Href } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { Pencil } from 'lucide-react-native';
 import { useCallback, useRef } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -49,10 +49,10 @@ export default function Journal() {
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
           {view.chips.map((chip) => (
             <ChoiceChip
-              key={chip.id}
+              key={chip.key}
               label={chip.label}
               selected={chip.selected}
-              onPress={() => view.select(chip.id)}
+              onPress={() => view.select(chip.filter)}
             />
           ))}
         </ScrollView>
@@ -91,7 +91,7 @@ export default function Journal() {
                 key={item.id}
                 item={item}
                 divider={index < group.items.length - 1}
-                onPress={() => router.push(item.href as Href)}
+                onPress={() => router.push(item.href)}
               />
             ))}
           </Card>
