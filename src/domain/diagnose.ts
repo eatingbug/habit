@@ -1,5 +1,6 @@
 import type { DiagnosisComponent, DiagnosisFlag, Habit, HabitEntry, Severity } from '@/models';
 
+import { COMPONENT_LABELS, SKIP_REASON_LABELS } from '@/config/copy';
 import { TUNING } from '@/config/tuning';
 
 import { type ClassifiedDay, dayStates, isFloorMet } from './classify';
@@ -106,7 +107,7 @@ function ruleCueClustering(
       component: 'cue',
       severity: 'warning',
       message: `${dayName} 언제·어디서가 자꾸 어긋나요.`,
-      evidence: `안 함으로 찍은 ${skipDays.length}일 중 ${skipDays.length}일이 ${dayName}이에요`,
+      evidence: `못 했다고 찍은 ${skipDays.length}일 중 ${skipDays.length}일이 ${dayName}이에요`,
     },
   ];
 }
@@ -167,22 +168,22 @@ function ruleFillDesignField(
 
   // Cue first: it is the cheaper fix and the more common cause (§5's late introduction).
   const component: DiagnosisComponent = habit.cue ? 'identity' : 'cue';
-  const label = component === 'cue' ? '언제·어디서' : '이유';
-  const subject = component === 'cue' ? '언제·어디서가' : '이유가';
+  // 언제·어디서 and 이유 both end in a vowel, so both take 가.
+  const label = COMPONENT_LABELS[component];
   return [
     {
       component,
       severity: 'critical',
-      message: `${subject} 비어 있어요. 습관이 붙지 않는 가장 큰 이유일 수 있어요.`,
+      message: `${label}가 비어 있어요. 습관이 붙지 않는 가장 큰 이유일 수 있어요.`,
       evidence: `최근 ${window}일 달성률 ${percent(rate)}, ${label} 미설정`,
     },
   ];
 }
 
-const RULE5: Record<'cue' | 'floor' | 'identity', { message: string; reasonLabel: string }> = {
-  cue: { message: '깜빡해서 못 한 날이 반복돼요.', reasonLabel: '깜빡함' },
-  floor: { message: '최소량이 부담이라 안 한 날이 반복돼요.', reasonLabel: '너무 힘듦' },
-  identity: { message: '의미를 못 느껴 안 한 날이 반복돼요.', reasonLabel: '의미 없음' },
+const RULE5_MESSAGES: Record<'cue' | 'floor' | 'identity', string> = {
+  cue: '깜빡해서 못 한 날이 반복돼요.',
+  floor: '최소량이 부담이라 안 한 날이 반복돼요.',
+  identity: '의미를 못 느껴 안 한 날이 반복돼요.',
 };
 
 const RULE5_THRESHOLD: Record<'cue' | 'floor' | 'identity', number> = {
@@ -214,8 +215,9 @@ function ruleSkipReasonAttribution(
     flags.push({
       component: reason,
       severity: 'warning',
-      message: RULE5[reason].message,
-      evidence: `최근 ${window}일 중 '${RULE5[reason].reasonLabel}' 사유로 안 함으로 찍은 날 ${count}일`,
+      message: RULE5_MESSAGES[reason],
+      // The reason chip's own word, so the evidence names what the user tapped.
+      evidence: `최근 ${window}일 중 '${SKIP_REASON_LABELS[reason]}' 사유로 못 했다고 찍은 날 ${count}일`,
     });
   }
   return flags;

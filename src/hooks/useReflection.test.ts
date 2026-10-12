@@ -230,11 +230,11 @@ describe('diagnosis flags and their evidence (§6.4, AC 2–5)', () => {
 describe('the diagnosis copy table (§6.7, #131)', () => {
   const TUESDAYS = [addDays(TODAY, -5), addDays(TODAY, -12)];
 
-  /** Healthy, except `skipped` — those days hold one `cue` skip and nothing else. */
-  function cueSkips(skipped: string[]): HabitEntry[] {
+  /** Healthy, except `skipped` — those days hold one `reason` skip and nothing else. */
+  function cueSkips(skipped: string[], reason: SkipReason = 'cue'): HabitEntry[] {
     return [
       ...healthy().filter((entry) => !skipped.includes(entry.date)),
-      ...skipped.map((date) => skip(date, 'cue')),
+      ...skipped.map((date) => skip(date, reason)),
     ];
   }
 
@@ -256,6 +256,7 @@ describe('the diagnosis copy table (§6.7, #131)', () => {
     const { result } = await render(await seed(habit(), cueSkips(TUESDAYS)));
 
     expect(result.current.lead?.message).toBe('화요일 언제·어디서가 자꾸 어긋나요.');
+    expect(result.current.lead?.evidence).toBe('못 했다고 찍은 2일 중 2일이 화요일이에요');
     expect(result.current.folded).toEqual([]);
   });
 
@@ -282,8 +283,17 @@ describe('the diagnosis copy table (§6.7, #131)', () => {
     const { result } = await render(await seed(habit(), cueSkips([TUESDAYS[0], addDays(TODAY, -4)])));
 
     expect(result.current.lead?.message).toBe('깜빡해서 못 한 날이 반복돼요.');
-    expect(result.current.lead?.evidence).toBe("최근 28일 중 '깜빡함' 사유로 안 함으로 찍은 날 2일");
+    expect(result.current.lead?.evidence).toBe("최근 28일 중 '깜빡함' 사유로 못 했다고 찍은 날 2일");
     expect(result.current.folded).toEqual([]);
+  });
+
+  it('cites Rule 5 identity skips by the 안 내킴 chip’s own word', async () => {
+    const { result } = await render(
+      await seed(habit(), cueSkips([TUESDAYS[0], addDays(TODAY, -4)], 'identity')),
+    );
+
+    expect(result.current.lead?.badge).toBe('◆ 이유');
+    expect(result.current.lead?.evidence).toBe("최근 28일 중 '안 내킴' 사유로 못 했다고 찍은 날 2일");
   });
 
   it('names the two cue prescriptions 언제·어디서 정하기 and 언제·어디서 바꾸기', async () => {
