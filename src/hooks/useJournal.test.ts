@@ -173,25 +173,32 @@ describe('useJournal — a note and its day', () => {
     expect(notes(result.current)).toEqual([['📖 독서', '✓ 했어요', '만들기 전에 한 날']]);
   });
 
-  it('leaves out habit rows with no note, and the habits that are archived', async () => {
-    const archived = habit({ id: 'old', name: '달리기', lifecycle: 'archived' });
+  it('leaves out habit rows with no note, and keeps a free log with no text', async () => {
     const repository = await seed({
-      habits: [READ, archived],
-      entries: [
-        activity(READ, TODAY, 10, '08:00'),
-        activity(READ, TODAY, 2, '09:00', '   '),
-        activity(archived, TODAY, 5, '07:00', '보관한 습관의 메모'),
-      ],
+      habits: [READ],
+      entries: [activity(READ, TODAY, 10, '08:00'), activity(READ, TODAY, 2, '09:00', '   ')],
       logs: [freeLog(TODAY, 'mood', '', '12:00')],
     });
 
     const result = await journal(repository);
 
-    expect(result.current.chips.map((chip) => chip.label)).toEqual(['전체', '끄적이기', '📖 독서']);
     // A free log with no text still shows: it has a kind and a time.
     expect(result.current.groups.flatMap((group) => group.items)).toEqual([
       expect.objectContaining({ kind: 'free', label: '✏️ 끄적이기 · 기분', text: null }),
     ]);
+  });
+
+  it('shows an archived habit’s notes, but gives the habit no chip', async () => {
+    const archived = habit({ id: 'old', name: '달리기', statId: 'strength', lifecycle: 'archived' });
+    const repository = await seed({
+      habits: [READ, archived],
+      entries: [activity(archived, TODAY, 10, '07:00', '보관한 습관의 메모')],
+    });
+
+    const result = await journal(repository);
+
+    expect(result.current.chips.map((chip) => chip.label)).toEqual(['전체', '끄적이기', '📖 독서']);
+    expect(notes(result.current)).toEqual([['💪 달리기', '✓ 했어요', '보관한 습관의 메모']]);
   });
 });
 
@@ -250,7 +257,8 @@ describe('useJournal — filters', () => {
       expect(result.current.chips.map((chip) => chip.label)).not.toContain('📖 독서'),
     );
     expect(result.current.chips.find((chip) => chip.selected)?.label).toBe('전체');
-    expect(result.current.groups.flatMap((group) => group.items)).toHaveLength(4);
+    // 전체 holds every row, the archived habit's note included.
+    expect(result.current.groups.flatMap((group) => group.items)).toHaveLength(5);
   });
 
   it('전체 brings every row back', async () => {
