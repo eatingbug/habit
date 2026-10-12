@@ -30,14 +30,7 @@ export interface NewHabitView {
   /** Title, field labels in screen order, the "· 선택" mark, placeholders, button words. */
   copy: typeof NEW_HABIT_COPY;
   /** The `?` copy per field (§6.8). 측정 방식 has one copy whatever the selection. */
-  tooltips: {
-    kind: string;
-    floor: string;
-    target: string;
-    cue: string;
-    stat: string;
-    identity: string;
-  };
+  tooltips: Pick<typeof TOOLTIPS, 'kind' | 'floor' | 'target' | 'cue' | 'stat' | 'identity'>;
   kindOptions: { value: HabitKind; label: string }[];
   statOptions: { id: string; label: string; selected: boolean }[];
   name: string;
@@ -80,21 +73,12 @@ const BINARY_UNIT = 'time';
 /** §6.6: one stat is picked by default, so the user can move on without picking. */
 const DEFAULT_STAT_ID = TUNING.stats[0].id;
 
-const TIPS: NewHabitView['tooltips'] = {
-  kind: TOOLTIPS.kind,
-  floor: TOOLTIPS.floor,
-  target: TOOLTIPS.target,
-  cue: TOOLTIPS.cue,
-  stat: TOOLTIPS.stat,
-  identity: TOOLTIPS.identity,
-};
-
 const KIND_OPTIONS: NewHabitView['kindOptions'] = [
   { value: 'count', label: NEW_HABIT_COPY.kinds.count },
   { value: 'binary', label: NEW_HABIT_COPY.kinds.binary },
 ];
 
-const ERR = NEW_HABIT_COPY.errors;
+const FIELD_ERRORS = NEW_HABIT_COPY.errors;
 
 export function useNewHabit(): NewHabitView {
   const repository = useRepository();
@@ -126,7 +110,7 @@ export function useNewHabit(): NewHabitView {
   function validate(): { habit: Habit } | { errors: NewHabitErrors } {
     const next: NewHabitErrors = {};
     const trimmedName = name.trim();
-    if (trimmedName.length === 0) next.name = ERR.name;
+    if (trimmedName.length === 0) next.name = FIELD_ERRORS.name;
 
     let floorValue = 1;
     let unitValue = BINARY_UNIT;
@@ -137,16 +121,16 @@ export function useNewHabit(): NewHabitView {
       unitValue = floorUnit.trim();
       // §3.2 requires only `floor >= 1`, not an integer: a 1.5km run is a legitimate floor.
       if (!Number.isFinite(floorValue) || floorValue < 1) {
-        next.floor = ERR.floor;
+        next.floor = FIELD_ERRORS.floor;
       }
-      if (unitValue.length === 0) next.floorUnit = ERR.floorUnit;
+      if (unitValue.length === 0) next.floorUnit = FIELD_ERRORS.floorUnit;
       if (target.trim().length > 0) {
         const parsed = Number(target);
         if (!Number.isFinite(parsed) || parsed <= 0) {
-          next.target = ERR.target;
+          next.target = FIELD_ERRORS.target;
         } else if (next.floor == null && parsed <= floorValue) {
           // §3.2 (strict): a target at or below the floor makes `over` unreachable.
-          next.target = ERR.targetNotAboveFloor;
+          next.target = FIELD_ERRORS.targetNotAboveFloor;
         } else {
           targetValue = parsed;
         }
@@ -201,7 +185,7 @@ export function useNewHabit(): NewHabitView {
 
   return {
     copy: NEW_HABIT_COPY,
-    tooltips: TIPS,
+    tooltips: TOOLTIPS,
     kindOptions: KIND_OPTIONS,
     statOptions: TUNING.stats.map((stat) => ({
       id: stat.id,
