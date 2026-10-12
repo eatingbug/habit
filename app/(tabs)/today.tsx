@@ -3,19 +3,17 @@ import { ChevronDown, ChevronUp, Pencil } from 'lucide-react-native';
 import { useCallback, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { Banner, Button, Chip, RecordSheet, Sheet, SkipSheet, Toast } from '@/components/re';
+import { Banner, Button, Chip, RecordSheet, Sheet, SkipSheet } from '@/components/re';
 import { EditEntrySheet } from '@/components/today/EditEntrySheet';
 import { FreeLogSheet } from '@/components/today/FreeLogSheet';
 import { HabitCard } from '@/components/today/HabitCard';
-import { MilestonePopup } from '@/components/today/MilestonePopup';
-import { StreakBanner } from '@/components/today/StreakBanner';
+import { LogOverlay, TOAST_CLEARANCE } from '@/components/today/LogOverlay';
 import {
   LOADING_NOTE,
   RETRY_LABEL,
   SHEET_COPY,
   TODAY_COPY,
   TOOLTIPS,
-  UNDO_TOAST_COPY,
 } from '@/config/copy';
 import { feedItemId, useToday, type TodayFeedItem } from '@/hooks/useToday';
 import { RADIUS, TAP_TARGET, TYPE } from '@/theme/redesignTokens';
@@ -33,9 +31,6 @@ import { useTheme } from '@/theme/ThemeProvider';
  * The one piece of state kept here is whether the "오늘 기록 N개" fold is open — a
  * view toggle with no rule behind it.
  */
-
-/** Room under the scroll for the floating toast. */
-const TOAST_CLEARANCE = 112;
 
 export default function Today() {
   const { redesign } = useTheme();
@@ -160,20 +155,12 @@ export default function Today() {
         )}
       </ScrollView>
 
-      {toast != null && (
-        <Toast
-          title={toast.message}
-          lines={[toast.detail, toast.sub]}
-          actionLabel={UNDO_TOAST_COPY.undo}
-          onAction={() => void view.undoLast()}
-        />
-      )}
-      {celebration?.kind === 'banner' && (
-        <StreakBanner celebration={celebration} onDismiss={view.dismissCelebration} />
-      )}
-      {celebration?.kind === 'milestone' && (
-        <MilestonePopup celebration={celebration} onDismiss={view.dismissCelebration} />
-      )}
+      <LogOverlay
+        toast={toast}
+        onUndo={() => void view.undoLast()}
+        celebration={celebration}
+        onDismissCelebration={view.dismissCelebration}
+      />
 
       {sheet?.kind === 'record' && (
         <RecordSheet

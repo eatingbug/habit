@@ -11,8 +11,10 @@ import { Sheet } from './Sheet';
 
 export interface RecordSheetProps {
   onClose: () => void;
-  /** "📖 독서". */
+  /** "📖 독서", or the date in large type when `eyebrow` names the habit (Dashboard dots). */
   title: string;
+  /** A muted line above the title, e.g. the habit when the title is a date. */
+  eyebrow?: string;
   /** "지금 6쪽", drawn muted after the title. */
   sumLabel?: string | null;
   /** A count habit has a stepper; a yes/no habit records 1 with no amount (§3.3). */
@@ -42,6 +44,7 @@ export interface RecordSheetProps {
 export function RecordSheet({
   onClose,
   title,
+  eyebrow,
   sumLabel,
   isCount,
   unit,
@@ -85,6 +88,7 @@ export function RecordSheet({
       visible
       onClose={onClose}
       title={title}
+      eyebrow={eyebrow}
       titleAside={
         sumLabel != null ? <Text style={[TYPE.label, { color: redesign.muted }]}>{sumLabel}</Text> : undefined
       }

@@ -53,15 +53,26 @@ async function dashboard(repository: HabitRepository, today: string) {
 
 async function markDone(repository: HabitRepository, today: string): Promise<void> {
   const result = await dashboard(repository, today);
+  act(() => result.current.openRecord(result.current.rows[0].habit.id, today));
   await act(async () => {
-    await result.current.logActivity(result.current.rows[0].habit, 1);
+    await result.current.recordFromSheet(1);
   });
 }
 
-function strengthCard(view: Awaited<ReturnType<typeof dashboard>>['current']) {
-  const card = view.stats.find((entry) => entry.stat.id === 'strength');
-  if (card == null) throw new Error('no strength card');
-  return card;
+/** The Dashboard's 💪 stat as the stat sheet shows it, and the row's streak label. */
+async function strengthOn(repository: HabitRepository, today: string) {
+  const result = await dashboard(repository, today);
+  act(() => result.current.openStats());
+  const sheet = result.current.sheet;
+  if (sheet?.kind !== 'stats') throw new Error('no stat sheet');
+  const stat = sheet.rows.find((row) => row.id === 'strength');
+  if (stat == null) throw new Error('no strength row');
+  return { streakLabel: result.current.rows[0].streakLabel, stat };
+}
+
+/** "다음 레벨까지 별 N개" for a stat holding `xp`, below the top level. */
+function starsLeft(xp: number): string {
+  return `다음 레벨까지 별 ${TUNING.statLevelThresholds[levelForXP(xp) + 1] - xp}개`;
 }
 
 describe('the loop closes for a binary habit (§7.1)', () => {
@@ -74,20 +85,21 @@ describe('the loop closes for a binary habit (§7.1)', () => {
     }
 
     const fifth = addDays(DAY_1, 4);
-    const reloaded = (await dashboard(new LocalRepository(kv), fifth)).current;
+    const reloaded = await strengthOn(new LocalRepository(kv), fifth);
     const expectedXP = 5 * TUNING.xpPerFloorCompletion + TUNING.binaryStreakMilestones[5];
 
-    expect(reloaded.rows[0].streak).toBe(5);
-    expect(strengthCard(reloaded).xp).toBe(expectedXP);
-    expect(strengthCard(reloaded).level).toBe(levelForXP(expectedXP));
+    expect(reloaded.streakLabel).toBe('🔥 5');
+    expect(reloaded.stat.levelLabel).toBe(`레벨 ${levelForXP(expectedXP)}`);
+    expect(reloaded.stat.nextLine).toBe(starsLeft(expectedXP));
 
     await markDone(new LocalRepository(kv), addDays(DAY_1, 5));
-    const sixth = (await dashboard(new LocalRepository(kv), addDays(DAY_1, 5))).current;
+    const sixth = await strengthOn(new LocalRepository(kv), addDays(DAY_1, 5));
+    const sixthXP = expectedXP + TUNING.xpPerFloorCompletion;
 
-    expect(strengthCard(sixth).xp).toBe(expectedXP + TUNING.xpPerFloorCompletion);
-    expect(strengthCard(sixth).level).toBe(levelForXP(expectedXP + TUNING.xpPerFloorCompletion));
-    expect(strengthCard(sixth).level).toBeGreaterThan(strengthCard(reloaded).level);
+    expect(sixth.stat.levelLabel).toBe(`레벨 ${levelForXP(sixthXP)}`);
+    expect(sixth.stat.nextLine).toBe(starsLeft(sixthXP));
+    expect(levelForXP(sixthXP)).toBeGreaterThan(levelForXP(expectedXP));
     // The milestone is what carries it: six plain ✓ days alone stay a level lower.
-    expect(levelForXP(6 * TUNING.xpPerFloorCompletion)).toBeLessThan(strengthCard(sixth).level);
+    expect(levelForXP(6 * TUNING.xpPerFloorCompletion)).toBeLessThan(levelForXP(sixthXP));
   });
 });

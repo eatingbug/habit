@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 
 import {
-  backfillTimeLabel,
   cardBadge,
   cardProgressLine,
   countChipLabel,
@@ -16,11 +15,7 @@ import {
   LOAD_FAILED_NOTE,
   LOG_TYPE_LABELS,
   longDateLabel,
-  nowLabel,
-  recordResultLine,
-  recordSumLabel,
   SKIP_REASON_LABELS,
-  skipSheetTitle,
   TODAY_COPY,
   yesterdayBannerTitle,
 } from '@/config/copy';
@@ -45,6 +40,15 @@ import {
 import type { FreeLog, Habit, HabitEntry, LogType, SkipReason } from '@/models';
 
 import { useFailure, type Failure } from './failure';
+import {
+  labelOf,
+  recordFromSheet as writeRecord,
+  recordSheetView,
+  type RecordSheetView,
+  skipFromSheet as writeSkip,
+  skipSheetView,
+  type SkipSheetView,
+} from './recordSheet';
 import {
   logAffordances,
   useQuickLog,
@@ -131,36 +135,14 @@ export interface YesterdayBanner {
   blanks: YesterdayBlank[];
 }
 
-/** The record sheet (§6.2 Record sheet, `ReTodaySheet`), ready to render. */
-export interface RecordSheetView {
-  kind: 'record';
-  habit: Habit;
+/** The shared record sheet (`./recordSheet`), on the day it writes to. */
+export interface TodayRecordSheet extends RecordSheetView {
   day: SheetDay;
-  /** "📖 독서". */
-  title: string;
-  /** "지금 6쪽" on a count habit's today, else `null`. */
-  sumLabel: string | null;
-  isCount: boolean;
-  unit: string;
-  /** The stepper's start (B2). */
-  defaultAmount: number;
-  /** "지금 14:20", or "어제 12:00" for the noon-pinned backfill (B3). */
-  timeLabel: string;
-  /** "오늘 못 했어요 · 왜?", or `null` once the day holds activity (not skippable). */
-  skipLabel: string | null;
-  /** The one result line for the staged amount (C7a). */
-  resultLine(amount: number): string;
 }
 
-/** The skip reason sheet (§6.2, `ReTodaySkip`). A reason chip records the skip at once. */
-export interface SkipSheetView {
-  kind: 'skip';
-  habit: Habit;
+/** The shared skip reason sheet (`./recordSheet`), on the day it writes to. */
+export interface TodaySkipSheet extends SkipSheetView {
   day: SheetDay;
-  /** "🧘 명상". */
-  eyebrow: string;
-  /** "오늘 못 했어요 · 왜?" or "어제 못 했어요 · 왜?". */
-  title: string;
 }
 
 /** The yesterday list sheet (`ReTodayYesterday`). */
@@ -177,8 +159,8 @@ export interface YesterdayListSheetView {
  * loaded rows, so a write that fills a blank shortens the list sheet with no patching.
  */
 export type TodaySheet =
-  | RecordSheetView
-  | SkipSheetView
+  | TodayRecordSheet
+  | TodaySkipSheet
   | YesterdayListSheetView
   | FreeLogSheetView
   | EditFreeSheetView
@@ -588,11 +570,6 @@ function cardOf(habit: Habit, day: ClassifiedDay | undefined, affordances: LogAf
   };
 }
 
-/** "📖 독서" — a habit's icon and name, as sheets and rows head with it. */
-function labelOf(habit: Habit): string {
-  return `${habitIcon(habit)} ${habit.name}`;
-}
-
 /** A habit row's one summary line in the feed. */
 function summaryOf(habit: Habit, entry: HabitEntry): string {
   if (entry.skipReason != null) {
@@ -998,43 +975,20 @@ export function useToday({
       case 'skip': {
         const target = sheetTarget(open.habitId, open.day);
         if (target == null) return null;
-        return {
-          kind: 'skip',
-          habit: target.habit,
-          day: open.day,
-          eyebrow: labelOf(target.habit),
-          title: skipSheetTitle(DAY_WORDS[open.day]),
-        };
+        return { ...skipSheetView(target.habit, DAY_WORDS[open.day]), day: open.day };
       }
       case 'record': {
         const target = sheetTarget(open.habitId, open.day);
         if (target == null) return null;
-        const { habit, affordances } = target;
-        const dayWord = DAY_WORDS[open.day];
-        const isCount = habit.kind === 'count';
-        const { sum } = affordances.progress;
         return {
-          kind: 'record',
-          habit,
+          ...recordSheetView({
+            habit: target.habit,
+            affordances: target.affordances,
+            dayWord: DAY_WORDS[open.day],
+            isToday: open.day === 'today',
+            now,
+          }),
           day: open.day,
-          title: labelOf(habit),
-          sumLabel: isCount && open.day === 'today' ? recordSumLabel(sum, habit.floorUnit) : null,
-          isCount,
-          unit: habit.floorUnit,
-          defaultAmount: affordances.defaultAmount,
-          // B3: a new row is stamped now, or at noon on a backfill.
-          timeLabel: open.day === 'today' ? nowLabel(localClock(now())) : backfillTimeLabel(dayWord),
-          skipLabel: affordances.skippable ? skipSheetTitle(dayWord) : null,
-          resultLine: (amount: number) =>
-            recordResultLine({
-              sum,
-              amount,
-              floor: habit.floor,
-              // The target the engine honours: count only, strictly above the floor.
-              target: isCount && habit.target != null && habit.target > habit.floor ? habit.target : undefined,
-              unit: habit.floorUnit,
-              dayWord,
-            }),
         };
       }
     }
@@ -1072,16 +1026,16 @@ export function useToday({
 
   async function recordFromSheet(amount: number, note?: string): Promise<void> {
     if (sheet?.kind !== 'record' || intent == null) return;
-    const opts = { note, date: sheet.day === 'yesterday' ? yesterday : undefined };
-    await quick.logActivity(sheet.habit, amount, opts);
-    setIntent(after(intent, sheet.day === 'yesterday' ? sheet.habit.id : null));
+    const isYesterday = sheet.day === 'yesterday';
+    await writeRecord(quick, sheet, amount, note, isYesterday ? yesterday : undefined);
+    setIntent(after(intent, isYesterday ? sheet.habit.id : null));
   }
 
   async function skipFromSheet(reason: SkipReason, note?: string): Promise<void> {
     if (sheet?.kind !== 'skip' || intent == null) return;
-    const opts = { note, date: sheet.day === 'yesterday' ? yesterday : undefined };
-    await quick.logSkip(sheet.habit, reason, opts);
-    setIntent(after(intent, sheet.day === 'yesterday' ? sheet.habit.id : null));
+    const isYesterday = sheet.day === 'yesterday';
+    await writeSkip(quick, sheet, reason, note, isYesterday ? yesterday : undefined);
+    setIntent(after(intent, isYesterday ? sheet.habit.id : null));
   }
 
   /**
