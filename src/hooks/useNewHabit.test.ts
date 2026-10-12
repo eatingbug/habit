@@ -210,7 +210,7 @@ describe('useNewHabit — 습관 아이콘', () => {
     const { result, repository } = form();
     fillRequired(result);
     act(() => result.current.pickIcon('🏃'));
-    act(() => result.current.pickIcon(null));
+    act(() => result.current.pickIcon(undefined));
 
     expect(await submit(result)).toBe(true);
 

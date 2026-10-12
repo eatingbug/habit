@@ -9,9 +9,9 @@ export interface IconSheetProps {
   onClose: () => void;
   title: string;
   options: { icon: string; selected: boolean }[];
-  /** The word of the button that clears the pick (`null`). */
+  /** The word of the button that clears the pick (`undefined`). */
   clearLabel: string;
-  onPick: (icon: string | null) => void;
+  onPick: (icon: string | undefined) => void;
 }
 
 /**
@@ -21,7 +21,7 @@ export interface IconSheetProps {
 export function IconSheet({ visible, onClose, title, options, clearLabel, onPick }: IconSheetProps) {
   const { redesign } = useTheme();
 
-  function pick(icon: string | null) {
+  function pick(icon: string | undefined) {
     onPick(icon);
     onClose();
   }
@@ -47,7 +47,7 @@ export function IconSheet({ visible, onClose, title, options, clearLabel, onPick
           </Pressable>
         ))}
       </View>
-      <Button label={clearLabel} variant="line" block onPress={() => pick(null)} />
+      <Button label={clearLabel} variant="line" block onPress={() => pick(undefined)} />
     </Sheet>
   );
 }
