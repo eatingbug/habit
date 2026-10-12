@@ -4,6 +4,7 @@ import { createElement, type ComponentProps, type ReactNode } from 'react';
 import { RepositoryProvider } from '@/context/RepositoryContext';
 import { LocalRepository, MemoryKV, type HabitRepository } from '@/data';
 import { addDays } from '@/domain/dates';
+import { diagnose } from '@/domain/diagnose';
 import type { Habit, HabitEntry, SkipReason } from '@/models';
 
 import { useDashboard } from './useDashboard';
@@ -130,26 +131,8 @@ describe('the 7-day mirror (§6.4, AC 1)', () => {
       'skip',
       'pending',
     ]);
-    // Missed (outline ·) and skip (filled ✕) are both misses; only the latter has a
-    // reason — they must never share a mark (Reflection.body.html:32).
-    expect(result.current.mirror.map((cell) => cell.mark)).toEqual(['6', '·', '2', '9', '✕', '✕', '오늘']);
-    expect(result.current.mirror.map((cell) => cell.weekday)).toEqual([
-      '월',
-      '화',
-      '수',
-      '목',
-      '금',
-      '토',
-      '일',
-    ]);
-  });
-
-  it('marks a binary habit ✓ instead of a number', async () => {
-    const days = daysEndingAt(TODAY, 7);
-    const repository = await seed(binary(), [activity(days[0], 1), skip(days[1], 'floor')]);
-    const { result } = await render(repository);
-
-    expect(result.current.mirror.map((cell) => cell.mark)).toEqual(['✓', '✕', '·', '·', '·', '·', '오늘']);
+    // `ReReflection`: each cell is named by its weekday, and today's by 오늘.
+    expect(result.current.mirror.map((cell) => cell.label)).toEqual(['월', '화', '수', '목', '금', '토', '오늘']);
   });
 
   it('keeps 7 cells for a habit younger than a week — a day before its birth has no state', async () => {
@@ -166,7 +149,6 @@ describe('the 7-day mirror (§6.4, AC 1)', () => {
       'missed',
       'pending',
     ]);
-    expect(result.current.mirror[0].mark).toBe('');
   });
 
   it('lists the notes written on the mirrored days, oldest first', async () => {
@@ -180,8 +162,8 @@ describe('the 7-day mirror (§6.4, AC 1)', () => {
     const { result } = await render(repository);
 
     expect(result.current.notes).toEqual([
-      { date: days[2], text: '어깨가 뻐근' },
-      { date: days[5], text: '야근' },
+      { date: days[2], label: '3/24', text: '어깨가 뻐근' },
+      { date: days[5], label: '3/27', text: '야근' },
     ]);
   });
 });
@@ -191,12 +173,12 @@ describe('diagnosis flags and their evidence (§6.4, AC 2–5)', () => {
     const { subject, entries } = rule4Only();
     const { result } = await render(await seed(subject, entries));
 
-    expect(result.current.flags).toHaveLength(1);
-    const [card] = result.current.flags;
-    expect(card.flag.component).toBe('cue');
-    expect(card.flag.severity).toBe('critical');
-    expect(card.componentLabel).toBe('언제·어디서');
-    expect(card.flag.evidence).toContain('21%');
+    expect(result.current.folded).toEqual([]);
+    const card = result.current.lead!;
+    expect(card.key).toBe('cue');
+    expect(card.severity).toBe('critical');
+    expect(card.badge).toBe('▲ 언제·어디서');
+    expect(card.evidence).toContain('21%');
     expect(card.chart).toBeNull();
   });
 
@@ -205,7 +187,7 @@ describe('diagnosis flags and their evidence (§6.4, AC 2–5)', () => {
     const entries = daysEndingAt(TODAY, 41).map((date) => activity(date, 5));
     const { result } = await render(await seed(habit(), entries));
 
-    const load = result.current.flags.find((card) => card.flag.component === 'load');
+    const load = [result.current.lead, ...result.current.folded].find((card) => card?.key === 'load');
     expect(load?.chart?.bars.map((bar) => bar.total).slice(-3)).toEqual([35, 35, 35]);
   });
 
@@ -214,16 +196,16 @@ describe('diagnosis flags and their evidence (§6.4, AC 2–5)', () => {
     const entries = [9, 8, 7, 6].map((total, i) => activity(addDays('2026-03-25', -7 * (3 - i)), total));
     const { result } = await render(await seed(established, entries));
 
-    expect(result.current.decline?.totals).toEqual([8, 7, 6]);
-    expect(result.current.decline?.evidence).toContain('8 → 7 → 6');
-    expect(result.current.decline?.chart).not.toBeNull();
+    expect(result.current.lead).toMatchObject({ key: 'decline', severity: 'critical', badge: '▲ 주마다 한 양' });
+    expect(result.current.lead?.evidence).toContain('8 → 7 → 6');
+    expect(result.current.lead?.chart).not.toBeNull();
   });
 
   it('has no decline card on a habit whose light is not the decline arm', async () => {
     const { result } = await render(await seed(habit(), healthy()));
 
-    expect(result.current.decline).toBeNull();
-    expect(result.current.flags).toEqual([]);
+    expect(result.current.lead).toBeNull();
+    expect(result.current.folded).toEqual([]);
   });
 
   it('attributes nothing to a run of missed days — the 🔴 opens onto no diagnosis (AC 5, ADR-0002)', async () => {
@@ -235,8 +217,8 @@ describe('diagnosis flags and their evidence (§6.4, AC 2–5)', () => {
       'missed',
       'missed',
     ]);
-    expect(result.current.flags).toEqual([]);
-    expect(result.current.decline).toBeNull();
+    expect(result.current.lead).toBeNull();
+    expect(result.current.folded).toEqual([]);
     expect(result.current.suggested).toBe('keep');
   });
 });
@@ -266,44 +248,42 @@ describe('the diagnosis copy table (§6.7, #131)', () => {
     const { subject, entries } = rule4Identity();
     const identity = await render(await seed(subject, entries));
 
-    expect(cue.result.current.flags[0].componentLabel).toBe('언제·어디서');
-    expect(identity.result.current.flags[0].componentLabel).toBe('이유');
+    expect(cue.result.current.lead?.badge).toBe('▲ 언제·어디서');
+    expect(identity.result.current.lead?.badge).toBe('▲ 이유');
   });
 
   it('says Rule 2 with the weekday and 언제·어디서', async () => {
     const { result } = await render(await seed(habit(), cueSkips(TUESDAYS)));
 
-    expect(result.current.flags.map((card) => card.flag.message)).toEqual([
-      '화요일 언제·어디서가 자꾸 어긋나요.',
-    ]);
+    expect(result.current.lead?.message).toBe('화요일 언제·어디서가 자꾸 어긋나요.');
+    expect(result.current.folded).toEqual([]);
   });
 
   it('says Rule 4 for an empty 언제·어디서, with its evidence', async () => {
     const { subject, entries } = rule4Only();
     const { result } = await render(await seed(subject, entries));
 
-    expect(result.current.flags[0].flag.message).toBe(
+    expect(result.current.lead?.message).toBe(
       '언제·어디서가 비어 있어요. 습관이 붙지 않는 가장 큰 이유일 수 있어요.',
     );
-    expect(result.current.flags[0].flag.evidence).toBe('최근 14일 달성률 21%, 언제·어디서 미설정');
+    expect(result.current.lead?.evidence).toBe('최근 14일 달성률 21%, 언제·어디서 미설정');
   });
 
   it('says Rule 4 for an empty 이유, with its evidence', async () => {
     const { subject, entries } = rule4Identity();
     const { result } = await render(await seed(subject, entries));
 
-    expect(result.current.flags[0].flag.message).toBe(
-      '이유가 비어 있어요. 습관이 붙지 않는 가장 큰 이유일 수 있어요.',
-    );
-    expect(result.current.flags[0].flag.evidence).toBe('최근 14일 달성률 21%, 이유 미설정');
+    expect(result.current.lead?.message).toBe('이유가 비어 있어요. 습관이 붙지 않는 가장 큰 이유일 수 있어요.');
+    expect(result.current.lead?.evidence).toBe('최근 14일 달성률 21%, 이유 미설정');
   });
 
   it('says Rule 5 on cue skips with the 깜빡함 chip’s own word', async () => {
     // A Tuesday and a Wednesday: two weekdays, so Rule 2 stays silent.
     const { result } = await render(await seed(habit(), cueSkips([TUESDAYS[0], addDays(TODAY, -4)])));
 
-    expect(result.current.flags.map((card) => card.flag.message)).toEqual(['깜빡해서 못 한 날이 반복돼요.']);
-    expect(result.current.flags[0].flag.evidence).toBe("최근 28일 중 '깜빡함' 사유로 안 함으로 찍은 날 2일");
+    expect(result.current.lead?.message).toBe('깜빡해서 못 한 날이 반복돼요.');
+    expect(result.current.lead?.evidence).toBe("최근 28일 중 '깜빡함' 사유로 안 함으로 찍은 날 2일");
+    expect(result.current.folded).toEqual([]);
   });
 
   it('names the two cue prescriptions 언제·어디서 정하기 and 언제·어디서 바꾸기', async () => {
@@ -314,6 +294,79 @@ describe('the diagnosis copy table (§6.7, #131)', () => {
     expect(empty.result.current.options[0].label).toBe('언제·어디서 정하기');
     expect(set.result.current.suggested).toBe('adjust_cue');
     expect(set.result.current.options[0].label).toBe('언제·어디서 바꾸기');
+  });
+});
+
+/** §6.7 — only the most severe card is open; the rest fold under one button. */
+describe('which diagnosis opens (§6.7, #131)', () => {
+  /**
+   * No cue, and the floor met on every 4th day of the last 28 (the rest `partial`):
+   * Rule 1's `floor` warning (25% < 60%) comes first from `diagnose`, Rule 4's `cue`
+   * critical (14-day 4/14 = 29% < 50%) second.
+   */
+  function floorAndCue(): HabitEntry[] {
+    return daysEndingAt(TODAY, 28).map((date, i) => activity(date, i % 4 === 3 ? 6 : 2));
+  }
+
+  it('opens the critical card over an earlier warning, and folds the warning', async () => {
+    const { result } = await render(await seed(habit({ cue: undefined }), floorAndCue()));
+
+    expect(result.current.lead).toMatchObject({
+      severity: 'critical',
+      badge: '▲ 언제·어디서',
+      message: '언제·어디서가 비어 있어요. 습관이 붙지 않는 가장 큰 이유일 수 있어요.',
+      evidence: '최근 14일 달성률 29%, 언제·어디서 미설정',
+    });
+    expect(result.current.folded.map((card) => [card.badge, card.severity])).toEqual([
+      ['◆ 최소량', 'warning'],
+    ]);
+    expect(result.current.moreLabel).toBe('다른 점 1개 더 보기');
+  });
+
+  it('opens the one card there is, with nothing folded', async () => {
+    const { subject, entries } = rule4Only();
+    const { result } = await render(await seed(subject, entries));
+
+    expect(result.current.lead?.badge).toBe('▲ 언제·어디서');
+    expect(result.current.folded).toEqual([]);
+    expect(result.current.moreLabel).toBeNull();
+  });
+
+  it('opens nothing on a healthy habit', async () => {
+    const { result } = await render(await seed(habit(), healthy()));
+
+    expect(result.current.lead).toBeNull();
+    expect(result.current.folded).toEqual([]);
+    expect(result.current.moreLabel).toBeNull();
+    expect(result.current.diagnosed).toBe(false);
+  });
+});
+
+describe('the screen’s own words (§6.7, #131)', () => {
+  it('titles the screen with the habit’s name', async () => {
+    const { result } = await render(await seed(habit()));
+
+    expect(result.current.title).toBe('턱걸이, 잠깐 볼까요');
+  });
+
+  it('heads the recommended action with the chosen one, and follows a switch', async () => {
+    const { subject, entries } = rule4Only();
+    const { result } = await render(await seed(subject, entries));
+
+    expect(result.current.proposal).toBe('✓ 이렇게 해 볼까요: 언제·어디서 정하기');
+    act(() => result.current.choose('pause'));
+    expect(result.current.proposal).toBe('✓ 이렇게 해 볼까요: 잠깐 쉬기');
+  });
+
+  it('never says 계기 or 정체성', async () => {
+    const { subject, entries } = rule4Only();
+    const cue = await render(await seed(subject, entries));
+    const identity = await render(await seed({ ...subject, cue: '아침 커피 뒤', identity: undefined }, entries));
+
+    for (const view of [cue.result.current, identity.result.current]) {
+      const words = JSON.stringify([view.title, view.lead, view.folded, view.proposal, view.options]);
+      expect(words).not.toMatch(/계기|정체성/);
+    }
   });
 });
 
@@ -373,7 +426,7 @@ describe('commit (§6.4, AC 8, AC 10)', () => {
     const { subject, entries } = rule4Only();
     const repository = await seed(subject, entries);
     const { result } = await render(repository);
-    const flags = result.current.flags.map((card) => card.flag);
+    const flags = diagnose(subject, entries, TODAY);
 
     expect(await commit(() => result.current, 'fill_cue', '  아침 커피 뒤  ')).toBeNull();
 
@@ -397,7 +450,7 @@ describe('commit (§6.4, AC 8, AC 10)', () => {
     const repository = await seed(habit({ cue: undefined }));
     const { result } = await render(repository);
 
-    expect(await commit(() => result.current, 'fill_cue', '   ')).not.toBeNull();
+    expect(await commit(() => result.current, 'fill_cue', '   ')).toBe('언제·어디서를 적어 주세요.');
     expect((await repository.getHabit('h1'))?.cue).toBeUndefined();
     expect(await repository.getReflectionSessions('h1')).toEqual([]);
     expect(result.current.committed).toBe(false);
@@ -529,10 +582,22 @@ describe('the recover-first prompt (#22, ADR-0002)', () => {
     });
   }
 
+  /** The listed dates alone. */
+  function dates(view: ReflectionView): string[] | undefined {
+    return view.recover?.rows.map((row) => row.date);
+  }
+
   it('opens with the question on a run of missed days at the threshold (AC 1)', async () => {
     const { result } = await render(await seed(habit(), doneExcept(GAP)));
 
-    expect(result.current.recover).toEqual({ question: '이 3일, 하셨나요?', dates: GAP });
+    expect(result.current.recover).toEqual({
+      question: '이 3일, 하셨나요?',
+      rows: [
+        { date: GAP[0], label: '3/25 (수)' },
+        { date: GAP[1], label: '3/26 (목)' },
+        { date: GAP[2], label: '3/27 (금)' },
+      ],
+    });
   });
 
   it('does not open one day short of the threshold (AC 1)', async () => {
@@ -546,7 +611,7 @@ describe('the recover-first prompt (#22, ADR-0002)', () => {
     const gap = daysEndingAt(addDays(TODAY, -1), 14).filter((_, i) => i % 2 === 1);
     const { result } = await render(await seed(habit(), doneExcept(gap)));
 
-    expect(result.current.recover?.dates).toEqual(gap);
+    expect(dates(result.current)).toEqual(gap);
   });
 
   it('lists only missed dates on or after the habit’s birth (AC 4)', async () => {
@@ -555,7 +620,7 @@ describe('the recover-first prompt (#22, ADR-0002)', () => {
       await seed(habit({ createdAt: `${born}T00:00:00.000Z` }), [skip(addDays(TODAY, -1), 'cue')]),
     );
 
-    expect(result.current.recover?.dates).toEqual([born, addDays(TODAY, -2)]);
+    expect(dates(result.current)).toEqual([born, addDays(TODAY, -2)]);
   });
 
   it('fills a date with one activity row at the floor, at local noon — no day-state row (AC 5, AC 8)', async () => {
@@ -597,12 +662,8 @@ describe('the recover-first prompt (#22, ADR-0002)', () => {
     await settle(() => result.current.fill(GAP[1]));
 
     // The domain alone would no longer prompt: the run is 1 and the rate is 2/13.
-    await waitFor(() =>
-      expect(result.current.recover).toEqual({
-        question: '이 2일, 하셨나요?',
-        dates: [GAP[0], GAP[2]],
-      }),
-    );
+    await waitFor(() => expect(result.current.recover?.question).toBe('이 2일, 하셨나요?'));
+    expect(dates(result.current)).toEqual([GAP[0], GAP[2]]);
   });
 
   it('closes once every listed date is answered', async () => {
@@ -618,27 +679,45 @@ describe('the recover-first prompt (#22, ADR-0002)', () => {
     const { result } = await render(repository);
 
     act(() => result.current.askWhy(GAP[0]));
-    expect(result.current.asking).toBe(GAP[0]);
+    // The skip reason sheet's words (§6.2 B5), for the date it asks about.
+    expect(result.current.asking).toEqual({
+      date: GAP[0],
+      eyebrow: '💪 턱걸이',
+      title: '3/25 (수) 못 했어요 · 왜?',
+    });
     expect(await repository.getEntries('h1', GAP[0], GAP[0])).toEqual([]);
 
-    await settle(() => result.current.skip(GAP[0], 'floor'));
+    await settle(() => result.current.skip(GAP[0], 'floor', '야근'));
 
     const rows = await repository.getEntries('h1', GAP[0], GAP[0]);
     expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({ actual: 0, skipReason: 'floor' });
+    expect(rows[0]).toMatchObject({ actual: 0, skipReason: 'floor', note: '야근' });
     expect(Object.keys(rows[0])).not.toContain('state');
     expect(result.current.asking).toBeNull();
-    await waitFor(() => expect(result.current.recover?.dates).toEqual(GAP.slice(1)));
+    await waitFor(() => expect(dates(result.current)).toEqual(GAP.slice(1)));
+  });
+
+  it('closes the reason sheet on a failed skip, and reports the failure instead', async () => {
+    const repository = await seed(habit(), doneExcept(GAP));
+    const { result } = await render(repository);
+    jest.spyOn(repository, 'upsertEntry').mockRejectedValueOnce(new Error('offline'));
+
+    act(() => result.current.askWhy(GAP[0]));
+    await settle(() => result.current.skip(GAP[0], 'floor'));
+
+    expect(result.current.asking).toBeNull();
+    expect(result.current.failure).not.toBeNull();
+    expect(dates(result.current)).toEqual(GAP);
   });
 
   it('brings an undone fill back onto the list', async () => {
     const { result } = await render(await seed(habit(), doneExcept(GAP)));
 
     await settle(() => result.current.fill(GAP[1]));
-    await waitFor(() => expect(result.current.recover?.dates).toHaveLength(2));
+    await waitFor(() => expect(dates(result.current)).toHaveLength(2));
     await settle(() => result.current.undoLast());
 
-    await waitFor(() => expect(result.current.recover?.dates).toEqual(GAP));
+    await waitFor(() => expect(dates(result.current)).toEqual(GAP));
   });
 
   it('writes one row for two taps before the first write lands', async () => {
@@ -661,7 +740,7 @@ describe('the recover-first prompt (#22, ADR-0002)', () => {
 
     expect(result.current.failure).not.toBeNull();
     expect(result.current.answering).toBe(false);
-    expect(result.current.recover?.dates).toEqual(GAP);
+    expect(dates(result.current)).toEqual(GAP);
   });
 });
 
