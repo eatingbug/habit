@@ -1,4 +1,4 @@
-import { StyleSheet, TextInput } from 'react-native';
+import { StyleSheet, TextInput, type KeyboardTypeOptions } from 'react-native';
 
 import { RADIUS, TYPE } from '@/theme/redesignTokens';
 import { useTheme } from '@/theme/ThemeProvider';
@@ -12,6 +12,9 @@ export interface InputFieldProps {
   /** A taller box that wraps, e.g. the free-log text (`min-height:96px`). */
   multiline?: boolean;
   editable?: boolean;
+  /** A fixed width, e.g. the New habit amount box (`width:120px`). Absent: the box sizes as before. */
+  width?: number;
+  keyboardType?: KeyboardTypeOptions;
 }
 
 /** `.field` — a 56-tall box on `surface` with a 2px `borderStrong` border, `body` text. */
@@ -22,6 +25,8 @@ export function InputField({
   accessibilityLabel,
   multiline = false,
   editable = true,
+  width,
+  keyboardType,
 }: InputFieldProps) {
   const { redesign } = useTheme();
 
@@ -34,10 +39,12 @@ export function InputField({
       accessibilityLabel={accessibilityLabel ?? placeholder}
       multiline={multiline}
       editable={editable}
+      keyboardType={keyboardType}
       style={[
         TYPE.body,
         styles.field,
         multiline && styles.multiline,
+        width != null && { width },
         { color: redesign.text, backgroundColor: redesign.surface, borderColor: redesign.borderStrong },
       ]}
     />

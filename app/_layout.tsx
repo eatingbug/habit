@@ -22,7 +22,7 @@ function Shell() {
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="settings/index" options={{ headerShown: false }} />
         <Stack.Screen name="settings/archived" options={{ headerShown: false }} />
-        <Stack.Screen name="habit/new" options={{ title: '습관 만들기' }} />
+        <Stack.Screen name="habit/new" options={{ headerShown: false }} />
         <Stack.Screen name="habit/[id]" options={{ title: '습관' }} />
         <Stack.Screen name="reflect/[id]" options={{ title: '회고' }} />
       </Stack>

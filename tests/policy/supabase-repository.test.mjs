@@ -105,6 +105,7 @@ function fullHabit(id) {
     target: 30,
     cue: '양치 후',
     identity: '운동하는 사람',
+    icon: '🏃',
     lifecycle: 'established',
     createdAt: '1970-02-01T12:00:00.000Z',
     pauses: [{ from: '1970-02-05', to: '1970-02-07', resumeTo: 'established' }],
@@ -138,7 +139,7 @@ describe('habits — upsertHabit · getHabits · getHabit · deleteHabit', () =>
     const loaded = await repo.getHabit(habit.id);
     // 통째 비교가 요점이다: 키가 하나라도 더 생기면 여기서 깨진다.
     assert.deepStrictEqual(loaded, habit);
-    for (const key of ['target', 'cue', 'identity', 'pauses']) {
+    for (const key of ['target', 'cue', 'identity', 'icon', 'pauses']) {
       assert.ok(!(key in loaded), `${key} 키가 생겼다 — LocalRepository 는 만들지 않는다`);
     }
   });

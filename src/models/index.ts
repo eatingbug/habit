@@ -50,6 +50,8 @@ export interface Habit {
   cue?: string;
   /** Optional at creation (§5). */
   identity?: string;
+  /** Optional emoji (§6.6). Absent ⇒ screens show the stat's icon. */
+  icon?: string;
   lifecycle: Lifecycle;
   /** ISO-8601 UTC. */
   createdAt: string;

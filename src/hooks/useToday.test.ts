@@ -1386,6 +1386,15 @@ describe('useToday', () => {
       expect(rowOf(result.current, 'b1').cueLine).toBeNull();
     });
 
+    it("shows the habit's own icon when one was picked, and the stat's icon otherwise", async () => {
+      const result = await todayScreen(
+        new LocalRepository(await seed([habit({ icon: '🏃' }), binary({ statId: 'willpower' })])),
+      );
+
+      expect(rowOf(result.current, 'h1').icon).toBe('🏃');
+      expect(rowOf(result.current, 'b1').icon).toBe('🧘');
+    });
+
     it('fills the bar toward the floor and marks the card once the floor is met', async () => {
       const result = await todayScreen(new LocalRepository(await seed([habit()])));
 

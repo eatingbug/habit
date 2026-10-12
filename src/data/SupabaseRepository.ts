@@ -76,6 +76,7 @@ type HabitRow = {
   target: number | null;
   cue: string | null;
   identity: string | null;
+  icon: string | null;
   lifecycle: Lifecycle;
   created_at: string;
   pauses: PauseInterval[];
@@ -219,6 +220,7 @@ function toHabitRow(habit: Habit): HabitRow {
     target: habit.target ?? null,
     cue: habit.cue ?? null,
     identity: habit.identity ?? null,
+    icon: habit.icon ?? null,
     lifecycle: habit.lifecycle,
     created_at: habit.createdAt,
     pauses: habit.pauses ?? [],
@@ -246,6 +248,7 @@ function fromHabitRow(row: HabitRow): Habit {
     ...present('target', row.target),
     ...present('cue', row.cue),
     ...present('identity', row.identity),
+    ...present('icon', row.icon),
     ...present('pauses', row.pauses.length === 0 ? null : row.pauses),
   };
 }
