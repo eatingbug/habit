@@ -14,6 +14,8 @@ import {
   reflectionTitle,
   REFLECTION_ACTION_LABELS,
   REFLECTION_ACTION_REASONS,
+  REFLECTION_COPY,
+  REFLECTION_CUE_PLACEHOLDER,
   SAVE_FAILED_NOTE,
   shortDateLabel,
   skipSheetTitle,
@@ -93,6 +95,8 @@ export interface DiagnosisCard {
   key: DiagnosisComponent | 'decline';
   /** `critical` for Rule 4 and for the decline card, `warning` otherwise. */
   severity: Severity;
+  /** The palette colour of the badge and the left rule: `crit` for `critical`, else `warn`. */
+  tone: 'crit' | 'warn';
   /** The severity's mark and the component's name: "▲ 언제·어디서" (§6.7 Diagnosis copy). */
   badge: string;
   message: string;
@@ -105,8 +109,18 @@ export interface DiagnosisCard {
   chart: GrowthChart | null;
 }
 
-/** The design field an action writes, which is also the input the screen shows. */
-export type ActionField = 'cue' | 'identity' | 'floor' | 'target';
+/** The design field an action writes. */
+type ActionField = 'cue' | 'identity' | 'floor' | 'target';
+
+/** The input the screen shows for an action that writes a field. */
+export interface ActionInput {
+  /** The cue's example (`ReReflection`); empty for the other fields. */
+  placeholder: string;
+  /** A number pad: the floor and the target. */
+  numeric: boolean;
+  /** The habit's unit beside an amount, or `null` beside text. */
+  unit: string | null;
+}
 
 export interface ActionOption {
   action: ReflectionAction;
@@ -114,7 +128,7 @@ export interface ActionOption {
   /** The explanation shown with the action when it is the chosen one (§6.4). */
   reason: string;
   /** `null` for an action that writes no field — pause, archive, keep. */
-  field: ActionField | null;
+  input: ActionInput | null;
   /** The field's current value, to prefill the input. Empty when unset. */
   current: string;
 }
@@ -123,8 +137,11 @@ export interface ActionOption {
 export interface RecoverPrompt {
   /** `이 N일, 하셨나요?` — N counts the dates still listed. */
   question: string;
-  /** The `missed` dates still unanswered, ascending, each with its "3/25 (수)". */
-  rows: { date: string; label: string }[];
+  /**
+   * The `missed` dates still unanswered, ascending, each with its "3/25 (수)" and the
+   * accessible names of its two answers.
+   */
+  rows: { date: string; label: string; didLabel: string; didNotLabel: string }[];
 }
 
 /** The skip reason sheet that 안 했어요 opens for one date (§6.2 B5). */
@@ -144,6 +161,8 @@ export interface ReflectionView {
   habit: Habit | null;
   /** "{습관 이름}, 잠깐 볼까요". Empty while there is no habit. */
   title: string;
+  /** The screen's fixed words and its three `?` tooltips (`REFLECTION_COPY`). */
+  words: typeof REFLECTION_COPY;
   /** The last 7 days ending today, oldest first. */
   mirror: MirrorCell[];
   notes: MirrorNote[];
@@ -228,6 +247,15 @@ function snapshot(habit: Habit): HabitDesignSnapshot {
   };
 }
 
+function inputFor(habit: Habit, field: ActionField): ActionInput {
+  const numeric = field === 'floor' || field === 'target';
+  return {
+    placeholder: field === 'cue' ? REFLECTION_CUE_PLACEHOLDER : '',
+    numeric,
+    unit: numeric ? habit.floorUnit : null,
+  };
+}
+
 function currentValue(habit: Habit, field: ActionField | null): string {
   if (field === 'cue') return habit.cue ?? '';
   if (field === 'identity') return habit.identity ?? '';
@@ -267,6 +295,7 @@ function declineFor(habit: Habit, entries: HabitEntry[], today: string): Diagnos
   return {
     key: 'decline',
     severity: 'critical',
+    tone: 'crit',
     badge: diagnosisBadge('critical', DECLINE_BADGE),
     message: declineMessage(totals.length),
     evidence: declineEvidence(totals, level > habit.floor ? 'target' : 'floor', level),
@@ -284,6 +313,7 @@ function cardsFor(
   const cards: DiagnosisCard[] = flags.map((flag) => ({
     key: flag.component,
     severity: flag.severity,
+    tone: flag.severity === 'critical' ? 'crit' : 'warn',
     badge: diagnosisBadge(flag.severity, COMPONENT_LABELS[flag.component]),
     message: flag.message,
     evidence: flag.evidence,
@@ -306,7 +336,7 @@ function applied(
   switch (action) {
     case 'fill_cue':
     case 'adjust_cue':
-      return text.length > 0 ? { next: { ...habit, cue: text } } : { error: '언제·어디서를 적어 주세요.' };
+      return text.length > 0 ? { next: { ...habit, cue: text } } : { error: REFLECTION_COPY.cueRequired };
     case 'fill_identity':
       return text.length > 0
         ? { next: { ...habit, identity: text } }
@@ -453,6 +483,7 @@ export function useReflection(
     failure: failure ?? quick.failure,
     habit,
     title: habit == null ? '' : reflectionTitle(habit.name),
+    words: REFLECTION_COPY,
     mirror: habit == null ? [] : mirrorFor(habit, entries, today),
     notes: habit == null ? [] : notesFor(entries, today),
     lead,
@@ -469,7 +500,7 @@ export function useReflection(
               action,
               label: REFLECTION_ACTION_LABELS[action],
               reason: REFLECTION_ACTION_REASONS[action],
-              field,
+              input: field == null ? null : inputFor(habit, field),
               current: currentValue(habit, field),
             };
           }),
@@ -485,7 +516,15 @@ export function useReflection(
         ? null
         : {
             question: prompt.question,
-            rows: prompt.dates.map((date) => ({ date, label: weekdayDateLabel(date, weekdayOf(date)) })),
+            rows: prompt.dates.map((date) => {
+              const label = weekdayDateLabel(date, weekdayOf(date));
+              return {
+                date,
+                label,
+                didLabel: `${label} ${REFLECTION_COPY.did}`,
+                didNotLabel: `${label} ${REFLECTION_COPY.didNot}`,
+              };
+            }),
           },
     fill: (date) => answer((subject) => quick.logActivity(subject, subject.floor, { date })),
     askWhy: setAsking,

@@ -323,12 +323,13 @@ describe('which diagnosis opens (§6.7, #131)', () => {
 
     expect(result.current.lead).toMatchObject({
       severity: 'critical',
+      tone: 'crit',
       badge: '▲ 언제·어디서',
       message: '언제·어디서가 비어 있어요. 습관이 붙지 않는 가장 큰 이유일 수 있어요.',
       evidence: '최근 14일 달성률 29%, 언제·어디서 미설정',
     });
-    expect(result.current.folded.map((card) => [card.badge, card.severity])).toEqual([
-      ['◆ 최소량', 'warning'],
+    expect(result.current.folded.map((card) => [card.badge, card.severity, card.tone])).toEqual([
+      ['◆ 최소량', 'warning', 'warn'],
     ]);
     expect(result.current.moreLabel).toBe('다른 점 1개 더 보기');
   });
@@ -390,7 +391,7 @@ describe('the recommended action (§6.4, AC 7, AC 9)', () => {
     const chosen = result.current.options.find((option) => option.action === 'fill_cue');
     expect(chosen?.label).toBe('언제·어디서 정하기');
     expect(chosen?.reason.length).toBeGreaterThan(0);
-    expect(chosen?.field).toBe('cue');
+    expect(chosen?.input).toEqual({ placeholder: '예: “자기 전 양치 후, 침대 옆에서”', numeric: false, unit: null });
   });
 
   it('lets the user switch to another offered action, and ignores one that is not offered', async () => {
@@ -416,9 +417,9 @@ describe('the recommended action (§6.4, AC 7, AC 9)', () => {
 
     const floor = result.current.options.find((option) => option.action === 'lower_floor');
     const target = result.current.options.find((option) => option.action === 'raise_target');
-    expect(floor).toMatchObject({ field: 'floor', current: '5' });
-    expect(target).toMatchObject({ field: 'target', current: '8' });
-    expect(result.current.options.find((option) => option.action === 'keep')?.field).toBeNull();
+    expect(floor).toMatchObject({ input: { placeholder: '', numeric: true, unit: 'reps' }, current: '5' });
+    expect(target).toMatchObject({ input: { placeholder: '', numeric: true, unit: 'reps' }, current: '8' });
+    expect(result.current.options.find((option) => option.action === 'keep')?.input).toBeNull();
   });
 });
 
@@ -603,9 +604,9 @@ describe('the recover-first prompt (#22, ADR-0002)', () => {
     expect(result.current.recover).toEqual({
       question: '이 3일, 하셨나요?',
       rows: [
-        { date: GAP[0], label: '3/25 (수)' },
-        { date: GAP[1], label: '3/26 (목)' },
-        { date: GAP[2], label: '3/27 (금)' },
+        { date: GAP[0], label: '3/25 (수)', didLabel: '3/25 (수) 했어요', didNotLabel: '3/25 (수) 안 했어요' },
+        { date: GAP[1], label: '3/26 (목)', didLabel: '3/26 (목) 했어요', didNotLabel: '3/26 (목) 안 했어요' },
+        { date: GAP[2], label: '3/27 (금)', didLabel: '3/27 (금) 했어요', didNotLabel: '3/27 (금) 안 했어요' },
       ],
     });
   });

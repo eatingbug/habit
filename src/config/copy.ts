@@ -1014,7 +1014,10 @@ export function weekdayDateLabel(date: string, weekday: number): string {
   return `${shortDateLabel(date)} (${WEEKDAY_LABELS[weekday]})`;
 }
 
-/** 회고 화면의 고정 문구 (`ReReflection`). 툴팁은 `TOOLTIPS.reflection*` 이다. */
+/**
+ * 회고 화면의 고정 문구 (`ReReflection`). `useReflection` 이 화면에 그대로 넘긴다. 공통 문구
+ * (불러오는 중, 다시 시도, 실행취소, `?` 툴팁) 도 여기서 함께 넘긴다.
+ */
 export const REFLECTION_COPY = {
   back: '뒤로',
   did: DAY_STATE_WORDS.done,
@@ -1026,4 +1029,12 @@ export const REFLECTION_COPY = {
   nothingToFlag: '지금 기록으로는 짚을 것이 없어요. 기록이 없는 날을 채우면 더 정확히 볼 수 있어요.',
   commit: '이대로 고칠게요',
   notFound: '습관을 찾을 수 없어요.',
+  /** 비어 있는 언제·어디서를 고치려 할 때. */
+  cueRequired: '언제·어디서를 적어 주세요.',
+  loading: LOADING_NOTE,
+  retry: RETRY_LABEL,
+  undo: UNDO_TOAST_COPY.undo,
+  backfillHelp: TOOLTIPS.reflectionBackfill,
+  sevenDaysHelp: TOOLTIPS.reflectionSevenDays,
+  howItReadsHelp: TOOLTIPS.reflectionHowItReads,
 } as const;

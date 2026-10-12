@@ -7,14 +7,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Banner, Button, ChoiceChip, DayMark, HelpTip, IconButton, SkipSheet, Toast } from '@/components/re';
 import { ActionField } from '@/components/reflection/ActionField';
 import { DiagnosisCardView } from '@/components/reflection/DiagnosisCardView';
-import {
-  LOADING_NOTE,
-  REFLECTION_COPY,
-  REFLECTION_CUE_PLACEHOLDER,
-  RETRY_LABEL,
-  TOOLTIPS,
-  UNDO_TOAST_COPY,
-} from '@/config/copy';
 import { useReflection, type ReflectionView } from '@/hooks/useReflection';
 import type { ReflectionAction } from '@/models';
 import { RADIUS, TYPE } from '@/theme/redesignTokens';
@@ -48,28 +40,28 @@ function Recover({ view }: { view: ReflectionView }) {
     <View style={[styles.recover, { backgroundColor: redesign.surface, borderColor: redesign.borderStrong }]}>
       <View style={styles.head}>
         <Text style={[TYPE.headline, styles.grow, { color: redesign.text }]}>{view.recover.question}</Text>
-        <HelpTip text={TOOLTIPS.reflectionBackfill} />
+        <HelpTip text={view.words.backfillHelp} />
       </View>
       {view.recover.rows.map((row) => (
         <View key={row.date} style={styles.row}>
           <Text style={[TYPE.bodyStrong, styles.grow, { color: redesign.text }]}>{row.label}</Text>
           <Button
-            label={REFLECTION_COPY.did}
-            accessibilityLabel={`${row.label} ${REFLECTION_COPY.did}`}
+            label={view.words.did}
+            accessibilityLabel={row.didLabel}
             disabled={view.answering}
             style={[styles.answer, { borderColor: redesign.done }]}
             onPress={() => void view.fill(row.date)}
           />
           <Button
-            label={REFLECTION_COPY.didNot}
-            accessibilityLabel={`${row.label} ${REFLECTION_COPY.didNot}`}
+            label={view.words.didNot}
+            accessibilityLabel={row.didNotLabel}
             disabled={view.answering}
             style={styles.answer}
             onPress={() => view.askWhy(row.date)}
           />
         </View>
       ))}
-      <Text style={[TYPE.body, { color: redesign.muted }]}>{REFLECTION_COPY.recoverNote}</Text>
+      <Text style={[TYPE.body, { color: redesign.muted }]}>{view.words.recoverNote}</Text>
     </View>
   );
 }
@@ -124,19 +116,19 @@ export default function Reflect() {
         contentContainerStyle={[styles.page, { paddingTop: styles.page.paddingTop + insets.top }]}
       >
         <View style={styles.backRow}>
-          <IconButton icon={ChevronLeft} accessibilityLabel={REFLECTION_COPY.back} onPress={back} />
+          <IconButton icon={ChevronLeft} accessibilityLabel={view.words.back} onPress={back} />
         </View>
 
         {view.failure != null && (
           <Banner title={view.failure.message}>
-            <Button label={RETRY_LABEL} variant="warn" onPress={view.failure.retry} />
+            <Button label={view.words.retry} variant="warn" onPress={view.failure.retry} />
           </Banner>
         )}
 
         {view.loading ? (
-          <Text style={[TYPE.body, { color: redesign.muted }]}>{LOADING_NOTE}</Text>
+          <Text style={[TYPE.body, { color: redesign.muted }]}>{view.words.loading}</Text>
         ) : view.habit == null ? (
-          view.failure == null && <Text style={[TYPE.body, { color: redesign.muted }]}>{REFLECTION_COPY.notFound}</Text>
+          view.failure == null && <Text style={[TYPE.body, { color: redesign.muted }]}>{view.words.notFound}</Text>
         ) : (
           <>
             <Text style={[TYPE.display, { color: redesign.text }]} accessibilityRole="header">
@@ -145,7 +137,7 @@ export default function Reflect() {
 
             <Recover view={view} />
 
-            <HeadLine title={REFLECTION_COPY.sevenDays} help={TOOLTIPS.reflectionSevenDays} />
+            <HeadLine title={view.words.sevenDays} help={view.words.sevenDaysHelp} />
             <View style={styles.days}>
               {view.mirror.map((cell) => (
                 <View key={cell.date} style={styles.day}>
@@ -176,11 +168,11 @@ export default function Reflect() {
               </View>
             )}
 
-            <HeadLine title={REFLECTION_COPY.howItReads} help={TOOLTIPS.reflectionHowItReads} />
+            <HeadLine title={view.words.howItReads} help={view.words.howItReadsHelp} />
             {view.lead != null ? (
               <DiagnosisCardView card={view.lead} />
             ) : (
-              <Text style={[TYPE.body, { color: redesign.muted }]}>{REFLECTION_COPY.nothingToFlag}</Text>
+              <Text style={[TYPE.body, { color: redesign.muted }]}>{view.words.nothingToFlag}</Text>
             )}
             {view.moreLabel != null &&
               (showFolded ? (
@@ -200,18 +192,18 @@ export default function Reflect() {
               <View style={[styles.rec, { borderColor: redesign.accent, backgroundColor: redesign.accentTint }]}>
                 <Text style={[TYPE.title, { color: redesign.accentInk }]}>{view.proposal}</Text>
                 <Text style={[TYPE.body, { color: redesign.muted }]}>{chosen.reason}</Text>
-                {chosen.field != null && (
+                {chosen.input != null && (
                   <View style={styles.row}>
                     <ActionField
                       value={value}
                       onChangeText={setValue}
                       accessibilityLabel={chosen.label}
-                      placeholder={chosen.field === 'cue' ? REFLECTION_CUE_PLACEHOLDER : undefined}
-                      numeric={chosen.field === 'floor' || chosen.field === 'target'}
+                      placeholder={chosen.input.placeholder}
+                      numeric={chosen.input.numeric}
                       invalid={error != null}
                     />
-                    {(chosen.field === 'floor' || chosen.field === 'target') && (
-                      <Text style={[TYPE.body, { color: redesign.muted }]}>{view.habit.floorUnit}</Text>
+                    {chosen.input.unit != null && (
+                      <Text style={[TYPE.body, { color: redesign.muted }]}>{chosen.input.unit}</Text>
                     )}
                   </View>
                 )}
@@ -231,7 +223,7 @@ export default function Reflect() {
                       />
                     ))}
                 </View>
-                <Button label={REFLECTION_COPY.commit} variant="pri" block onPress={() => void commit()} />
+                <Button label={view.words.commit} variant="pri" block onPress={() => void commit()} />
               </View>
             )}
           </>
@@ -242,7 +234,7 @@ export default function Reflect() {
         <Toast
           title={view.toast.message}
           lines={[view.toast.detail, view.toast.sub]}
-          actionLabel={UNDO_TOAST_COPY.undo}
+          actionLabel={view.words.undo}
           onAction={() => void view.undoLast()}
         />
       )}

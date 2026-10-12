@@ -10,14 +10,14 @@ import { useTheme } from '@/theme/ThemeProvider';
  * `.flag` (`ReReflection`, SPEC §6.7) — the badge, the message and the evidence. The
  * evidence is always in the body, never behind a tap: it is the guard against
  * rubber-stamping (CONCEPT §6.2 rule 4). The left rule and the badge carry the
- * severity in colour, and the badge's ▲ or ◆ carries it in shape.
+ * severity in colour (`card.tone`), and the badge's ▲ or ◆ carries it in shape. Both
+ * come from `useReflection`; this component only renders them.
  *
- * The weekly chart under a `load` or decline card is still the old `GrowthPanel`: no
- * artboard draws it on this screen yet.
+ * The weekly chart under a `load` or decline card is still the old `GrowthPanel`. Its
+ * redesign is #147.
  */
 export function DiagnosisCardView({ card }: { card: DiagnosisCard }) {
   const { redesign } = useTheme();
-  const critical = card.severity === 'critical';
 
   return (
     <View
@@ -26,12 +26,12 @@ export function DiagnosisCardView({ card }: { card: DiagnosisCard }) {
         {
           backgroundColor: redesign.surface,
           borderColor: redesign.edge,
-          borderLeftColor: critical ? redesign.crit : redesign.warn,
+          borderLeftColor: redesign[card.tone],
           boxShadow: redesign.shadow,
         },
       ]}
     >
-      <Chip label={card.badge} tone={critical ? 'crit' : 'warn'} />
+      <Chip label={card.badge} tone={card.tone} />
       <Text style={[TYPE.title, { color: redesign.text }]}>{card.message}</Text>
       <Text style={[TYPE.body, styles.evidence, { color: redesign.muted, backgroundColor: redesign.inset }]}>
         {card.evidence}
