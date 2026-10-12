@@ -149,7 +149,8 @@ export function useJournal({ today = localToday() }: { today?: string } = {}): J
     let cancelled = false;
 
     async function load() {
-      const habits = (await repository.getHabits()).filter((habit) => habit.lifecycle !== 'archived');
+      // Every habit's notes show, an archived one's included. Only the chip is withheld.
+      const habits = await repository.getHabits();
 
       const notes = await Promise.all(
         habits.map(async (habit) => {
@@ -207,7 +208,9 @@ export function useJournal({ today = localToday() }: { today?: string } = {}): J
 
       if (!cancelled) {
         setLoaded({
-          habitChips: habits.map((habit) => ({ id: habit.id, label: labelOf(habit) })),
+          habitChips: habits
+            .filter((habit) => habit.lifecycle !== 'archived')
+            .map((habit) => ({ id: habit.id, label: labelOf(habit) })),
           rows: sortByDomainOrder([...notes.flat(), ...logs]).reverse(),
         });
         clear();
