@@ -248,7 +248,7 @@ describe('useJournal — filters', () => {
   it('끄적이기 keeps every free log, whatever its kind, and drops the notes', async () => {
     const result = await journal(await seed({ entries: entries(), logs: logs() }));
 
-    act(() => result.current.select('free'));
+    act(() => result.current.select({ kind: 'free' }));
 
     expect(result.current.chips.find((chip) => chip.selected)?.label).toBe('끄적이기');
     expect(outline(result.current)).toEqual([
@@ -260,15 +260,32 @@ describe('useJournal — filters', () => {
   it('a habit chip keeps only that habit’s notes', async () => {
     const result = await journal(await seed({ entries: entries(), logs: logs() }));
 
-    act(() => result.current.select(READ.id));
+    act(() => result.current.select({ kind: 'habit', habitId: READ.id }));
 
     expect(outline(result.current)).toEqual([['10월 9일', ['3장 끝.']]]);
+  });
+
+  it('keeps a habit chip apart from 끄적이기, even for a habit whose id is "free"', async () => {
+    const odd = habit({ id: 'free', name: '자유형' });
+    const repository = await seed({
+      habits: [odd],
+      entries: [activity(odd, TODAY, 10, '07:00', '물이 차가웠다.')],
+      logs: [freeLog(TODAY, 'idea', '점심 먹고 걸었다.', '14:05')],
+    });
+    const result = await journal(repository);
+
+    act(() => result.current.select({ kind: 'habit', habitId: 'free' }));
+
+    expect(result.current.chips.filter((chip) => chip.selected).map((chip) => chip.label)).toEqual([
+      '📖 자유형',
+    ]);
+    expect(outline(result.current)).toEqual([['오늘 · 10월 10일', ['물이 차가웠다.']]]);
   });
 
   it('falls back to 전체 when the picked habit is archived meanwhile', async () => {
     const repository = await seed({ entries: entries(), logs: logs() });
     const result = await journal(repository);
-    act(() => result.current.select(READ.id));
+    act(() => result.current.select({ kind: 'habit', habitId: READ.id }));
 
     await repository.upsertHabit({ ...READ, lifecycle: 'archived' });
     act(() => result.current.reload());
@@ -284,8 +301,8 @@ describe('useJournal — filters', () => {
   it('전체 brings every row back', async () => {
     const result = await journal(await seed({ entries: entries(), logs: logs() }));
 
-    act(() => result.current.select(MEDITATE.id));
-    act(() => result.current.select('all'));
+    act(() => result.current.select({ kind: 'habit', habitId: MEDITATE.id }));
+    act(() => result.current.select({ kind: 'all' }));
 
     expect(outline(result.current)).toEqual([
       ['오늘 · 10월 10일', ['점심 먹고 10분 걸었다.', '손목이 좀 아팠다.']],
@@ -311,7 +328,7 @@ describe('useJournal — empty', () => {
       await seed({ entries: [activity(READ, TODAY, 10, '08:00', '술술 읽혔다.')] }),
     );
 
-    act(() => result.current.select('free'));
+    act(() => result.current.select({ kind: 'free' }));
 
     expect(result.current.empty).toBe(false);
     expect(result.current.noMatch).toBe(true);
