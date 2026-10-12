@@ -162,7 +162,7 @@ describe('useNewHabit — 검사와 저장', () => {
 
     expect(await submit(result)).toBe(false);
 
-    expect(result.current.failure?.message).toBe(
+    expect(result.current.saveError).toBe(
       '저장하지 못했어요. 연결을 확인하고 다시 시도해 주세요.',
     );
     expect(result.current.name).toBe('턱걸이');

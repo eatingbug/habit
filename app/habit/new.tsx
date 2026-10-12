@@ -165,9 +165,9 @@ export default function NewHabit() {
           />
         </FormField>
 
-        {form.failure != null && (
+        {form.saveError != null && (
           <Text style={[TYPE.bodyStrong, { color: redesign.critInk }]} accessibilityLiveRegion="polite">
-            {form.failure.message}
+            {form.saveError}
           </Text>
         )}
 
