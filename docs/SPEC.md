@@ -1311,7 +1311,7 @@ On screen (#102, #109, #111):
 - "이렇게 보여요" with a `?`. Only the most severe diagnosis card is open. The rest fold under "다른 점 N개 더 보기".
 - The open card always shows its evidence in the body.
 - The recommended action: "✓ 이렇게 해 볼까요: …", its explanation, the alternatives and the button "이대로 고칠게요".
-- The closing evidence sentence at the bottom is gone. "직접 표시한 날만 보고…" moved to the `?` of 이렇게 보여요.
+- The closing evidence sentence at the bottom is gone. "직접 남긴 기록만 보고 원인을 짚어요. …" moved to the `?` of 이렇게 보여요 (§6.8).
 
 Diagnosis copy (#102, #111):
 
