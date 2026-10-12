@@ -780,9 +780,7 @@ export function cueLine(cue: string): string {
 
 /** The card's status words, mark first: ✓ 했어요, ★ 목표까지 했어요, − 못 했어요. */
 export function cardBadge(state: DayState): string | null {
-  return state === 'done' || state === 'over' || state === 'skip'
-    ? `${DAY_STATE_GLYPHS[state]} ${DAY_STATE_WORDS[state]}`
-    : null;
+  return state === 'done' || state === 'over' || state === 'skip' ? dayStateBadge(state) : null;
 }
 
 /** "6 / 10쪽", or past the target "30쪽 · 목표 30쪽" (§6.2 Habit card). */
