@@ -183,11 +183,10 @@ describe('쓰기 실패 — 삼켜지지 않는다 (#51)', () => {
     });
     await waitFor(() => expect(result.current.rows).toHaveLength(1));
 
+    act(() => result.current.openRecord(habit().id, TODAY));
     repository.failing = true;
     await act(async () => {
-      await expect(result.current.logActivity(habit(), 5, { note: '메모' })).rejects.toThrow(
-        'network',
-      );
+      await expect(result.current.recordFromSheet(5, '메모')).rejects.toThrow('network');
     });
 
     expect(result.current.failure).toBeNull();
@@ -204,9 +203,10 @@ describe('쓰기 실패 — 삼켜지지 않는다 (#51)', () => {
     });
     await waitFor(() => expect(result.current.rows).toHaveLength(1));
 
+    act(() => result.current.openSkip(habit().id, TODAY));
     repository.failing = true;
     await act(async () => {
-      await expect(result.current.logSkip(habit(), 'cue')).rejects.toThrow('network');
+      await expect(result.current.skipFromSheet('cue')).rejects.toThrow('network');
     });
 
     expect(result.current.failure).toBeNull();
@@ -224,7 +224,8 @@ describe('쓰기 실패 — 삼켜지지 않는다 (#51)', () => {
       wrapper: wrapperFor(repository),
     });
     await waitFor(() => expect(result.current.rows).toHaveLength(1));
-    await act(() => result.current.logActivity(habit(), 5));
+    act(() => result.current.openRecord(habit().id, TODAY));
+    await act(() => result.current.recordFromSheet(5));
     expect(result.current.toast).not.toBeNull();
 
     repository.failing = true;

@@ -1,166 +1,215 @@
 import { useCallback, useEffect, useState } from 'react';
 
-import { LOAD_FAILED_NOTE } from '@/config/copy';
+import {
+  characterLevelLabel,
+  DAY_WORDS,
+  dayCellLabel,
+  LOAD_FAILED_NOTE,
+  longDateLabel,
+  monthDayLabel,
+  needsAttentionLabel,
+  starsToNextLevelLabel,
+  statLevelLabel,
+  statLineLabel,
+  streakCountLabel,
+  WEEKDAY_LABELS,
+} from '@/config/copy';
 import { TUNING } from '@/config/tuning';
 import { useRepository } from '@/context/RepositoryContext';
+import { isBackfillableDate } from '@/domain/backfill';
 import { dayStates } from '@/domain/classify';
-import { compareDates, dateOf, windowEndingAt } from '@/domain/dates';
-import { heatCells, type HeatCell } from '@/domain/heatLevel';
+import { addDays, compareDates, dateOf, weekdayOf, windowEndingAt } from '@/domain/dates';
 import { computeStatXP, levelForXP, type HabitWithEntries } from '@/domain/score';
 import { aggregateStatusCount, deriveStatusLight, type StatusLight } from '@/domain/statusLight';
 import { computeStreak } from '@/domain/streak';
 import { localToday } from '@/lib/device';
-import type { Habit, SkipReason, Stat } from '@/models';
+import type { DayState, Habit, HabitEntry, SkipReason, Stat } from '@/models';
 
 import { useFailure, type Failure } from './failure';
 import {
+  labelOf,
+  recordFromSheet as writeRecord,
+  recordSheetView,
+  type RecordSheetView,
+  skipFromSheet as writeSkip,
+  skipSheetView,
+  type SkipSheetView,
+} from './recordSheet';
+import {
   logAffordances,
   useQuickLog,
-  type LogAffordances,
   type QuickLogToast,
+  type StreakCelebration,
 } from './useQuickLog';
 
 /**
- * The Dashboard's data path — SPEC §6.1.
+ * The Dashboard's data path — SPEC §6.3, the `ReDashboard*` artboards (#129).
  *
- * The hook is the ticket's test seam (jest.config.js: hooks + an in-memory repository,
- * no component render tests), so two things are deliberate:
+ * The hook is the test seam (jest.config.js: hooks + an in-memory repository, no
+ * component render tests). So every word, every order and every figure the screen shows
+ * is made here, and the screen only renders:
  *
  * - the repository arrives through `RepositoryProvider`, never constructed here;
- * - `today` is a parameter. Day-state depends on it (`pending` vs `missed`,
- *   ADR-0001), so a test must be able to pin it. `new Date()` is read only at the UI
- *   edge, in this file's default.
+ * - `today` and `now` are parameters. Day-state depends on `today` (`pending` vs
+ *   `missed`, ADR-0001), and the record sheet's time on `now`, so a test pins both.
  */
 
-export interface DashboardRow extends LogAffordances {
+/** The dots under a row's head: the last 7 days, ending today (§6.3). */
+const WEEK_DAYS = 7;
+
+/** One of a row's 7-day dots. The whole cell is the touch area (§6.0). */
+export interface DashboardDay {
+  date: string;
+  /**
+   * The day-state mark, or `null` for a day with none: before `createdAt`, or an empty
+   * day inside a pause (ADR-0003). Such a cell draws no mark and opens nothing.
+   */
+  state: DayState | null;
+  /** 일 … 토, and 오늘 for the last one. */
+  label: string;
+  /** "10월 8일 목요일 기록 없음". Empty when `state` is `null`. */
+  accessibilityLabel: string;
+  /** Does a tap open the record sheet for this date? */
+  tappable: boolean;
+}
+
+export interface DashboardRow {
   habit: Habit;
-  /** Absent when `habit.statId` names no configured stat — a data defect, not a state. */
-  stat?: Stat;
-  /** `TUNING.heatmapDays` cells, ascending, ending today. */
-  cells: HeatCell[];
+  /** "📖 독서". A row shows no stat (§6.3). */
+  label: string;
+  week: DashboardDay[];
   /**
-   * Consecutive floor-met days ending today (§4.2) — the canvas's `🔥 N`
-   * (`design/parts/Dashboard.body.html:38`).
-   *
-   * Never stored, always recomputed from the rows, which is what makes backfill a pure
-   * repair: filling a `missed` date re-joins the runs on either side of it (ADR-0001,
-   * #14). Read from the whole history, not the heatmap window — a run longer than
-   * `TUNING.heatmapDays` would otherwise be silently clipped.
+   * "🔥 12" — consecutive floor-met days ending today (§4.2). Read from the whole
+   * history, so a backfill re-joins the runs on either side of a filled day (ADR-0001).
    */
-  streak: number;
-  /**
-   * The row's 상태등 (§4.6) — `deriveStatusLight`, the whole diagnosis as one glyph.
-   *
-   * Derived here rather than in the screen for the reason `StatProgress` gives: the
-   * screen has no test seam, and this is a judgment (which of four states a habit is
-   * in), not a rendering. The screen only chooses the glyph for it.
-   */
+  streakLabel: string;
+  /** The row's status light (§4.6), drawn as shape and word by `StatusLight`. */
   statusLight: StatusLight;
-  /**
-   * Does the light open the Reflection screen when pressed? 🔴 and 🟡 only (§6.1): the
-   * light is **the only entry point** to reflection, and a 🟢 or ⭐ has nothing to
-   * reflect on. Decided here so the screen's `Pressable` wraps a tested condition.
-   */
+  /** Only a 🔴 row has 회고하기 (§6.3). A 🟡 reaches Reflection from Habit Detail. */
   reflectable: boolean;
 }
 
-/**
- * One stat card (§6.1, canvas `design/parts/Dashboard.body.html:11–15`) — #17 AC 1, AC 5.
- *
- * Every figure is resolved here and not in the screen: `jest.config.js` matches
- * `src/**` and there are no render tests, so a division written in JSX is arithmetic
- * nothing asserts. The screen applies words to these numbers.
- */
-export interface StatProgress {
+/** One stat's figures (#17). The views below turn them into words and bar widths. */
+interface StatProgress {
   stat: Stat;
-  /** `levelForXP(computeStatXP(...))` — §4.2's one level definition (`.lv`). */
+  /** `levelForXP(computeStatXP(...))` — §4.2's one level definition. */
   level: number;
-  /** The stat's cumulative XP, summed over every habit mapped to it. */
+  /** The stat's cumulative XP, summed over every habit mapped to it, archived included. */
   xp: number;
-  /**
-   * XP still owed to the next level, or `null` at the **top** level, where there is no
-   * next threshold — `levelForXP` stops at the last index of
-   * `TUNING.statLevelThresholds`. Naively subtracting there would ship a negative
-   * "다음 레벨까지", so the state is named instead of computed around.
-   */
+  /** XP still owed to the next level, or `null` at the top level. */
   xpToNextLevel: number | null;
-  /**
-   * The bar's fill, 0–1 — the share of the **current level's band** that is done, not
-   * of the stat's whole XP. The canvas measures it the same way
-   * (`design/parts/Dashboard.logic.js:66–68` divides by the band's own `span`). Full at
-   * the top level, where the band has no width.
-   */
+  /** The share of the current level's band that is done, 0–1. Full at the top level. */
   barFraction: number;
 }
 
+/** The level card (§6.3): a solid `accent` card. */
+export interface LevelCardView {
+  /** "캐릭터 레벨 4". */
+  title: string;
+  /** "💪 3 · 📖 2 · 🧘 4", or `null` with no habits (`ReDashboardEmpty`). */
+  statLine: string | null;
+  /** The bar's fill, "62%" — measured on the stat that will raise the character level next. */
+  barWidth: BarWidth;
+  /** "다음 레벨까지 별 120개". */
+  nextLine: string;
+}
+
+/** One stat in the stat sheet (`ReDashboardStats`). */
+export interface StatSheetRow {
+  id: string;
+  /** "💪 힘". */
+  title: string;
+  /** "레벨 3". */
+  levelLabel: string;
+  /** The bar's fill, "35%". */
+  barWidth: BarWidth;
+  /** The shown habits tied to the stat, "턱걸이 · 스쿼트". Empty when there is none. */
+  habits: string;
+  /** "다음 레벨까지 별 90개". */
+  nextLine: string;
+}
+
+/** The shared record sheet (`./recordSheet`) for one date (§6.3 B1). */
+export interface DashboardRecordSheet extends RecordSheetView {
+  date: string;
+}
+
+/** The shared skip reason sheet (`./recordSheet`) for one date. */
+export interface DashboardSkipSheet extends SkipSheetView {
+  date: string;
+}
+
+/** The stat sheet the level card opens (`ReDashboardStats`). */
+export interface StatsSheet {
+  kind: 'stats';
+  /** "캐릭터 레벨 4". */
+  title: string;
+  /** "다음 레벨까지 별 120개". */
+  subtitle: string;
+  rows: StatSheetRow[];
+}
+
+export type DashboardSheet = DashboardRecordSheet | DashboardSkipSheet | StatsSheet;
+
 export interface DashboardView {
+  /** "10월 10일 토요일" — over the title. */
+  dateLabel: string;
+  /** Sorted by status light: 손봐야 해요, 살펴보세요, then 괜찮아요 (§6.3). */
   rows: DashboardRow[];
+  level: LevelCardView;
   /**
-   * The stat cards, one per `TUNING.stats` in its declared order — a stat with no
-   * habits at all is still drawn, at level 0, because the canvas draws all three and a
-   * card appearing only once a habit exists would read as a missing stat. Empty while
-   * `loading`.
+   * "손볼 습관 N개" — 🟡 and 🔴 among the shown habits, `aggregateStatusCount`'s two
+   * counts summed. Paused habits count nothing by construction (ADR-0003). `null` with
+   * no rows: a failed read must not claim "0개".
    */
-  stats: StatProgress[];
-  /**
-   * The character header's `Lv.N` (canvas `design/parts/Dashboard.body.html:5`).
-   * SPEC §4.2 defines the character level as the **highest** stat level; deriving it in
-   * the screen would be a judgment no test can reach.
-   */
-  characterLevel: number;
-  /**
-   * 손볼 습관 N개 — the §4.6 aggregate the canvas puts beside the character block
-   * (`design/parts/Dashboard.body.html:7`). `aggregateStatusCount`'s two counts summed:
-   * 🟡 and 🔴 are both "손볼" — the chip is one number, and the two lights already
-   * distinguish themselves on the rows below.
-   *
-   * Counted over the same non-archived habits the rows show. Paused habits contribute
-   * nothing by construction — `deriveStatusLight` returns `stable` for them (ADR-0003).
-   */
-  shaky: number;
+  needsAttentionLabel: string | null;
   loading: boolean;
   /**
-   * 실패한 읽기나 실패한 실행취소, 또는 `null`.
-   *
-   * **`loading` 이 거짓이라고 화면이 빈 것은 아니다.** 읽기가 실패해도 `loading` 은
-   * 내려가야 하지만(안 그러면 "불러오는 중…" 이 영원히 남는다), 그렇다고 `rows` 가
-   * 비었으니 "아직 습관이 없습니다" 라고 말하면 앱이 사용자 기록이 없다고 **주장하는**
-   * 것이라 멈춘 것보다 나쁘다. 이 값이 있으면 화면은 빈 상태 대신 실패를 말한다.
-   *
-   * 기록과 건너뛰기의 실패는 여기 오지 않는다. 두 쓰기는 reject 하고, 기록 모달의
-   * `LogForm` 이 그것을 받아 폼 안에서 말한다(#80). 여기서 또 잡으면 한 실패에 배너가
-   * 둘이 뜨고, 폼은 성공으로 읽어 모달을 닫는다.
+   * No habit to show, and the read did not fail: the empty screen (`ReDashboardEmpty`).
+   * False while a failure is set, which would otherwise claim there are no habits (#51).
+   */
+  empty: boolean;
+  /**
+   * A failed read or a failed undo, or `null`. While it is set the screen says the
+   * failure instead of the empty state: rows being empty then means "not read", not
+   * "no habits" (#51). A failed record or skip is not here; those reject, and the sheet
+   * says so and stays open.
    */
   failure: Failure | null;
-  /**
-   * Append one activity row for today, with the form's note — what the row's 기록 modal
-   * calls (§6.1, #80). The same primitive Today's form uses, so there is only one
-   * append/undo implementation. Rejects on failure, for the form to say so.
-   *
-   * Takes the habit itself: the row the screen is rendering already holds it, so
-   * there is nothing to look up and no "habit not found" branch to write.
-   */
-  logActivity(habit: Habit, actual: number, opts?: { note?: string }): Promise<void>;
-  /**
-   * Reason-tag today as a skip, with the form's note (§6.1 B5) — the modal's reason
-   * chips call it. Rejects on failure, like `logActivity`.
-   */
-  logSkip(habit: Habit, reason: SkipReason, opts?: { note?: string }): Promise<void>;
+  /** The open sheet, or `null`. Derived each render from what is open and the loaded rows. */
+  sheet: DashboardSheet | null;
+  /** A 7-day dot: the record sheet for that date. Opening writes nothing (#109). */
+  openRecord(habitId: string, date: string): void;
+  /** The record sheet's skip link: the skip reason sheet for the same date. */
+  openSkip(habitId: string, date: string): void;
+  /** The level card: the stat sheet. */
+  openStats(): void;
+  /** Close the open sheet, discarding its inputs. */
+  closeSheet(): void;
+  /** 기록하기: one activity row on the sheet's date, then close. Rejects on failure. */
+  recordFromSheet(amount: number, note?: string): Promise<void>;
+  /** A reason chip: one skip row on the sheet's date, then close. Rejects on failure. */
+  skipFromSheet(reason: SkipReason, note?: string): Promise<void>;
   toast: QuickLogToast | null;
   undoLast(): Promise<void>;
+  /** A backfill or today's log that raised the streak (§6.2 Streak celebration). */
+  celebration: StreakCelebration | null;
+  dismissCelebration(): void;
   /**
    * Read the repository again. The Dashboard stays mounted under every screen it
-   * pushes, so a write made there — a Reflection commit above all (§6.4: "status light
-   * should have updated") — reaches it only when the screen calls this on focus.
+   * pushes, so a write made there reaches it only when the screen calls this on focus.
    */
   reload(): void;
 }
 
-function statFor(statId: string): Stat | undefined {
-  return TUNING.stats.find((stat) => stat.id === statId);
+/** A bar's fill as a width, "62%" — clamped to 0–100. */
+export type BarWidth = `${number}%`;
+
+function barWidthOf(fraction: number): BarWidth {
+  return `${Math.round(Math.min(1, Math.max(0, fraction)) * 100)}%`;
 }
 
-/** The card's four numbers, from the stat's XP. See `StatProgress` for each. */
+/** A stat's four numbers, from its XP. See `StatProgress` for each. */
 function statProgress(stat: Stat, all: HabitWithEntries[]): StatProgress {
   const xp = computeStatXP(stat.id, all);
   const level = levelForXP(xp);
@@ -170,116 +219,110 @@ function statProgress(stat: Stat, all: HabitWithEntries[]): StatProgress {
   if (next == null) return { stat, level, xp, xpToNextLevel: null, barFraction: 1 };
 
   const base = thresholds[level];
-  return {
-    stat,
-    level,
-    xp,
-    xpToNextLevel: next - xp,
-    barFraction: (xp - base) / (next - base),
-  };
+  return { stat, level, xp, xpToNextLevel: next - xp, barFraction: (xp - base) / (next - base) };
 }
 
-export function useDashboard({ today = localToday() }: { today?: string } = {}): DashboardView {
+/**
+ * The stat that raises the character level next: among the stats at the top level, the
+ * one with the fewest 별 left. One already at the top level wins, so the card says so.
+ */
+function leadingStat(stats: StatProgress[], characterLevel: number): StatProgress | undefined {
+  return stats
+    .filter((stat) => stat.level === characterLevel)
+    .sort((a, b) => (a.xpToNextLevel ?? -1) - (b.xpToNextLevel ?? -1))[0];
+}
+
+/** 🔴 first, then 🟡, then the rest. `Array.prototype.sort` is stable, so ties keep their order. */
+const LIGHT_RANK: Record<StatusLight, number> = {
+  intervention: 0,
+  caution: 1,
+  personal_best: 2,
+  stable: 2,
+};
+
+interface Loaded {
+  rows: DashboardRow[];
+  /** Each shown habit's rows, from its birth (or the week's start) through today. */
+  history: Map<string, HabitEntry[]>;
+  stats: StatProgress[];
+  needsAttention: number;
+}
+
+const EMPTY: Loaded = { rows: [], history: new Map(), stats: [], needsAttention: 0 };
+
+type SheetIntent =
+  | { kind: 'record' | 'skip'; habitId: string; date: string }
+  | { kind: 'stats' };
+
+export function useDashboard({
+  today = localToday(),
+  now = () => new Date(),
+}: { today?: string; now?: () => Date } = {}): DashboardView {
   const repository = useRepository();
   const { failure, report, clear } = useFailure();
-  const [rows, setRows] = useState<DashboardRow[]>([]);
-  const [stats, setStats] = useState<StatProgress[]>([]);
-  const [shaky, setShaky] = useState(0);
+  const [loaded, setLoaded] = useState<Loaded>(EMPTY);
   const [loading, setLoading] = useState(true);
   /**
    * Bumped by a write, so the load effect is the single place that reads. `loading` is
-   * raised only for the first load, never for a reload — matching `useToday`: a
-   * log must not blank the row it just changed, and "loading" would describe a
-   * row that is already on screen (§6.1: the row updates in place).
+   * raised only for the first load: a log must not blank the row it just changed.
    */
   const [version, setVersion] = useState(0);
+  const [intent, setIntent] = useState<SheetIntent | null>(null);
 
-  // Stable, so the screen can hand it to `useFocusEffect` without re-running it on
-  // every render.
+  // Stable, so the screen can hand it to `useFocusEffect`.
   const reload = useCallback(() => setVersion((current) => current + 1), []);
 
   useEffect(() => {
     let cancelled = false;
 
-    const window = windowEndingAt(today, TUNING.heatmapDays);
+    const window = windowEndingAt(today, WEEK_DAYS);
     const from = window[0];
-    const to = window[window.length - 1];
 
     async function load() {
       const habits = await repository.getHabits();
 
-      const loaded = await Promise.all(
+      const all = await Promise.all(
         habits.map(async (habit) => {
           // `computeStreak` walks back to `createdAt`, so the fetch starts at whichever
-          // of the two is earlier; `heatCells` is given its own window either way.
+          // of the two is earlier.
           const start = dateOf(habit.createdAt);
           const entries = await repository.getEntries(
             habit.id,
             compareDates(start, from) < 0 ? start : from,
-            to,
+            today,
           );
-
-          // The rows and the stat cards read the same fetch, from two angles: the row
-          // is what the habit shows, `entries` is what its stat is owed.
-          const statusLight = deriveStatusLight(habit, entries, today);
-          return {
-            habit,
-            entries,
-            row: {
-              habit,
-              stat: statFor(habit.statId),
-              cells: heatCells(habit, entries, from, to, today),
-              streak: computeStreak(entries, habit, today),
-              statusLight,
-              reflectable: statusLight === 'intervention' || statusLight === 'caution',
-              // The log form reads a classified day, not a heat cell: a cell is
-              // a *rendering* instruction, and deriving an affordance from one is how
-              // this drifted away from Today's identical derivation once already.
-              ...logAffordances(habit, dayStates(habit, entries, today, today, today)[0]),
-            },
-          };
+          return { habit, entries };
         }),
       );
 
-      if (!cancelled) {
-        // §3.2 — archived habits are hidden from the Dashboard. Paused ones are not:
-        // pause is "later", not "over" (ADR-0003), and it stays visible to be resumed.
-        const visible = loaded.filter(({ habit }) => habit.lifecycle !== 'archived');
-        setRows(visible.map(({ row }) => row));
-        // The chip's number comes from the domain, not from counting `rows` here: the
-        // rules for what counts (paused ignored, an entry-less habit absent rather than
-        // an error) are `aggregateStatusCount`'s, and `statusLight.test.ts` is where
-        // they are asserted.
-        const shakyCount = aggregateStatusCount(
-          visible.map(({ habit }) => habit),
-          Object.fromEntries(visible.map(({ habit, entries }) => [habit.id, entries])),
-          today,
-        );
-        setShaky(shakyCount.caution + shakyCount.intervention);
-        // The stat cards read **every** habit, archived included. AC 5 calls the figure
-        // cumulative XP, and ADR-0003's rule that a recorded day's earnings are never
-        // clawed back applies here too: filtering the same list the rows use would drop
-        // a user's stat level the moment they tidied a finished habit away.
-        setStats(
-          TUNING.stats.map((stat) =>
-            statProgress(
-              stat,
-              loaded.map(({ habit, entries }) => ({ habit, entries })),
-            ),
-          ),
-        );
-        clear();
-        setLoading(false);
-      }
+      if (cancelled) return;
+
+      // §3.2 — archived habits are hidden. Paused ones stay, to be resumed (ADR-0003).
+      const visible = all.filter(({ habit }) => habit.lifecycle !== 'archived');
+      const rows = visible
+        .map(({ habit, entries }) => rowOf(habit, entries, window, today))
+        .sort((a, b) => LIGHT_RANK[a.statusLight] - LIGHT_RANK[b.statusLight]);
+      const count = aggregateStatusCount(
+        visible.map(({ habit }) => habit),
+        Object.fromEntries(visible.map(({ habit, entries }) => [habit.id, entries])),
+        today,
+      );
+
+      setLoaded({
+        rows,
+        history: new Map(visible.map(({ habit, entries }) => [habit.id, entries])),
+        // Stats read **every** habit, archived included: archiving must not claw back
+        // what a recorded day earned (ADR-0003).
+        stats: TUNING.stats.map((stat) => statProgress(stat, all)),
+        needsAttention: count.caution + count.intervention,
+      });
+      clear();
+      setLoading(false);
     }
 
     load().catch(() => {
       if (cancelled) return;
-      // `setLoading(false)` 를 **실패 기록과 같이** 한다. 이것만 붙이면 무한 스피너가
-      // "아직 습관이 없습니다" 로 바뀔 뿐이라 함정이다 (`DashboardView.failure`).
       setLoading(false);
-      // 다시 시도는 이 훅이 이미 가진 `version` 카운터다 — 읽기는 이 효과 하나뿐이므로
-      // 그것을 올리면 같은 읽기가 그대로 다시 돈다.
       report(LOAD_FAILED_NOTE, reload);
     });
 
@@ -288,20 +331,137 @@ export function useDashboard({ today = localToday() }: { today?: string } = {}):
     };
   }, [repository, today, version]);
 
-  const quick = useQuickLog({ today, onChange: reload });
+  const quick = useQuickLog({ today, now, onChange: reload });
+
+  const { rows, stats } = loaded;
+  const characterLevel = stats.reduce((highest, stat) => Math.max(highest, stat.level), 0);
+  const leading = leadingStat(stats, characterLevel);
+  const nextLine = starsToNextLevelLabel(
+    leading == null ? TUNING.statLevelThresholds[1] : leading.xpToNextLevel,
+  );
+  const level: LevelCardView = {
+    title: characterLevelLabel(characterLevel),
+    statLine: rows.length === 0 ? null : statLineLabel(stats.map((s) => ({ icon: s.stat.icon, level: s.level }))),
+    barWidth: barWidthOf(leading?.barFraction ?? 0),
+    nextLine,
+  };
+
+  /** 오늘, 어제, or "10월 8일" — how the sheets name the date. */
+  function dayWordOf(date: string): string {
+    if (date === today) return DAY_WORDS.today;
+    if (date === addDays(today, -1)) return DAY_WORDS.yesterday;
+    return monthDayLabel(date);
+  }
+
+  /** The habit a record or skip sheet is about, when its date may be written. */
+  function targetOf(habitId: string, date: string) {
+    const row = rows.find((r) => r.habit.id === habitId);
+    if (row == null || !isBackfillableDate(row.habit, date, today)) return null;
+    const day = dayStates(row.habit, loaded.history.get(habitId) ?? [], date, date, today)[0];
+    return { habit: row.habit, affordances: logAffordances(row.habit, day) };
+  }
+
+  function sheetOf(open: SheetIntent | null): DashboardSheet | null {
+    if (open == null) return null;
+    if (open.kind === 'stats') {
+      return {
+        kind: 'stats',
+        title: level.title,
+        subtitle: nextLine,
+        rows: stats.map((s) => ({
+          id: s.stat.id,
+          title: `${s.stat.icon} ${s.stat.name}`,
+          levelLabel: statLevelLabel(s.level),
+          barWidth: barWidthOf(s.barFraction),
+          habits: rows
+            .filter((row) => row.habit.statId === s.stat.id)
+            .map((row) => row.habit.name)
+            .join(' · '),
+          nextLine: starsToNextLevelLabel(s.xpToNextLevel),
+        })),
+      };
+    }
+
+    const target = targetOf(open.habitId, open.date);
+    if (target == null) return null;
+    const { habit, affordances } = target;
+    const dayWord = dayWordOf(open.date);
+
+    if (open.kind === 'skip') return { ...skipSheetView(habit, dayWord), date: open.date };
+    return {
+      ...recordSheetView({
+        habit,
+        affordances,
+        dayWord,
+        isToday: open.date === today,
+        now,
+        title: longDateLabel(open.date, weekdayOf(open.date)),
+        eyebrow: labelOf(habit),
+      }),
+      date: open.date,
+    };
+  }
+
+  const sheet = sheetOf(intent);
+
+  async function recordFromSheet(amount: number, note?: string): Promise<void> {
+    if (sheet?.kind !== 'record') return;
+    await writeRecord(quick, sheet, amount, note, sheet.date);
+    setIntent(null);
+  }
+
+  async function skipFromSheet(reason: SkipReason, note?: string): Promise<void> {
+    if (sheet?.kind !== 'skip') return;
+    await writeSkip(quick, sheet, reason, note, sheet.date);
+    setIntent(null);
+  }
 
   return {
+    dateLabel: longDateLabel(today, weekdayOf(today)),
     rows,
-    stats,
-    characterLevel: stats.reduce((highest, stat) => Math.max(highest, stat.level), 0),
-    shaky,
+    level,
+    needsAttentionLabel: rows.length === 0 ? null : needsAttentionLabel(loaded.needsAttention),
     loading,
-    // 실행취소의 실패는 `useQuickLog` 가 들고 있다 — 한 배너 자리를 둘이 나눠 쓴다.
+    empty: !loading && rows.length === 0 && failure == null && quick.failure == null,
+    // A failed undo is `useQuickLog`'s; the two share one banner.
     failure: failure ?? quick.failure,
-    logActivity: quick.logActivity,
-    logSkip: quick.logSkip,
+    sheet,
+    openRecord: (habitId, date) => setIntent({ kind: 'record', habitId, date }),
+    openSkip: (habitId, date) => setIntent({ kind: 'skip', habitId, date }),
+    openStats: () => setIntent({ kind: 'stats' }),
+    closeSheet: () => setIntent(null),
+    recordFromSheet,
+    skipFromSheet,
     toast: quick.toast,
     undoLast: quick.undoLast,
+    celebration: quick.celebration,
+    dismissCelebration: quick.dismissCelebration,
     reload,
+  };
+}
+
+/** One row from a habit's history: its dots, streak and light. */
+function rowOf(habit: Habit, entries: HabitEntry[], window: string[], today: string): DashboardRow {
+  const states = new Map(
+    dayStates(habit, entries, window[0], window[window.length - 1], today).map((d) => [d.date, d.state]),
+  );
+  const statusLight = deriveStatusLight(habit, entries, today);
+
+  return {
+    habit,
+    label: labelOf(habit),
+    week: window.map((date) => {
+      const state = states.get(date) ?? null;
+      return {
+        date,
+        state,
+        label: date === today ? DAY_WORDS.today : WEEKDAY_LABELS[weekdayOf(date)],
+        accessibilityLabel: state == null ? '' : dayCellLabel(longDateLabel(date, weekdayOf(date)), state),
+        tappable: state != null && isBackfillableDate(habit, date, today),
+      };
+    }),
+    streakLabel: streakCountLabel(computeStreak(entries, habit, today)),
+    statusLight,
+    reflectable: statusLight === 'intervention',
   };
 }

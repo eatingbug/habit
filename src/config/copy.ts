@@ -865,3 +865,55 @@ export function recordResultLine({
   if (sum < floor) return `이걸로 ${dayWord} 몫을 채워요 ✓`;
   return `${dayWord} 몫은 이미 채웠어요`;
 }
+
+/**
+ * 대시보드 (SPEC §6.3, `ReDashboard`, `ReDashboardStats`, `ReDashboardEmpty`, #129).
+ * Fixed words are here; the sentences that carry a number are the functions below,
+ * which `useDashboard` calls. Day-state, status light, tooltip and record sheet words
+ * are the shared ones above.
+ */
+export const DASHBOARD_COPY = {
+  title: '대시보드',
+  reflect: '회고하기',
+  newHabit: '습관 만들기',
+  /** The empty screen: one emoji, one sentence, one button (§6.0 Icons). */
+  emptyEmoji: '🌱',
+  empty: '아직 습관이 없어요',
+  /** The level line at the top level, where there is no next threshold (#129 decision). */
+  topLevel: '최고 레벨이에요',
+} as const;
+
+/** "캐릭터 레벨 4" — the level card's head and the stat sheet's title. */
+export function characterLevelLabel(level: number): string {
+  return `캐릭터 레벨 ${level}`;
+}
+
+/** "레벨 3" — one stat's level in the stat sheet. */
+export function statLevelLabel(level: number): string {
+  return `레벨 ${level}`;
+}
+
+/** "다음 레벨까지 별 120개", or `DASHBOARD_COPY.topLevel` when there is no next level. */
+export function starsToNextLevelLabel(stars: number | null): string {
+  return stars == null ? DASHBOARD_COPY.topLevel : `다음 레벨까지 ${SCREEN_WORDS.star} ${stars}개`;
+}
+
+/** "💪 3 · 📖 2 · 🧘 4" — the level card's one stat line. */
+export function statLineLabel(stats: { icon: string; level: number }[]): string {
+  return stats.map((stat) => `${stat.icon} ${stat.level}`).join(' · ');
+}
+
+/** "손볼 습관 1개" — the head over the habit rows. It has no `?` (§6.8). */
+export function needsAttentionLabel(count: number): string {
+  return `손볼 습관 ${count}개`;
+}
+
+/** "🔥 12" — a row's streak. */
+export function streakCountLabel(streak: number): string {
+  return `🔥 ${streak}`;
+}
+
+/** "10월 8일 목요일 기록 없음" — a 7-day dot's accessible name. */
+export function dayCellLabel(dateLabel: string, state: DayState): string {
+  return `${dateLabel} ${DAY_STATE_WORDS[state]}`;
+}
