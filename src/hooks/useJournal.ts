@@ -42,6 +42,8 @@ export interface JournalFreeItem {
   time: string;
   /** The log's text, or `null` when the user wrote none. */
   text: string | null;
+  /** The row's accessible name: its words in reading order. */
+  accessibilityLabel: string;
   /** Where a tap goes: Today (§6.4). */
   href: string;
 }
@@ -54,19 +56,41 @@ export interface JournalNoteItem {
   /** "📖 독서". */
   label: string;
   /**
-   * That day's state for the habit (§6.0 Day-state marks), from every row of the day.
-   * `null` when the classifier gives the date none: the note shows with no state chip.
+   * That day's state for the habit (§6.0 Day-state marks), from every row of the day, as
+   * a chip. `null` when the classifier gives the date none: the note shows with no chip.
    */
-  state: DayState | null;
-  /** "✓ 했어요" — the state's mark and word, or `null` with no state. */
-  stateLabel: string | null;
+  stateChip: JournalStateChip | null;
   time: string;
   text: string;
+  accessibilityLabel: string;
   /** Where a tap goes: the habit's Habit Detail (§6.4). */
   href: string;
 }
 
 export type JournalItem = JournalFreeItem | JournalNoteItem;
+
+/**
+ * The chip tones a state uses. Each is a `ChipTone` of `src/components/re`; the hook
+ * names them here rather than importing from the component layer.
+ */
+export type JournalStateTone = 'done' | 'neutral' | 'crit';
+
+/** A note's day-state chip (`.st.<state>` in `ReJournal`). */
+export interface JournalStateChip {
+  /** "✓ 했어요" — the state's mark and word. */
+  label: string;
+  tone: JournalStateTone;
+}
+
+/** `.st.<state>` — `done`, `over` and `partial` share the `done` tint (`_tokens.redesign.css`). */
+const STATE_TONE: Record<DayState, JournalStateTone> = {
+  done: 'done',
+  over: 'done',
+  partial: 'done',
+  skip: 'neutral',
+  missed: 'crit',
+  pending: 'neutral',
+};
 
 /** One date, its head and its rows, newest first. */
 export interface JournalGroup {
@@ -169,7 +193,11 @@ export function useJournal({ today = localToday() }: { today?: string } = {}): J
           const stateOn = new Map(days.map((day) => [day.date, day.state]));
           return noted.map((entry): Row => {
             // `null` only if the classifier had no opinion on the date; the note still shows.
-            const state = stateOn.get(entry.date) ?? null;
+            const state = stateOn.get(entry.date);
+            const stateChip =
+              state == null ? null : { label: dayStateBadge(state), tone: STATE_TONE[state] };
+            const time = localClock(entry.timestamp);
+            const text = (entry.note ?? '').trim();
             return {
               date: entry.date,
               timestamp: entry.timestamp,
@@ -179,10 +207,12 @@ export function useJournal({ today = localToday() }: { today?: string } = {}): J
                 id: entry.id,
                 habitId: habit.id,
                 label: labelOf(habit),
-                state,
-                stateLabel: state == null ? null : dayStateBadge(state),
-                time: localClock(entry.timestamp),
-                text: (entry.note ?? '').trim(),
+                stateChip,
+                time,
+                text,
+                accessibilityLabel: [labelOf(habit), stateChip?.label, time, text]
+                  .filter((word) => word != null)
+                  .join(' '),
                 href: `/habit/${habit.id}`,
               },
             };
@@ -190,21 +220,25 @@ export function useJournal({ today = localToday() }: { today?: string } = {}): J
         }),
       );
 
-      const logs = (await repository.getFreeLogs(ALL_TIME_START, today)).map(
-        (log): Row => ({
+      const logs = (await repository.getFreeLogs(ALL_TIME_START, today)).map((log): Row => {
+        const label = journalFreeLogLabel(log.type);
+        const time = localClock(log.timestamp);
+        const text = log.text.trim().length > 0 ? log.text : null;
+        return {
           date: log.date,
           timestamp: log.timestamp,
           id: log.id,
           item: {
             kind: 'free',
             id: log.id,
-            label: journalFreeLogLabel(log.type),
-            time: localClock(log.timestamp),
-            text: log.text.trim().length > 0 ? log.text : null,
+            label,
+            time,
+            text,
+            accessibilityLabel: [label, time, text].filter((word) => word != null).join(' '),
             href: '/today',
           },
-        }),
-      );
+        };
+      });
 
       if (!cancelled) {
         setLoaded({

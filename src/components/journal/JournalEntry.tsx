@@ -1,20 +1,9 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { Chip, type ChipTone } from '@/components/re';
+import { Chip } from '@/components/re';
 import type { JournalItem } from '@/hooks/useJournal';
-import type { DayState } from '@/models';
 import { TAP_TARGET, TYPE } from '@/theme/redesignTokens';
 import { useTheme } from '@/theme/ThemeProvider';
-
-/** `.st.<state>` — `done`, `over` and `partial` share the `done` tint (`_tokens.redesign.css`). */
-const STATE_TONE: Record<DayState, ChipTone> = {
-  done: 'done',
-  over: 'done',
-  partial: 'done',
-  skip: 'neutral',
-  missed: 'crit',
-  pending: 'neutral',
-};
 
 export interface JournalEntryProps {
   item: JournalItem;
@@ -25,17 +14,17 @@ export interface JournalEntryProps {
 
 /**
  * `.entry` in `ReJournal` — one free log or one note. Read-only (§6.4): a tap leaves
- * for the screen that edits it, and nothing here writes.
+ * for the screen that edits it, and nothing here writes. Every word and the chip's tone
+ * are `useJournal`'s.
  */
 export function JournalEntry({ item, divider, onPress }: JournalEntryProps) {
   const { redesign } = useTheme();
-  const words = [item.label, item.kind === 'note' ? item.stateLabel : null, item.time, item.text];
 
   return (
     <Pressable
       onPress={onPress}
       accessibilityRole="link"
-      accessibilityLabel={words.filter((word) => word != null).join(' ')}
+      accessibilityLabel={item.accessibilityLabel}
       style={({ pressed }) => [
         styles.entry,
         divider && { borderBottomWidth: 1, borderBottomColor: redesign.border },
@@ -46,9 +35,7 @@ export function JournalEntry({ item, divider, onPress }: JournalEntryProps) {
         {item.kind === 'note' ? (
           <View style={styles.row}>
             <Text style={[TYPE.label, { color: redesign.text }]}>{item.label}</Text>
-            {item.state != null && item.stateLabel != null && (
-              <Chip label={item.stateLabel} tone={STATE_TONE[item.state]} />
-            )}
+            {item.stateChip != null && <Chip label={item.stateChip.label} tone={item.stateChip.tone} />}
           </View>
         ) : (
           <Text style={[TYPE.label, styles.shrink, { color: redesign.muted }]}>{item.label}</Text>
