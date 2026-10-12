@@ -1,9 +1,10 @@
 import type { ReactNode } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
-import { HelpTip } from '@/components/re';
 import { TYPE } from '@/theme/redesignTokens';
 import { useTheme } from '@/theme/ThemeProvider';
+
+import { HelpTip } from './HelpTip';
 
 export interface FormFieldProps {
   label: string;
@@ -16,8 +17,9 @@ export interface FormFieldProps {
 }
 
 /**
- * One New habit field: `.flabel` (a `label` line in `muted`, its "· 선택" and `?`), the
- * control, and the field's error under it in `crit` ink.
+ * One form field: `.flabel` (a `label` line in `muted`, its "· 선택" and `?`), the
+ * control, and the field's error under it in `crit` ink. New habit uses it; the Habit
+ * Detail edit form can reuse it.
  */
 export function FormField({ label, optional, help, error, children }: FormFieldProps) {
   const { redesign } = useTheme();

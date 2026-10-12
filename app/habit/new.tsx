@@ -4,8 +4,7 @@ import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Button, ChoiceChip, IconButton, InputField, SegmentedControl } from '@/components/re';
-import { FormField } from '@/components/newHabit/FormField';
+import { Button, ChoiceChip, FormField, IconButton, InputField, SegmentedControl } from '@/components/re';
 import { IconSheet } from '@/components/newHabit/IconSheet';
 import { ICON_LABELS } from '@/config/copy';
 import { useNewHabit } from '@/hooks/useNewHabit';
