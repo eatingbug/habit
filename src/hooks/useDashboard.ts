@@ -1,19 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
 
 import {
-  backfillTimeLabel,
   characterLevelLabel,
   DAY_WORDS,
   dayCellLabel,
-  habitIcon,
   LOAD_FAILED_NOTE,
   longDateLabel,
   monthDayLabel,
-  nowLabel,
-  recordResultLine,
-  recordSumLabel,
   shakyHabitsLabel,
-  skipSheetTitle,
   starsToNextLevelLabel,
   statLevelLabel,
   statLineLabel,
@@ -28,10 +22,19 @@ import { addDays, compareDates, dateOf, weekdayOf, windowEndingAt } from '@/doma
 import { computeStatXP, levelForXP, type HabitWithEntries } from '@/domain/score';
 import { aggregateStatusCount, deriveStatusLight, type StatusLight } from '@/domain/statusLight';
 import { computeStreak } from '@/domain/streak';
-import { localClock, localToday } from '@/lib/device';
+import { localToday } from '@/lib/device';
 import type { DayState, Habit, HabitEntry, SkipReason, Stat } from '@/models';
 
 import { useFailure, type Failure } from './failure';
+import {
+  labelOf,
+  recordFromSheet as writeRecord,
+  recordSheetView,
+  type RecordSheetView,
+  skipFromSheet as writeSkip,
+  skipSheetView,
+  type SkipSheetView,
+} from './recordSheet';
 import {
   logAffordances,
   useQuickLog,
@@ -129,38 +132,14 @@ export interface StatSheetRow {
   nextLine: string;
 }
 
-/** The record sheet for one date (§6.3 B1, §6.2 Record sheet), ready to render. */
-export interface DashboardRecordSheet {
-  kind: 'record';
-  habit: Habit;
+/** The shared record sheet (`./recordSheet`) for one date (§6.3 B1). */
+export interface DashboardRecordSheet extends RecordSheetView {
   date: string;
-  /** "📖 독서". */
-  eyebrow: string;
-  /** The date in large type: "10월 8일 목요일". */
-  title: string;
-  /** "지금 6쪽" on a count habit's today, else `null`. */
-  sumLabel: string | null;
-  isCount: boolean;
-  unit: string;
-  /** The stepper's start (B2). */
-  defaultAmount: number;
-  /** "지금 14:20", or the noon pin of a backfill: "어제 12:00", "10월 8일 12:00" (B3). */
-  timeLabel: string;
-  /** "{어느 날} 못 했어요 · 왜?", or `null` once the day holds activity. */
-  skipLabel: string | null;
-  /** The one result line for the staged amount (C7a). */
-  resultLine(amount: number): string;
 }
 
-/** The skip reason sheet for one date (§6.2 Skip reason sheet). */
-export interface DashboardSkipSheet {
-  kind: 'skip';
-  habit: Habit;
+/** The shared skip reason sheet (`./recordSheet`) for one date. */
+export interface DashboardSkipSheet extends SkipSheetView {
   date: string;
-  /** "🧘 명상". */
-  eyebrow: string;
-  /** "{어느 날} 못 했어요 · 왜?". */
-  title: string;
 }
 
 /** The stat sheet the level card opens (`ReDashboardStats`). */
@@ -407,38 +386,19 @@ export function useDashboard({
     if (target == null) return null;
     const { habit, affordances } = target;
     const dayWord = dayWordOf(open.date);
-    const eyebrow = `${habitIcon(habit)} ${habit.name}`;
 
-    if (open.kind === 'skip') {
-      return { kind: 'skip', habit, date: open.date, eyebrow, title: skipSheetTitle(dayWord) };
-    }
-
-    const isCount = habit.kind === 'count';
-    const isToday = open.date === today;
-    const { sum } = affordances.progress;
+    if (open.kind === 'skip') return { ...skipSheetView(habit, dayWord), date: open.date };
     return {
-      kind: 'record',
-      habit,
+      ...recordSheetView({
+        habit,
+        affordances,
+        dayWord,
+        isToday: open.date === today,
+        now,
+        title: longDateLabel(open.date, weekdayOf(open.date)),
+        eyebrow: labelOf(habit),
+      }),
       date: open.date,
-      eyebrow,
-      title: longDateLabel(open.date, weekdayOf(open.date)),
-      sumLabel: isCount && isToday ? recordSumLabel(sum, habit.floorUnit) : null,
-      isCount,
-      unit: habit.floorUnit,
-      defaultAmount: affordances.defaultAmount,
-      // B3: a new row is stamped now, or at noon on a backfill.
-      timeLabel: isToday ? nowLabel(localClock(now())) : backfillTimeLabel(dayWord),
-      skipLabel: affordances.skippable ? skipSheetTitle(dayWord) : null,
-      resultLine: (amount: number) =>
-        recordResultLine({
-          sum,
-          amount,
-          floor: habit.floor,
-          // The target the engine honours: count only, strictly above the floor.
-          target: isCount && habit.target != null && habit.target > habit.floor ? habit.target : undefined,
-          unit: habit.floorUnit,
-          dayWord,
-        }),
     };
   }
 
@@ -446,13 +406,13 @@ export function useDashboard({
 
   async function recordFromSheet(amount: number, note?: string): Promise<void> {
     if (sheet?.kind !== 'record') return;
-    await quick.logActivity(sheet.habit, amount, { note, date: sheet.date });
+    await writeRecord(quick, sheet, amount, note, sheet.date);
     setIntent(null);
   }
 
   async function skipFromSheet(reason: SkipReason, note?: string): Promise<void> {
     if (sheet?.kind !== 'skip') return;
-    await quick.logSkip(sheet.habit, reason, { note, date: sheet.date });
+    await writeSkip(quick, sheet, reason, note, sheet.date);
     setIntent(null);
   }
 
@@ -493,7 +453,7 @@ function rowOf(habit: Habit, entries: HabitEntry[], window: string[], today: str
   return {
     habit,
     stat: statFor(habit.statId),
-    label: `${habitIcon(habit)} ${habit.name}`,
+    label: labelOf(habit),
     week: window.map((date) => {
       const state = states.get(date) ?? null;
       return {
