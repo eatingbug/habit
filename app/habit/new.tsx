@@ -5,7 +5,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Button, ChoiceChip, IconButton, InputField, SegmentedControl } from '@/components/re';
-import { AmountInput, FormField } from '@/components/newHabit/FormField';
+import { FormField } from '@/components/newHabit/FormField';
 import { IconSheet } from '@/components/newHabit/IconSheet';
 import { ICON_LABELS } from '@/config/copy';
 import { useNewHabit } from '@/hooks/useNewHabit';
@@ -79,20 +79,22 @@ export default function NewHabit() {
           <>
             <FormField label={copy.labels.floor} help={tooltips.floor} error={errors.floor ?? errors.floorUnit}>
               <View style={styles.row}>
-                <AmountInput
+                <InputField
                   value={form.floor}
                   onChangeText={form.setFloor}
                   placeholder={copy.placeholders.floor}
                   accessibilityLabel={copy.labels.floor}
                   width={AMOUNT_WIDTH}
+                  keyboardType="decimal-pad"
                 />
-                <AmountInput
-                  value={form.floorUnit}
-                  onChangeText={form.setFloorUnit}
-                  placeholder={copy.placeholders.floorUnit}
-                  accessibilityLabel={copy.floorUnitLabel}
-                  keyboard="default"
-                />
+                <View style={styles.grow}>
+                  <InputField
+                    value={form.floorUnit}
+                    onChangeText={form.setFloorUnit}
+                    placeholder={copy.placeholders.floorUnit}
+                    accessibilityLabel={copy.floorUnitLabel}
+                  />
+                </View>
               </View>
             </FormField>
 
@@ -103,12 +105,13 @@ export default function NewHabit() {
               error={errors.target}
             >
               <View style={styles.row}>
-                <AmountInput
+                <InputField
                   value={form.target}
                   onChangeText={form.setTarget}
                   placeholder={copy.placeholders.target}
                   accessibilityLabel={copy.labels.target}
                   width={AMOUNT_WIDTH}
+                  keyboardType="decimal-pad"
                 />
                 <Text style={[TYPE.body, { color: redesign.muted }]}>{form.targetUnit}</Text>
               </View>
