@@ -6,8 +6,6 @@ import { useRepository } from '@/context/RepositoryContext';
 import { newId } from '@/lib/device';
 import type { Habit, HabitKind } from '@/models';
 
-import { useFailure, type Failure } from './failure';
-
 /**
  * The New habit screen's form — SPEC §6.6, `ReNewHabit` and `ReNewHabitYesNo` (#130).
  *
@@ -70,8 +68,8 @@ export interface NewHabitView {
   /** Per-field messages from the last submit; a field clears its own on change. */
   errors: NewHabitErrors;
   saving: boolean;
-  /** A failed save (`SAVE_FAILED_NOTE`) with its retry, or `null`. */
-  failure: Failure | null;
+  /** `SAVE_FAILED_NOTE` after a failed save, or `null`. Pressing 습관 만들기 again retries. */
+  saveError: string | null;
   /** Validates and saves. `true` once the habit is stored, so the screen can close. */
   submit(): Promise<boolean>;
 }
@@ -100,7 +98,6 @@ const ERR = NEW_HABIT_COPY.errors;
 
 export function useNewHabit(): NewHabitView {
   const repository = useRepository();
-  const { failure, report, clear: clearFailure } = useFailure();
 
   const [name, setNameValue] = useState('');
   const [kind, setKindValue] = useState<HabitKind>('count');
@@ -113,6 +110,7 @@ export function useNewHabit(): NewHabitView {
   const [pickedIcon, setPickedIcon] = useState<string | null>(null);
   const [errors, setErrors] = useState<NewHabitErrors>({});
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   /** A corrected field must stop looking wrong before the next submit. */
   function clear(...keys: (keyof NewHabitErrors)[]) {
@@ -188,13 +186,13 @@ export function useNewHabit(): NewHabitView {
       return false;
     }
     setErrors({});
-    clearFailure();
+    setSaveError(null);
     setSaving(true);
     try {
       await repository.upsertHabit(result.habit);
       return true;
     } catch {
-      report(SAVE_FAILED_NOTE, () => void submit());
+      setSaveError(SAVE_FAILED_NOTE);
       return false;
     } finally {
       setSaving(false);
@@ -249,7 +247,7 @@ export function useNewHabit(): NewHabitView {
     pickIcon: setPickedIcon,
     errors,
     saving,
-    failure,
+    saveError,
     submit,
   };
 }
