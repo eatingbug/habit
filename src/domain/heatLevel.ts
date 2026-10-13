@@ -11,7 +11,7 @@ import { dateRange } from './dates';
  * themes (ADR-0001 §파급 7), and an unclassified day has to read as an empty cell
  * (ADR-0003 §파급 6). That is a domain rule about *what a day means*, so it lives
  * here rather than being re-derived in every screen: this module hands the UI data,
- * and the screen picks concrete colours from `src/theme/tokens.ts`.
+ * and the screen picks concrete colours from `src/theme/redesignTokens.ts`.
  */
 
 /** Which hue family the cell belongs to. Maps 1:1 onto `Palette` keys. */
