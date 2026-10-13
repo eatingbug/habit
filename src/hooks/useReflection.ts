@@ -507,7 +507,7 @@ export function useReflection(
   }
 
   async function commit(value: string): Promise<string | null> {
-    if (habit == null) throw new Error('useReflection.commit: 습관을 아직 불러오지 못했습니다');
+    if (habit == null) throw new Error('useReflection.commit: 습관을 아직 불러오지 못했어요');
 
     const result = applied(habit, chosen, value, today);
     if ('error' in result) return result.error;
