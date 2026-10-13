@@ -4,8 +4,7 @@
  * first-class. The Today ticket made them; the Dashboard, Habit Detail, New habit,
  * Reflection and 글 모음 tickets import them from here.
  *
- * They live beside the old primitives in `src/components/` until every screen has moved,
- * then the old set is removed and these move up (#123, expand and contract).
+ * The old primitives they replaced were removed once every screen had moved (#133).
  */
 export { Banner, type BannerProps } from './Banner';
 export { Button, type ButtonProps, type ButtonVariant } from './Button';
@@ -23,4 +22,4 @@ export { Sheet, type SheetProps } from './Sheet';
 export { SkipSheet, type SkipSheetProps } from './SkipSheet';
 export { StatusLight, type StatusLightProps } from './StatusLight';
 export { Toast, type ToastProps } from './Toast';
-export { IconButton, type IconButtonProps } from '../IconButton';
+export { IconButton, type IconButtonProps } from './IconButton';

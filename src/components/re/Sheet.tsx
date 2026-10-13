@@ -16,7 +16,7 @@ import { ICON_LABELS } from '@/config/copy';
 import { TYPE } from '@/theme/redesignTokens';
 import { useTheme } from '@/theme/ThemeProvider';
 
-import { IconButton } from '../IconButton';
+import { IconButton } from './IconButton';
 
 export interface SheetProps {
   visible: boolean;

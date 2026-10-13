@@ -4,8 +4,7 @@ import { useCallback, useRef } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { IconButton } from '@/components';
-import { SegmentedControl } from '@/components/re';
+import { IconButton, SegmentedControl } from '@/components/re';
 import { SETTINGS_COPY, SIGN_OUT_LABEL } from '@/config/copy';
 import { useSession } from '@/context/SessionContext';
 import { useSettings } from '@/hooks/useSettings';
