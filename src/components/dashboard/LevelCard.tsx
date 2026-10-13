@@ -7,6 +7,14 @@ import type { LevelCardView } from '@/hooks/useDashboard';
 import { RADIUS, TYPE } from '@/theme/redesignTokens';
 import { useTheme } from '@/theme/ThemeProvider';
 
+/** Drawn for the eye only: the card's `Pressable` already announces these words. */
+const VISUAL_ONLY = {
+  pointerEvents: 'none',
+  accessibilityElementsHidden: true,
+  importantForAccessibility: 'no-hide-descendants',
+  'aria-hidden': true,
+} as const;
+
 /**
  * The level card (SPEC §6.3, `ReDashboard`'s `.level`): a solid `accent` fill in both
  * themes, white text. The whole card opens the stat sheet; its `?` opens its own tooltip.
@@ -16,6 +24,7 @@ export function LevelCard({ level, onPress }: { level: LevelCardView; onPress: (
 
   return (
     <View style={styles.card}>
+      {/* The card's tap target sits behind its content, so the `?` is not nested inside it. */}
       <Pressable
         onPress={onPress}
         accessibilityRole="button"
@@ -29,14 +38,16 @@ export function LevelCard({ level, onPress }: { level: LevelCardView; onPress: (
       />
       <View style={styles.spread} pointerEvents="box-none">
         <View style={styles.head} pointerEvents="box-none">
-          <Text pointerEvents="none" style={[TYPE.headline, styles.white]}>{level.title}</Text>
+          <View {...VISUAL_ONLY}>
+            <Text style={[TYPE.headline, styles.white]}>{level.title}</Text>
+          </View>
           <HelpTip text={TOOLTIPS.characterLevel} tone="onFill" />
         </View>
-        <View pointerEvents="none">
+        <View {...VISUAL_ONLY}>
           <ChevronRight size={24} strokeWidth={2} color="#fff" />
         </View>
       </View>
-      <View style={styles.body} pointerEvents="none">
+      <View style={styles.body} {...VISUAL_ONLY}>
         {level.statLine != null && <Text style={[TYPE.bodyStrong, styles.white]}>{level.statLine}</Text>}
         <View style={styles.track}>
           <View style={[styles.fill, { width: level.barWidth }]} />
@@ -50,7 +61,6 @@ export function LevelCard({ level, onPress }: { level: LevelCardView; onPress: (
 const styles = StyleSheet.create({
   // `.level` — `padding:16px 18px; gap:8px; --r-lg`.
   card: { paddingVertical: 16, paddingHorizontal: 18, gap: 8 },
-  // The card's tap target sits behind its content, so the `?` is not nested inside it.
   face: { borderRadius: RADIUS.lg },
   body: { gap: 8 },
   spread: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },

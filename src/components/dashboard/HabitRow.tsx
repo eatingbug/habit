@@ -6,6 +6,14 @@ import type { DashboardRow } from '@/hooks/useDashboard';
 import { TYPE } from '@/theme/redesignTokens';
 import { useTheme } from '@/theme/ThemeProvider';
 
+/** Drawn for the eye only: the row's `Pressable` already announces these words. */
+const VISUAL_ONLY = {
+  pointerEvents: 'none',
+  accessibilityElementsHidden: true,
+  importantForAccessibility: 'no-hide-descendants',
+  'aria-hidden': true,
+} as const;
+
 export interface HabitRowProps {
   row: DashboardRow;
   /** The row itself: Habit Detail. */
@@ -37,7 +45,7 @@ export function HabitRow({ row, onPress, onDay, onReflect }: HabitRowProps) {
         style={StyleSheet.absoluteFill}
       />
       <View style={styles.head} pointerEvents="box-none">
-        <View style={[styles.head, styles.grow]} pointerEvents="none">
+        <View style={styles.title} {...VISUAL_ONLY}>
           <StatusLight light={row.statusLight} />
           <Text style={[TYPE.title, styles.grow, { color: redesign.text }]} numberOfLines={1}>
             {row.label}
@@ -73,6 +81,7 @@ export function HabitRow({ row, onPress, onDay, onReflect }: HabitRowProps) {
 const styles = StyleSheet.create({
   card: { gap: 12 },
   head: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  title: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 10 },
   grow: { flex: 1, minWidth: 0 },
   streak: { fontWeight: '800', fontVariant: ['tabular-nums'] },
   // `.days` — seven equal columns; `.day` — `min-height:48px; gap:2px`.
