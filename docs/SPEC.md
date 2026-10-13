@@ -1430,41 +1430,90 @@ All tests must pass with `npm test` (Expo / Jest preset). The loop proof
 
 ### 7.2 Manual UI walkthrough (proves the loop closes)
 
-Perform on web (`npx expo start --web`) then on a native simulator:
+Perform on web (`npx expo start --web`) then on a native simulator.
+
+> **The walkthrough needs three days to pass.** It cannot be done in one sitting
+> through the UI alone.
+>
+> - Every rule below reads only days on or after the habit's `createdAt`.
+> - The app blocks recording a day before `createdAt`.
+> - On a habit created today, today is the only day in scope.
+> - One day holds at most one miss.
+> - The Forming 🔴 needs `TUNING.statusLight.interventionConsecMiss` (2) consecutive
+>   misses.
+> - So steps 1–2 run on day D, and steps 3–10 run on day D+3.
+> - Either come back three days later, or move the device clock forward exactly three
+>   days. On web and the iOS Simulator, that is the host machine's clock.
+> - Entries recorded under a moved clock stay dated in the future. Use a throwaway
+>   account.
+> - Never edit the repository directly.
+
+**Day D**
 
 1. **Create** a habit: 이름 "턱걸이", 능력치 "💪 힘", 최소량 1, unit "회". No
    언제·어디서 or 이유. Save with "습관 만들기".
-2. **Log (multi-entry, same day).** On Today, log Pull-ups **twice** — actual=1,
-   then actual=2. Verify the Today feed shows **two rows** but the Dashboard 7-day dots
-   show a **single `done` dot** (✓) for today (sum 3 ≥ floor) — proving same-day
-   aggregation. Edit one row and delete the other; confirm the day reclassifies live.
-3. **Create the failure signal.** Backfill the previous **two** days as **skip
-   (reason chip "깜빡함", `cue`)** with no activity. The habit now has consecutive non-exception
-   misses and a low recent completion rate; with no cue set, its status light turns
-   🔴.
+2. **Log (multi-entry, same day).** On Today, log 턱걸이 **twice** — tap its `+`
+   and record the stepper's opening value (the floor, 1), then tap `+` again, raise
+   the stepper to 2 and record. Verify the "오늘 기록 2개" feed shows **two rows**
+   (1회, 2회) but the Dashboard 7-day dots show a **single `done` dot** (✓) for today
+   (sum 3 ≥ floor) — proving same-day aggregation. The six earlier dots are blank:
+   they precede `createdAt`. Edit one row and delete the other; confirm the day
+   reclassifies live and stays `done`.
+
+**Day D+3** (two unrecorded days, D+1 and D+2, now sit between)
+
+If the device clock was moved forward, reload the app first, so that `today`
+refreshes.
+
+3. **See the failure signal.** On the Dashboard, D ✓, D+1 and D+2 show `!` (`missed`),
+   and today is pending. The light is 🔴 "▲ 손봐야 해요" and the row shows "회고하기".
+   Why: the consecutive-miss count walks back from today; a pending today is
+   transparent, the two `missed` days count, and D's `done` ends the walk — 2 ≥
+   `interventionConsecMiss`. Do **not** log today yet: a `done` today resets the
+   count to 0 and the light leaves 🔴.
 4. **Tap the 🔴 row's "회고하기"** → navigate to Reflection for that habit.
-5. **Verify diagnosis:** Rule 4 fires ("언제·어디서가 비어 있어요. …") with evidence text
-   visible; suggested action is `fill_cue` ("언제·어디서 정하기"), pre-selected. The mirror renders the distinct
-   day-states (today `done`, the two skip days as misses, the unlogged past days `missed`).
-6. **Commit:** enter a cue ("아침 커피 마신 뒤"), keep action as `fill_cue`, tap
-   "이대로 고칠게요".
-7. **Verify** the habit's `cue` field in the repository is updated (check Habit
-   Detail → the design card's 언제·어디서 row shows the new cue).
-8. **Reload** the app/page. Verify the cue persists (LocalRepository round-trip).
-9. **Verify** the status light is no longer 🔴 (Rule 4 no longer fires once a cue
-   is set, assuming completion rate recovers above threshold).
+5. **Recover first (ADR-0002).** Reflection opens on "이 2일, 하셨나요?" listing D+1
+   and D+2 (2 of the 3 decided days are `missed`, above
+   `missedRateForBackfillPrompt`). The diagnosis reads "지금 기록으로는 짚을 것이
+   없어요. …" and suggests "그대로 두기": `missed` days never attribute a component.
+   For each listed day tap "안 했어요" and pick the reason chip **"깜빡함"** (`cue`).
+6. **Verify diagnosis:** **Rule 5** fires — "◆ 언제·어디서 / 깜빡해서 못 한 날이
+   반복돼요." with the evidence "최근 28일 중 '깜빡함' 사유로 못 했다고 찍은 날 2일"
+   (2 ≥ `cueSkipThreshold`). The suggested action is `fill_cue` ("언제·어디서
+   정하기"), pre-selected with its input open. Rule 4 ("언제·어디서가 비어 있어요. …")
+   does **not** fire here: the habit has 3 engaged days, below
+   `minEngagedDaysForRate` (5). The mirror "최근 7일은 이랬어요" shows the distinct
+   day-states: blank cells before `createdAt`, D ✓, D+1 and D+2 `−` (skip), today
+   pending.
+7. **Commit:** enter a cue ("아침 커피 마신 뒤"), keep action as `fill_cue`, tap
+   "이대로 고칠게요". The app returns to the Dashboard. The light is **still 🔴**:
+   the cue does not touch the consecutive-miss count (the two skips are misses).
+8. **Verify** the habit's `cue` field in the repository is updated (check Habit
+   Detail → the design card "지금 이렇게 하기로 했어요" → 언제·어디서 row shows the
+   new cue).
+9. **Reload** the app/page. Verify the cue persists (repository round-trip).
+10. **Close the loop.** On Today, the 턱걸이 card now shows "🕐 아침 커피 마신 뒤".
+    Log today's floor (tap `+`, record 1). On the Dashboard the light is no longer
+    🔴 and "회고하기" is gone: today's `done` resets the consecutive-miss count. The
+    light is 🟡 "◆ 살펴보세요", not ●: Rule 5 still counts the two "깜빡함" days
+    until they leave the 28-day window.
 
 **Partial check (optional).** Create a count habit with floor=5. Log two entries
 one day (actual=2, then actual=1 → sum 3). Verify the day renders as **`partial`**
 (the ½ mark, distinct from `missed` ! and from `skip` −), the streak is unaffected, and it is
-**not** counted as a miss — but it lowers the 28-day floor-completion rate.
+**not** counted as a miss — but it lowers the 28-day floor-completion rate. The rate
+itself is not visible on a new habit: 성공률 reads "—" until the window holds
+`minEngagedDaysForRate` engaged days.
 
 **Yes/No variant.** Create a yes/no habit (the floor / unit / target fields are
 hidden). Log it via its done action for 5 straight days → the stat XP jumps by the
 5-day milestone bonus and the level bar advances (proving XP → level). Log a miss,
 rebuild to 5 again → the re-achievement bonus is the decayed (×0.5) amount. The
 feed shows "✓ 했어요" (not "1회"); a healthy yes/no habit shows no stagnation
-flag.
+flag. Like steps 3–10, this needs real days on or after `createdAt`. One option is
+to come back over 11 days. The other is to move the clock forward 10 days after
+creating the habit, then reload the app. Record days 0–4 and 6–9 as done from the
+Habit Detail 최근 3주 cells. Leave day 5 empty. Then log today (day 10).
 
 ### 7.3 Recording subsystem — acceptance criteria
 
