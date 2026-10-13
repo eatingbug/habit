@@ -4,6 +4,7 @@ import type {
   Habit,
   LogType,
   ReflectionAction,
+  Severity,
   SkipReason,
 } from '@/models';
 
@@ -223,14 +224,14 @@ export const LIFECYCLE_NOTE =
  * `app/reflect/[id].tsx` because `useReflection` hands the screen its options already
  * labelled, and a hook cannot read copy that lives in `app/`.
  *
- * Canvas: `fill_cue` (`design/parts/Reflection.body.html:48`), `lower_floor` (`:52`),
- * `keep` (`:54`). `pause` and `archive` are `LIFECYCLE_LABELS`' own words — `:53`
+ * `fill_cue` and `adjust_cue` are SPEC §6.7's Diagnosis copy table (#111). Canvas:
+ * `lower_floor` (`design/parts/Reflection.body.html:52`), `keep` (`:54`). `pause` and `archive` are `LIFECYCLE_LABELS`' own words — `:53`
  * draws `잠깐 쉬기` too — so one action has one name on both screens. The other three
  * are **캔버스 출처 없음 — 신규 문구**.
  */
 export const REFLECTION_ACTION_LABELS: Record<ReflectionAction, string> = {
-  fill_cue: '할 시간 정하기',
-  adjust_cue: '할 시간 바꾸기',
+  fill_cue: '언제·어디서 정하기',
+  adjust_cue: '언제·어디서 바꾸기',
   fill_identity: '하는 이유 적기',
   lower_floor: '최소량 줄이기',
   raise_target: '목표 올리기',
@@ -241,10 +242,10 @@ export const REFLECTION_ACTION_LABELS: Record<ReflectionAction, string> = {
 
 /**
  * The line under the recommended action — "with explanation" (§6.4). `fill_cue` is the
- * canvas's (`Reflection.body.html:49`); the rest are **캔버스 출처 없음 — 신규 문구**.
+ * canvas's (`ReReflection.body.html`); the rest are **캔버스 출처 없음 — 신규 문구**.
  */
 export const REFLECTION_ACTION_REASONS: Record<ReflectionAction, string> = {
-  fill_cue: '언제, 어디서 할지만 정해도 훨씬 잘 됩니다. 맞으면 누르기만 하세요.',
+  fill_cue: '언제, 어디서 할지만 정해도 훨씬 잘 돼요. 맞으면 누르기만 하세요.',
   adjust_cue: '지금 정한 때가 자꾸 어긋나요. 더 잘 지켜지는 때로 옮겨 보세요.',
   fill_identity: '왜 하는지가 분명하면 내키지 않는 날에도 이어 가기 쉬워요.',
   lower_floor: '최소량을 못 할 수가 없을 만큼 낮추면 이어 가기가 쉬워져요.',
@@ -256,13 +257,14 @@ export const REFLECTION_ACTION_REASONS: Record<ReflectionAction, string> = {
 
 /**
  * The flag card's component badge (§6.4 "Component (CUE / FLOOR / IDENTITY / LOAD)").
- * `cue` and `floor` are the canvas's (`Reflection.body.html:37` · `:42`); `identity` and
- * `load` are **캔버스 출처 없음 — 신규 문구**.
+ * `cue` and `identity` are SPEC §6.7's Diagnosis copy table (#111), the same words as
+ * `SCREEN_WORDS`. `floor` is the canvas's (`Reflection.body.html:42`); `load` is
+ * **캔버스 출처 없음 — 신규 문구**.
  */
 export const COMPONENT_LABELS: Record<DiagnosisComponent, string> = {
-  cue: '언제 할지',
+  cue: '언제·어디서',
   floor: '최소량',
-  identity: '하는 이유',
+  identity: '이유',
   load: '양 늘리기',
 };
 
@@ -693,8 +695,14 @@ export function habitIcon(habit: Pick<Habit, 'statId' | 'icon'>): string {
 
 /** "10월 9일" — a date by month and day, for copy that names a past day. */
 export function monthDayLabel(date: string): string {
-  const [, month, day] = date.split('-').map(Number);
+  const { month, day } = monthAndDay(date);
   return `${month}월 ${day}일`;
+}
+
+/** The month and day of a `YYYY-MM-DD` date, as numbers. */
+function monthAndDay(date: string): { month: number; day: number } {
+  const [, month, day] = date.split('-').map(Number);
+  return { month, day };
 }
 
 /** "10월 10일 토요일" — the Today header and the yesterday sheet's eyebrow. */
@@ -1000,3 +1008,68 @@ export function dayStateBadge(state: DayState): string {
   const glyph = DAY_STATE_GLYPHS[state];
   return glyph.length > 0 ? `${glyph} ${DAY_STATE_WORDS[state]}` : DAY_STATE_WORDS[state];
 }
+
+/**
+ * 회고 화면 (SPEC §6.7, `ReReflection`, #131). 진단 카드의 성분 이름과 처방 이름은
+ * 위의 `COMPONENT_LABELS` 와 `REFLECTION_ACTION_LABELS` 에 있다.
+ */
+
+/**
+ * 진단 카드의 배지: 심각도 모양과 성분 이름 ("▲ 언제·어디서"). 모양은 상태등과 같다.
+ * `critical` 은 손봐야 해요의 ▲, 나머지는 살펴보세요의 ◆ 다.
+ */
+export function diagnosisBadge(severity: Severity, name: string): string {
+  const glyph = severity === 'critical' ? STATUS_LIGHT_GLYPHS.intervention : STATUS_LIGHT_GLYPHS.caution;
+  return `${glyph} ${name}`;
+}
+
+/** 접힌 진단 카드를 펼치는 버튼 (§6.7). */
+export function moreDiagnosesLabel(count: number): string {
+  return `다른 점 ${count}개 더 보기`;
+}
+
+/** 회고 화면의 제목: "명상, 잠깐 볼까요". */
+export function reflectionTitle(habitName: string): string {
+  return `${habitName}, 잠깐 볼까요`;
+}
+
+/** 추천 행동의 머리: "✓ 이렇게 해 볼까요: 언제·어디서 정하기". */
+export function proposalLine(actionLabel: string): string {
+  return `✓ 이렇게 해 볼까요: ${actionLabel}`;
+}
+
+/** "10/8" — 저널 메모의 날짜. */
+export function shortDateLabel(date: string): string {
+  const { month, day } = monthAndDay(date);
+  return `${month}/${day}`;
+}
+
+/** "10/5 (월)" — 백필 질문의 날짜 줄. `weekday` 는 일요일이 0이다. */
+export function weekdayDateLabel(date: string, weekday: number): string {
+  return `${shortDateLabel(date)} (${WEEKDAY_LABELS[weekday]})`;
+}
+
+/**
+ * 회고 화면의 고정 문구 (`ReReflection`). `useReflection` 이 화면에 그대로 넘긴다. 공통 문구
+ * (불러오는 중, 다시 시도, 실행취소, `?` 툴팁) 도 여기서 함께 넘긴다.
+ */
+export const REFLECTION_COPY = {
+  back: '뒤로',
+  did: DAY_STATE_WORDS.done,
+  didNot: '안 했어요',
+  recoverNote: '했어요를 누르면 그날이 성공으로 바뀌고 연속도 다시 이어져요.',
+  sevenDays: '최근 7일은 이랬어요',
+  howItReads: '이렇게 보여요',
+  /** 캔버스 출처 없음. 기록 없는 날만 있는 🔴 는 진단이 없다 (ADR-0002). */
+  nothingToFlag: '지금 기록으로는 짚을 것이 없어요. 기록이 없는 날을 채우면 더 정확히 볼 수 있어요.',
+  commit: '이대로 고칠게요',
+  notFound: '습관을 찾을 수 없어요.',
+  /** 비어 있는 언제·어디서를 고치려 할 때. */
+  cueRequired: '언제·어디서를 적어 주세요.',
+  loading: LOADING_NOTE,
+  retry: RETRY_LABEL,
+  undo: UNDO_TOAST_COPY.undo,
+  backfillHelp: TOOLTIPS.reflectionBackfill,
+  sevenDaysHelp: TOOLTIPS.reflectionSevenDays,
+  howItReadsHelp: TOOLTIPS.reflectionHowItReads,
+} as const;
