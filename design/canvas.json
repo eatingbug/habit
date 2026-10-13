@@ -277,6 +277,24 @@
       "title": "회고 · 다크"
     },
     {
+      "file": "ReReflectionChart.dc.html",
+      "page": "page-3",
+      "x": 2700,
+      "y": 4340,
+      "w": 390,
+      "h": 1000,
+      "title": "회고 · 주마다 한 양 그래프 · 라이트"
+    },
+    {
+      "file": "ReReflectionChart.dark.dc.html",
+      "page": "page-3",
+      "x": 3120,
+      "y": 4340,
+      "w": 390,
+      "h": 1000,
+      "title": "회고 · 주마다 한 양 그래프 · 다크"
+    },
+    {
       "file": "ReTodayFreeLog.dc.html",
       "page": "page-3",
       "x": 0,
