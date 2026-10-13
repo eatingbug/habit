@@ -22,7 +22,7 @@ interface HelpTipState {
    * Whether a hover may open the tooltip. A click that closes it over the `?` leaves the
    * pointer there, so hover waits until the pointer has left the `?` once.
    */
-  armed: boolean;
+  hoverReady: boolean;
 }
 
 type HelpTipAction =
@@ -33,7 +33,7 @@ type HelpTipAction =
   | { type: 'layerPress'; point: TipPoint }
   | { type: 'close' };
 
-const HELP_TIP_CLOSED: HelpTipState = { mode: null, anchor: null, armed: true };
+const HELP_TIP_CLOSED: HelpTipState = { mode: null, anchor: null, hoverReady: true };
 
 function inside(anchor: TipAnchor | null, { x, y }: TipPoint): boolean {
   return (
@@ -49,19 +49,21 @@ function inside(anchor: TipAnchor | null, { x, y }: TipPoint): boolean {
 function helpTipReducer(state: HelpTipState, action: HelpTipAction): HelpTipState {
   switch (action.type) {
     case 'hoverIn':
-      return state.mode == null && state.armed ? { ...state, mode: 'hover', anchor: action.anchor } : state;
+      return state.mode == null && state.hoverReady ? { ...state, mode: 'hover', anchor: action.anchor } : state;
     case 'hoverOut':
-      return state.armed ? state : { ...state, armed: true };
+      return state.hoverReady ? state : { ...state, hoverReady: true };
     case 'press':
       return state.mode === 'tap' ? { ...state, mode: null } : { ...state, mode: 'tap', anchor: action.anchor };
     case 'layerMove':
       return state.mode === 'hover' && !inside(state.anchor, action.point)
-        ? { ...state, mode: null, armed: true }
+        ? { ...state, mode: null, hoverReady: true }
         : state;
     case 'layerPress': {
       const onTrigger = inside(state.anchor, action.point);
-      if (state.mode === 'hover') return onTrigger ? { ...state, mode: 'tap' } : { ...state, mode: null, armed: true };
-      return { ...state, mode: null, armed: !onTrigger };
+      if (state.mode === 'hover') {
+        return onTrigger ? { ...state, mode: 'tap' } : { ...state, mode: null, hoverReady: true };
+      }
+      return { ...state, mode: null, hoverReady: !onTrigger };
     }
     case 'close':
       return { ...state, mode: null };
