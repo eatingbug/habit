@@ -13,8 +13,7 @@ import { Appearance } from 'react-native';
 import { deviceKV, type DeviceKV } from '@/context/deviceKV';
 import type { KVStore } from '@/data';
 
-import { PALETTES as REDESIGN_PALETTES, type Palette as RedesignPalette } from './redesignTokens';
-import { PALETTES, type Palette, type ThemeName } from './tokens';
+import { PALETTES, type Palette, type ThemeName } from './redesignTokens';
 
 /** 'system' follows the OS; the explicit values are the manual override (§6.0). */
 export type ThemePreference = ThemeName | 'system';
@@ -31,12 +30,8 @@ function isPreference(value: string | null): value is ThemePreference {
 
 interface ThemeContextValue {
   name: ThemeName;
-  colors: Palette;
-  /**
-   * The redesign palette (`redesignTokens.ts`) for the same scheme as `colors`. Screens
-   * move from `colors` to `redesign` one ticket at a time (#123).
-   */
-  redesign: RedesignPalette;
+  /** The palette (`redesignTokens.ts`) for `name`. */
+  redesign: Palette;
   preference: ThemePreference;
   /** Applies at once and is kept on the device (#126). */
   setPreference: (p: ThemePreference) => void;
@@ -127,8 +122,7 @@ export function ThemeProvider({
     const name: ThemeName = preference === 'system' ? (osScheme === 'dark' ? 'dark' : 'light') : preference;
     return {
       name,
-      colors: PALETTES[name],
-      redesign: REDESIGN_PALETTES[name],
+      redesign: PALETTES[name],
       preference,
       setPreference,
     };

@@ -4,9 +4,6 @@
  * property names in camelCase (`--border-strong` → `borderStrong`, `--accent-ink` →
  * `accentInk`). `redesignTokens.test.ts` reads the CSS file and fails on any drift.
  *
- * Expand step of #123: this set sits beside `tokens.ts` until every screen has moved,
- * then the old set is removed in one ticket.
- *
  * Each color has a `fill` (the bare name, e.g. `accent`), an `ink` and a `tint`. Fills
  * are shared by both themes; only neutrals, `ink` and `tint` have dark values. As in the
  * CSS, `over` has only a fill and `stat` has no fill.
@@ -14,7 +11,7 @@
 
 import type { TextStyle } from 'react-native';
 
-import type { ThemeName } from './tokens';
+export type ThemeName = 'light' | 'dark';
 
 export interface Palette {
   bg: string;
