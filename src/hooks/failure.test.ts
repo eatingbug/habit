@@ -171,9 +171,9 @@ describe('읽기 실패 — 무한 스피너도, 빈 상태라는 거짓말도 �
 
 describe('쓰기 실패 — 삼켜지지 않는다 (#51)', () => {
   /**
-   * 대시보드의 기록 모달(#80). 쓰기는 reject 한다. 모달 안의 `LogForm` 이 그것을 받아
-   * 폼 안에서 말하고, 모달은 닫히지 않는다. 훅이 또 잡으면 한 실패에 배너가 둘이 뜨고,
-   * 폼은 성공으로 읽어 모달을 닫는다.
+   * 기록 시트(`RecordSheet`). 쓰기는 reject 한다. 시트가 그것을 받아 시트 안에서
+   * 말하고, 시트는 닫히지 않는다. 훅이 또 잡으면 한 실패에 배너가 둘이 뜨고,
+   * 시트는 성공으로 읽어 닫힌다.
    */
   it('기록이 실패하면 reject 하고 토스트도 화면 배너도 없다', async () => {
     const repository = await flakyWith();
@@ -183,11 +183,10 @@ describe('쓰기 실패 — 삼켜지지 않는다 (#51)', () => {
     });
     await waitFor(() => expect(result.current.rows).toHaveLength(1));
 
+    act(() => result.current.openRecord(habit().id, TODAY));
     repository.failing = true;
     await act(async () => {
-      await expect(result.current.logActivity(habit(), 5, { note: '메모' })).rejects.toThrow(
-        'network',
-      );
+      await expect(result.current.recordFromSheet(5, '메모')).rejects.toThrow('network');
     });
 
     expect(result.current.failure).toBeNull();
@@ -204,9 +203,10 @@ describe('쓰기 실패 — 삼켜지지 않는다 (#51)', () => {
     });
     await waitFor(() => expect(result.current.rows).toHaveLength(1));
 
+    act(() => result.current.openSkip(habit().id, TODAY));
     repository.failing = true;
     await act(async () => {
-      await expect(result.current.logSkip(habit(), 'cue')).rejects.toThrow('network');
+      await expect(result.current.skipFromSheet('cue')).rejects.toThrow('network');
     });
 
     expect(result.current.failure).toBeNull();
@@ -224,7 +224,8 @@ describe('쓰기 실패 — 삼켜지지 않는다 (#51)', () => {
       wrapper: wrapperFor(repository),
     });
     await waitFor(() => expect(result.current.rows).toHaveLength(1));
-    await act(() => result.current.logActivity(habit(), 5));
+    act(() => result.current.openRecord(habit().id, TODAY));
+    await act(() => result.current.recordFromSheet(5));
     expect(result.current.toast).not.toBeNull();
 
     repository.failing = true;
@@ -237,8 +238,8 @@ describe('쓰기 실패 — 삼켜지지 않는다 (#51)', () => {
   });
 
   /**
-   * 생애주기 전환. 설계 편집기와 달리 잠깐 쉬기·보관하기 버튼은 `run()` 을 그대로 부르는
-   * 자리라 `app/habit/[id].tsx` 에 받을 `catch` 가 없다.
+   * 생애주기 전환. 설계 편집 시트와 달리 확인 시트의 버튼은 `confirmFromSheet()` 를 그대로
+   * 부르는 자리라 `app/habit/[id].tsx` 에 받을 `catch` 가 없다.
    */
   it('보관하기가 실패하면 실패가 보이고 습관은 그대로 살아 있다', async () => {
     const repository = await flakyWith();
@@ -248,9 +249,9 @@ describe('쓰기 실패 — 삼켜지지 않는다 (#51)', () => {
     });
     await waitFor(() => expect(result.current.habit).not.toBeNull());
 
-    const archive = result.current.lifecycleActions.find((action) => action.kind === 'archive');
+    await act(() => result.current.pickMenu('archive'));
     repository.failing = true;
-    await act(() => archive?.run() ?? Promise.resolve());
+    await act(() => result.current.confirmFromSheet());
 
     expect(result.current.failure?.message).toBe(SAVE_FAILED_NOTE);
     expect(result.current.habit?.lifecycle).toBe('forming');

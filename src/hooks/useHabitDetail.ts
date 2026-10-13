@@ -1,186 +1,98 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
-import { LIFECYCLE_LABELS, LOAD_FAILED_NOTE, SAVE_FAILED_NOTE } from '@/config/copy';
+import {
+  dailyAmountLabel,
+  DASHBOARD_COPY,
+  DAY_WORDS,
+  dayCellLabel,
+  dayStateBadge,
+  daysLabel,
+  DAY_STATE_WORDS,
+  DETAIL_COPY,
+  editTimeLabel,
+  expectedDaysLabel,
+  floorLineLabel,
+  habitIcon,
+  journalDayTitle,
+  journalRowSummary,
+  LIFECYCLE_LABELS,
+  LIFECYCLE_NOTE,
+  LOAD_FAILED_NOTE,
+  longDateLabel,
+  monthDayLabel,
+  nextStepLine,
+  SAVE_FAILED_NOTE,
+  SCREEN_WORDS,
+  statLabel,
+  targetLineLabel,
+  TODAY_COPY,
+  TOOLTIPS,
+  weeklyTotalLabel,
+  weeksAgoLabel,
+  WEEKDAY_LABELS,
+} from '@/config/copy';
 import { TUNING } from '@/config/tuning';
 import { useRepository } from '@/context/RepositoryContext';
 import { isBackfillableDate, isBackfilledRow } from '@/domain/backfill';
-import { dayStates, type ClassifiedDay } from '@/domain/classify';
-import { compareDates, dateOf, daysBetween, mondayOf, windowEndingAt } from '@/domain/dates';
+import { dayStates, isFloorMet, type ClassifiedDay } from '@/domain/classify';
+import { addDays, compareDates, dateOf, daysBetween, weekdayOf, windowEndingAt } from '@/domain/dates';
 import { deleteOutcome, type DeleteOutcome } from '@/domain/deleteEffect';
-import { heatCells, type HeatCell } from '@/domain/heatLevel';
+import { heatCells } from '@/domain/heatLevel';
 import { archiveHabit, pauseHabit, resumeHabit } from '@/domain/lifecycle';
 import { successRate } from '@/domain/rates';
-import { computeXP } from '@/domain/score';
+import { deriveStatusLight, type StatusLight } from '@/domain/statusLight';
 import { computeStreak, engagementStreak, longestStreak, showedUpDays } from '@/domain/streak';
 import { weeklyActualTotals } from '@/domain/weekly';
-import { localNoonOn, localToday } from '@/lib/device';
+import { localClock, localNoonOn, localToday } from '@/lib/device';
 import type { DayState, Habit, HabitEntry, SkipReason, Stat } from '@/models';
+import type { Palette } from '@/theme/redesignTokens';
 
 import { useFailure, type Failure } from './failure';
-import { logAffordances, useQuickLog, type LogAffordances, type QuickLogToast } from './useQuickLog';
+import { logAffordances, useQuickLog, type QuickLogToast, type StreakCelebration } from './useQuickLog';
+import {
+  draftedEntry,
+  labelOf,
+  recordFromSheet as writeRecord,
+  recordSheetView,
+  skipFromSheet as writeSkip,
+  skipSheetView,
+  type RecordSheetView,
+  type SkipSheetView,
+} from './recordSheet';
+import type { EditEntrySheetView, EntryDraft } from './useToday';
 
 /**
- * The habit detail screen's data path — SPEC §6.3.
+ * The Habit Detail screen's data path — SPEC §6.5, the `ReDetail*` artboards (#128).
  *
- * The hook is the ticket's test seam (jest.config.js: hooks + an in-memory repository,
- * `testMatch` is `<rootDir>/src/**`, and there are no component render tests). So
- * **every judgment the screen makes lives here** — bar heights and reference-line
- * positions as 0–100 numbers, which week wears the ⭐, which panel comes first, which
- * journal rows may have their time re-stamped, whether a delete deserves a confirm. A
- * condition written in `app/habit/[id].tsx` is a condition nothing asserts; the screen
- * applies *words* to these fields and decides nothing.
+ * The hook is the screen's test seam (jest.config.js: hooks + an in-memory repository,
+ * no component render tests). So **every judgment and every word the screen shows
+ * lives here**: which pills show, the hero card's kind and its lines, the heatmap's
+ * weekday row, each journal day's head, the design card's rows, the ⋯ menu's items and
+ * the one sheet that is open. The screen applies these fields and decides nothing.
  *
  * Two parameters are injected for the usual reasons: `today` decides `pending` vs
  * `missed` (ADR-0001) and bounds every window, and `now` stamps a row's `timestamp`,
  * the domain's ordering key (§3.3). `new Date()` is read only at the UI edge, in this
  * file's defaults.
  *
- * **Nothing here stores a day's state.** The journal, the chart, the pills and the
+ * **Nothing here stores a day's state.** The journal, the hero, the pills and the
  * heatmap are all recomputed from the rows on each load, which is why backfilling a
  * past date repairs it for free and deleting its last row un-repairs it (ADR-0001).
  */
 
-/**
- * The stat pills the canvas keeps on this screen (`HabitDetail.body.html:10`/`:12`/`:13`,
- * and the same row on `YesNo.body.html:11`/`:13`/`:14`).
- */
-export interface DetailPills {
-  /** Consecutive floor-met days ending today (§4.2). */
-  streak: number;
-  /**
-   * Consecutive days with **any** real engagement — `partial` counts (§4.3 C3) — the
-   * canvas's 빠짐없이 pill (`HabitDetail.body.html:11`). A superset of `streak` by
-   * construction, so on a run of honest sub-floor days the two figures differ and that
-   * difference is the whole point of the pill.
-   */
-  engagementStreak: number;
-  /**
-   * Is the 빠짐없이 pill shown at all? **Count habits only** (#18).
-   *
-   * Not a canvas whim: a binary habit's floor is always 1 (`src/models/index.ts:43`)
-   * and its activity rows always carry `actual: 1` (`src/hooks/useQuickLog.ts:209`), so
-   * `classify.ts`'s `sum < habit.floor` can never hold and `partial` is unreachable —
-   * `engagementStreak` and `streak` are then the same number, and a pill showing 연속
-   * twice under two labels would be a label that lies. `YesNo.body.html:12` fills that
-   * slot with 최고 연속 instead — `showLongestStreak`.
-   */
-  showEngagement: boolean;
-  /**
-   * Does it come **second**, right after 연속? On a `forming` habit, yes (AC 2: the
-   * pill "comes to the front" while a habit is still forming, which is exactly when
-   * showing up matters more than the floor). Otherwise it follows the other pills.
-   *
-   * The order is decided here rather than in the screen for this file's standing
-   * reason: `jest.config.js` matches `src/**` only, so a position chosen in
-   * `app/habit/[id].tsx` is one no test can reach.
-   */
-  engagementLeads: boolean;
-  /**
-   * The longest floor run in the whole history — the 최고 연속 pill
-   * (`design/parts/YesNo.body.html:12`), #41. Derived on every read like everything
-   * else here, so a backfill that joins two past runs raises it (ADR-0001).
-   */
-  longestStreak: number;
-  /**
-   * Is the 최고 연속 pill shown at all? **Binary habits only** — it is the counterpart
-   * to 빠짐없이, which has nothing to say there (see `showEngagement`). The two can
-   * therefore never contend for the second slot.
-   *
-   * The gate is the kind alone, not the lifecycle: no artboard draws an established
-   * binary habit, and #18 set this screen's precedent by giving 빠짐없이 to **every**
-   * count habit rather than to forming ones only.
-   *
-   * `docs/SPEC.md` §6.3's pill list (`docs/SPEC.md:964–965`) does not name this pill.
-   * The canvas is this screen's layout authority and the SPEC list is silent rather
-   * than opposed, so the canvas decides — and the SPEC was left untouched.
-   */
-  showLongestStreak: boolean;
-  /**
-   * The number the **user** sees — `successRate` over `TUNING.windows.floorRate` days
-   * (§4.4). `null` is the §4.4 min-sample guard: too few resolved days to say anything,
-   * which the canvas's `82%` slot then reads as `—` rather than as a low score.
-   *
-   * `successRate`, not `floorCompletionRate`: the canvas labels this pill 성공률, and
-   * `rates.ts` names `successRate` as the user-facing number and `floorCompletionRate`
-   * as the one the diagnosis reads. A pill labelled 성공률 showing the diagnosis's
-   * number would be a label that lies.
-   */
-  successRate: number | null;
-  /**
-   * What **this week's** rows added to the habit's XP (`HabitDetail.body.html:13`,
-   * `YesNo.body.html:14`) — #17.
-   *
-   * The week is the ISO week the growth chart already uses (`mondayOf`,
-   * `src/domain/dates.ts`), so this pill and the chart's rightmost bar always describe
-   * the same seven days.
-   *
-   * A **before/after delta**, not a second scoring rule: `computeXP` over the whole
-   * history minus `computeXP` over the history with this week's rows removed. XP is
-   * run-keyed — streak bonuses and milestones belong to a run, not to a day — so what
-   * the week is worth is what removing it would cost. `useToday`'s `xpToday` measures
-   * its day exactly this way.
-   */
-  weeklyXP: number;
-}
-
-/** One row of one journal day — a stored `HabitEntry` plus what may be done to it. */
-export interface JournalRow {
-  entry: HabitEntry;
-  /**
-   * Does this row carry the §6.3 noon pin — was it written by a backfill? Read off the
-   * row's own date, never off the day being shown, so a row genuinely logged at 09:00
-   * reads 09:00.
-   */
-  backfilled: boolean;
-  /**
-   * May the user re-stamp this row's time? Not on a backfilled row: the noon pin *is*
-   * that day's ordering basis (§6.3, §7.3), and rewriting it would reorder rows the
-   * pin placed. Amount and note stay editable either way.
-   *
-   * A row logged by hand at exactly local noon is indistinguishable from a backfill and
-   * loses its time reveal here too — see `isBackfilledRow`, which owns that limitation.
-   * Telling them apart would take a stored discriminator on `HabitEntry`, which this
-   * codebase does not add (ADR-0001: compute, don't store).
-   */
-  timeEditable: boolean;
-}
-
-/**
- * One day of the journal. The journal is a **date walk**, not a row walk: a past day
- * holding no rows still gets a line — `기록 없음 · 실패` — and can be filled from it
- * (canvas `HabitDetail.body.html:50`). Iterating stored rows would lose exactly the
- * days the screen exists to repair.
- */
-export interface JournalDay {
-  date: string;
-  /**
-   * Is this day `today`? The delete confirm names the day it changes, and calling
-   * today `3월 29일` is exactly what `copy.ts`'s `오늘` default exists to avoid. The
-   * condition is derived here; the screen picks the word.
-   */
-  isToday: boolean;
-  /** The day's computed state — the chip's text key (§4.1, canvas `:46–50`). */
-  state: DayState;
-  /** The day's summed activity. */
-  sum: number;
-  /** Present only on an only-skip day — the chip's `못 함 · <사유>` half. */
-  skipReason?: SkipReason;
-  /**
-   * The amount the chip says the day added up to (`성공 · 모두 5`). Absent on a binary
-   * habit, which has no quantity to report (`함` / `안 함 · <사유>`), and on a day with
-   * no activity at all.
-   */
-  chipAmount?: number;
-  /** The day's rows, in the domain total order (§7.3). */
-  rows: JournalRow[];
-  /**
-   * Show the recovery line (`지금 채워 넣으면 이 날이 회복됩니다`)? Only on `missed` —
-   * a day with no rows at all. A `partial` is **not** a miss (CONTEXT glossary) and a
-   * `skip` already carries the user's own reason, so neither is offered repair copy.
-   */
-  recoverable: boolean;
-  /** May a row be appended to this date at all? (§6.3 range, `isBackfillableDate`.) */
-  backfillable: boolean;
+/** The head (§6.5 Head): back, ⋯, the icon, the name and the status light with its `?`. */
+export interface DetailHead {
+  /** The habit's icon — its stat's icon until the habit carries one (`habitIcon`). */
+  icon: string;
+  name: string;
+  /** The status light (§4.6). `StatusLight` draws its shape and word. */
+  light: StatusLight;
+  /** The status light's tooltip (§6.8). */
+  lightHelp: string;
+  /** "회고하기" on a 🔴 habit only (§6.5 item 2), else `null`. */
+  reflectLabel: string | null;
+  /** "⏸ 쉬는 중이에요" or "🗄 보관한 습관이에요" on a stopped habit, else `null`. */
+  stoppedNote: string | null;
 }
 
 /** One bar of the growth chart. `height` is a percentage of the chart's scale. */
@@ -189,14 +101,14 @@ export interface GrowthBar {
   total: number;
   /** 0–100. */
   height: number;
-  /** 0 = the week `today` falls in, 1 = the week before it, … (the canvas's `이번`/`1`). */
+  /** 0 = the week `today` falls in, 1 = the week before it, … */
   weeksAgo: number;
   /** The ⭐ week — the highest total, most recent on a tie, never a week of 0. */
   best: boolean;
 }
 
 /**
- * The weekly growth panel (§6.3 C4) as **geometry**: every number the screen needs is
+ * The weekly growth chart (§6.5 C4) as **geometry**: every number the screen needs is
  * already a percentage of one shared scale, so a reference line can never fall outside
  * the chart it annotates.
  */
@@ -215,40 +127,121 @@ export interface GrowthChart {
    * defensive read). No line is drawn for it.
    */
   weeklyTarget: number | null;
-  /** The best week's total — the canvas's `최고 70`. 0 when nothing was ever recorded. */
+  /** The best week's total. 0 when nothing was ever recorded. */
   best: number;
-  /**
-   * The week `today` falls in — the last bucket, and the canvas's `이번 주 37`
-   * (`Established.body.html:17`). A running total: the week is not over.
-   */
+  /** The week `today` falls in — the last bucket. A running total: the week is not over. */
   thisWeek: number;
 }
 
 /**
- * The Forming expectation panel (§6.3 C7b). Progress is **repetitions**, never the
- * calendar: a shaky stretch has to read as "still forming", not "failing".
+ * The one hero card (§6.5 item 3). Which one is read off the habit's phase: its
+ * lifecycle, or for a stopped habit the lifecycle it resumes to.
+ * - `forming`: the 자리 잡는 중 ring, counted in days done, beside 연속 and the next step.
+ * - `weekly`: an established count habit's 주마다 한 양 bars.
+ * - `streak`: an established yes/no habit, which has no amount per week to chart, keeps
+ *   연속 and the next step alone (#128 decision; no artboard draws it).
  */
-export interface FormingExpectation {
-  /** Engaged days since the habit was born — `showedUpDays` (§4.3 C3). Unclamped. */
-  days: number;
-  /** `TUNING.formingExpectationDays` — Lally's ~66. */
-  expectedDays: number;
-  /** `days / expectedDays`, **clamped to 1** so the bar cannot overflow past day 66. */
-  ratio: number;
+export type DetailHero =
+  | {
+      kind: 'forming';
+      /** Days done over the usual 66, clamped to 1 so the ring cannot overflow. */
+      ratio: number;
+      /** "34일" — unclamped. */
+      daysLabel: string;
+      /** "보통 66일". */
+      expectedLabel: string;
+      streak: number;
+      /** "오늘 4쪽 더 하면 3일" (`nextStepLine`). */
+      nextStep: string;
+    }
+  | {
+      kind: 'weekly';
+      chart: GrowthChart;
+      /** "이번 주 72회". */
+      totalLabel: string;
+      /** "최소 35". */
+      floorLabel: string;
+      /** "목표 70", or `null` with no target line. */
+      targetLabel: string | null;
+      /** "11주 전" — the oldest bar's week. */
+      startLabel: string;
+      /** "이번 주". */
+      endLabel: string;
+    }
+  | { kind: 'streak'; streak: number; nextStep: string };
+
+/** One pill (§6.5 Numbers). The whole pill is the touch area of its `?` (§6.0). */
+export interface DetailPill {
+  key: 'streak' | 'longestStreak' | 'successRate' | 'engagementStreak';
+  label: string;
+  value: string;
+  unit?: string;
+  /** The tooltip (§6.8). */
+  help: string;
 }
 
-/** The design box's current hypothesis (§6.3, AC 8). */
+/** One heatmap cell. */
+export interface DetailHeatCell {
+  date: string;
+  /** Absent ⇔ the day is unclassified (before `createdAt`, or empty inside a pause). */
+  state?: DayState;
+  /** "3월 28일 했어요" — the cell's accessible name. */
+  label: string;
+  /** May the cell open the record sheet for its date (§6.3 range, `isBackfillableDate`)? */
+  tappable: boolean;
+}
+
+/**
+ * A text colour, named by its `Palette` key. The hook picks it; the screen only looks it
+ * up in `useTheme().redesign`.
+ */
+export type DetailInk = Extract<keyof Palette, 'text' | 'muted' | 'critInk'>;
+
+/** A day-state chip's tone (`.st` in the tokens), a `re/Chip` tone. */
+export type DayBadgeTone = 'done' | 'neutral' | 'quiet' | 'crit';
+
+/** One legend entry: a day-state and its screen word. */
+export interface DetailLegendItem {
+  state: DayState;
+  word: string;
+}
+
+/** The 최근 3주 heatmap (§6.5 Heatmap): 7 columns by 3 rows, today bottom-right. */
+export interface DetailHeatmap {
+  /** The weekday row on top — the weekdays of the first 7 cells. */
+  weekdays: string[];
+  /** `TUNING.heatmapDays` cells, ascending, ending today. */
+  cells: DetailHeatCell[];
+  /** The six day-states under the grid, in the §6.0 order. */
+  legend: DetailLegendItem[];
+}
+
+/** The design card's rows (§6.5 Design card), already worded. */
+export interface DesignCard {
+  /** The 언제·어디서 value, or "아직 안 정했어요. 이것부터 정해 보세요". */
+  cue: string;
+  /** `critInk` when 언제·어디서 is empty (`ReDetailRed`), else `text`. */
+  cueInk: DetailInk;
+  /** "하루 10쪽", or `null` on a yes/no habit. */
+  floor: string | null;
+  /** "하루 30쪽", or `null` on a yes/no habit or with no target that counts. */
+  target: string | null;
+  /** "📖 지능", or `null` when `statId` names no configured stat. */
+  stat: string | null;
+  /** The 이유 behind "이유 보기", or "아직 안 적었어요." when none was written. */
+  identity: string;
+  /** `muted` for the empty line, else `text`. */
+  identityInk: DetailInk;
+}
+
+/** The design edit sheet's current hypothesis (§6.5, AC 8). */
 export interface DesignBox {
   cue?: string;
   identity?: string;
   floor: number;
   floorUnit: string;
   target?: number;
-  /**
-   * Does the edit form show the 최소량/목표 inputs? False for a binary habit, whose
-   * floor is always 1 and which may hold no target (§3.2) — its 최소량 row reads
-   * `없음 — 했다 / 안 했다` instead (AC 8, canvas `YesNo.body.html:46`).
-   */
+  /** Does the edit sheet show the 최소량/목표 inputs? False for a yes/no habit (§3.2). */
   editsAmounts: boolean;
 }
 
@@ -274,6 +267,42 @@ export interface DesignErrors {
   target?: string;
 }
 
+/** One row of one journal day — a stored `HabitEntry` plus its words. */
+export interface JournalRow {
+  entry: HabitEntry;
+  /** "07:10" — the row's local wall-clock time. */
+  time: string;
+  /** "+6쪽", "✓ 했어요" or "못 했어요 · 예외" (`journalRowSummary`). */
+  summary: string;
+  /** Does this row carry the §6.3 noon pin — was it written by a backfill? */
+  backfilled: boolean;
+  /** May the user re-stamp this row's time? Not on a backfilled row (§6.3, §7.3). */
+  timeEditable: boolean;
+}
+
+/**
+ * One day of the journal. The journal is a **date walk**, not a row walk: a past day
+ * holding no rows still gets a line and can be filled from it.
+ */
+export interface JournalDay {
+  date: string;
+  isToday: boolean;
+  /** The day's computed state (§4.1). */
+  state: DayState;
+  /** "10월 10일 (오늘)". */
+  title: string;
+  /** "½ 조금 했어요" — the state's mark glyph and word (§6.0). */
+  badge: string;
+  /** The badge chip's tone: `done` tint for done/over/partial, `inset` for skip, … */
+  tone: DayBadgeTone;
+  /** The day's rows, in the domain total order (§7.3). */
+  rows: JournalRow[];
+  /** May a row be appended to this date at all? (§6.3 range, `isBackfillableDate`.) */
+  backfillable: boolean;
+  /** The date the screen was opened at (§6.4): tinted and scrolled to. */
+  focused: boolean;
+}
+
 /**
  * What deleting one journal row costs, plus the two things the domain cannot know: the
  * habit the confirm names, and whether this screen should say a streak breaks.
@@ -281,166 +310,166 @@ export interface DesignErrors {
 export interface DetailDeleteEffect extends DeleteOutcome {
   habit: Habit;
   entry: HabitEntry;
-  /**
-   * Say the streak figures (`연속 20일 → 4일`)? Only on a **past** date whose streak
-   * actually changes. Today is excluded because an emptied today falls back to
-   * `pending`, which breaks nothing (ADR-0001) — the same reason `app/today.tsx` shows
-   * no streak line at all.
-   *
-   * Wider than "the day's last row", deliberately: deleting one of two activity rows
-   * can drop a past day from `done` to `partial`, which empties nothing and erases no
-   * miss, yet cuts the run just the same. The honest condition is the change itself.
-   */
+  /** Say the streak figures? Only on a **past** date whose streak actually changes. */
   showsStreak: boolean;
 }
 
-/**
- * One lifecycle control at the foot of the screen — 잠깐 쉬기 · 보관하기 · 다시 시작 ·
- * 다시 꺼내기 (SPEC §4.7, issue #19).
- *
- * **Which** controls appear, and with which label, is decided here rather than in
- * `app/habit/[id].tsx` for this file's standing reason: `jest.config.js` matches
- * `src/**` only, so a branch on `lifecycle` written in JSX is a branch no test can
- * reach. An array and not a set of booleans, so "활성이면 둘, 정지 중이면 하나" is one
- * assertion and the screen genuinely decides nothing — it places what it is handed.
- */
-export interface LifecycleAction {
-  /** A stable key for the screen's `key` prop and for tests to name the action by. */
-  kind: 'pause' | 'archive' | 'resume' | 'unarchive';
+/** One item of the ⋯ menu (§6.5 ⋯ menu). */
+export interface DetailMenuItem {
+  key: 'reflect' | 'pause' | 'archive' | 'resume' | 'unarchive';
   label: string;
-  /** Writes through `upsertHabit` and reloads. */
-  run(): Promise<void>;
+  /** `critInk` for 🗄 보관하기 (`ReDetailEstablished`), else `text`. */
+  ink: DetailInk;
+}
+
+/** The record sheet for one date (§6.2), opened from a cell or a journal day. */
+export interface DetailRecordSheet extends RecordSheetView {
+  date: string;
+}
+
+/** The skip reason sheet for one date. */
+export interface DetailSkipSheet extends SkipSheetView {
+  date: string;
 }
 
 /**
- * Which panels the screen stacks, in order (D6).
- *
- * `established` puts the growth chart **above** the pills (`Established.body.html`):
- * once not-missing is nearly automatic, the question worth answering first is whether
- * the amount is still growing. `lifecycle` is a stored field, so this needs no status
- * light and does not wait on #20.
+ * The 지난 날 기록 추가 picker: the days older than the heatmap, from today−21 back to
+ * the habit's birth, newest first (#128 decision). Picking one opens its record sheet.
  */
-export type DetailPanel = 'pills' | 'heatmap' | 'forming' | 'chart' | 'design' | 'journal';
+export interface DetailPastDaysSheet {
+  kind: 'pastDays';
+  /** "💪 턱걸이". */
+  eyebrow: string;
+  /** "지난 날 고르기". */
+  title: string;
+  /** Journal days, so each reads as it does in the journal. Empty for a young habit. */
+  days: JournalDay[];
+  /** "3주보다 오래된 날이 아직 없어요." when `days` is empty, else `null`. */
+  empty: string | null;
+}
+
+/** The 잠깐 쉬기 or 보관하기 confirm sheet (`ReDetailPause`). */
+export interface DetailConfirmSheet {
+  kind: 'confirm';
+  action: 'pause' | 'archive';
+  /** "💪 턱걸이". */
+  eyebrow: string;
+  /** "잠깐 쉴까요?" or "보관할까요?". */
+  title: string;
+  /** `LIFECYCLE_NOTE`. */
+  body: string;
+  confirmLabel: string;
+  keepLabel: string;
+}
+
+/** The design card's edit sheet (수정). */
+export interface DetailDesignSheet {
+  kind: 'design';
+  eyebrow: string;
+  title: string;
+  design: DesignBox;
+}
+
+/** The one sheet open on this screen, or none. Derived each render from what is open. */
+export type DetailSheet =
+  | DetailRecordSheet
+  | DetailSkipSheet
+  | EditEntrySheetView
+  | DetailConfirmSheet
+  | DetailDesignSheet
+  | DetailPastDaysSheet;
 
 export interface HabitDetailView {
   loading: boolean;
   /**
-   * 실패한 읽기나 실패한 **생애주기 전환**, 또는 `null`.
-   *
-   * 읽기가 실패하면 `habit` 은 `null` 이 되는데, 그 자리의 기존 문구는 "습관을 찾을 수
-   * 없습니다" 다 — 오프라인일 때 앱이 없는 습관을 없다고 **단언하는** 셈이라, 이 값이
-   * 있으면 화면은 그 문장 대신 실패를 말한다.
-   *
-   * 쓰기 중에서는 생애주기만 여기 온다. `saveDesign` 은 `app/habit/[id].tsx` 의 설계
-   * 편집기가 이미 `try/catch` 로 받고 있고, 잠깐 쉬기·보관하기 버튼만 `run()` 을 그대로
-   * 부르는 자리라 실패가 어디에도 닿지 않는다.
+   * 실패한 읽기나 실패한 **생애주기 전환**, 또는 `null`. 읽기가 실패하면 `habit` 은 `null`
+   * 이 되고, 화면은 "없는 습관" 대신 이 실패를 말한다.
    */
   failure: Failure | null;
   /** `null` when the id names no stored habit — the screen says so and shows nothing. */
   habit: Habit | null;
   /** Absent when `habit.statId` names no configured stat — a data defect, not a state. */
   stat?: Stat;
-  pills: DetailPills;
-  /** The panels to render, in order. A panel with nothing to say is simply absent. */
-  panelOrder: DetailPanel[];
-  /**
-   * The habit's **whole life** — `createdAt` through today, one line per date, newest
-   * first (§6.3). Not the chart's twelve weeks: §6.3's backfill range is `createdAt`
-   * 부터 오늘까지 and a day's own journal line is the only gesture that reaches an
-   * **arbitrary** date — the ribbon is a read-only strip (its cells are far under
-   * `TAP_TARGET`, `src/theme/tokens.ts`), and `nextBackfillDate` names one date,
-   * the most recent gap. So a shorter walk would leave an older gap unreachable.
-   * §7.3 rules volume/performance out as a V1 criterion; its stated reason is
-   * rows-per-date, so it bounds the work per line rather than licensing the number of
-   * lines — the walk's length is this hook's own call, and V1's histories are months.
-   */
+  head: DetailHead | null;
+  hero: DetailHero | null;
+  /** 연속, 최고 연속, 성공률, and 조금이라도 한 날 only when it is larger than 연속. */
+  pills: DetailPill[];
+  /** Pills per row: 2 when the fourth pill shows (`ReDetailForming`), else 3. */
+  pillColumns: 2 | 3;
+  heatmap: DetailHeatmap;
+  designCard: DesignCard | null;
+  /** The edit sheet's starting values. */
+  design: DesignBox | null;
+  /** The habit's **whole life**, one line per date, newest first. */
   journal: JournalDay[];
   /**
-   * The date the `+ 지난 날 기록 추가` button fills (canvas `HabitDetail.body.html:53`):
-   * the **most recent `missed` day** of the whole history, or `null` when there is
-   * none — and then the screen shows no button, because there is no gap to fill.
-   *
-   * The most recent gap, not yesterday and not a picker: Today's own 어제 fast-path
-   * (#14) already covers the newest day, so this button exists for what is left behind
-   * it. A `missed` day is by construction in scope and before today, so it is always
-   * inside the §6.3 backfill range.
+   * The days on screen: the last 3, or all after 더 보기 (§6.5 Journal). Opened at a
+   * date further back (§6.4), every day down to that date.
    */
-  nextBackfillDate: string | null;
+  journalShown: JournalDay[];
+  /** "더 보기" while days are hidden, else `null`. */
+  journalMoreLabel: string | null;
+  showMoreJournal(): void;
+  /** "+ 지난 날 기록 추가" once the habit is loaded, else `null`. It opens the picker. */
+  backfillLabel: string | null;
+  /** The picker of days older than the heatmap (`DetailPastDaysSheet`). */
+  openPastDays(): void;
+  /** The ⋯ menu: 회고하기 first in every state, then the lifecycle items. */
+  menu: DetailMenuItem[];
   /**
-   * `TUNING.heatmapDays` cells ending today, ascending — the ribbon the screen draws
-   * (D14). Read-only, as the canvas's own ribbon is (`YesNo.body.html:31`,
-   * `aria-hidden`): a cell is far under `TAP_TARGET` (`src/theme/tokens.ts`), so
-   * the gesture that fills a past day is the journal's line for that date, not a cell.
+   * A menu item. 잠깐 쉬기 and 보관하기 open their confirm sheet; 다시 시작 and 다시
+   * 꺼내기 run at once; 회고하기 is the screen's navigation and a no-op here.
    */
-  heatmap: HeatCell[];
-  /**
-   * `null` for a binary habit: there is no quantity, so "how much per week" has no
-   * meaning and the canvas `YesNo.body.html` draws no such chart (D5).
-   */
-  chart: GrowthChart | null;
-  /** `null` unless `lifecycle === 'forming'`. */
-  forming: FormingExpectation | null;
-  design: DesignBox | null;
-  /**
-   * The date whose backfill composer is open, or `null`. Opening one is what a
-   * journal day's line and the `+ 지난 날 기록 추가` button do; every write below goes
-   * to this date, under the §6.3 rules (noon pin, increasing offsets, blocked before
-   * birth and after today).
-   */
-  backfillDate: string | null;
-  /**
-   * What the open composer's date affords, read the way both other logging surfaces
-   * read their day's — `null` when no composer is open. §4.1's precedence is the
-   * point (`skippable`, the field the composer gates on): a date already
-   * holding an activity row is not `skippable`, because a skip row written there
-   * changes no state, no miss and no diagnosis, so the composer must not offer the
-   * reason chips at all (`app/today.tsx`, `app/index.tsx` withhold theirs on the same
-   * field).
-   */
-  composerAffordances: LogAffordances | null;
-  /** Ignores a date the §6.3 range forbids, so a stale cell cannot open a bad composer. */
-  openBackfill(date: string): void;
-  closeBackfill(): void;
-  /**
-   * Append an activity row to `backfillDate` (or to today when no composer is open).
-   * A binary habit always writes 1, its floor (§6.3). `opts.note` is the row's note
-   * (#77).
-   */
-  fillDay(actual: number, opts?: { note?: string }): Promise<void>;
-  /** Append a reason-bearing skip row to the same date (§6.3, ADR-0001). */
-  skipDay(reason: SkipReason, opts?: { note?: string }): Promise<void>;
-  /** Rewrite one journal row (§6.2 / #13). The caller passes the **whole** row. */
-  editEntry(entry: HabitEntry): Promise<void>;
-  /** Delete one journal row by id (#13 AC 4). */
-  removeEntry(entryId: string): Promise<void>;
+  pickMenu(key: DetailMenuItem['key']): Promise<void>;
+  sheet: DetailSheet | null;
+  /** Ignores a date the §6.3 range forbids, so a stale cell cannot open a bad sheet. */
+  openRecord(date: string): void;
+  openSkip(date: string): void;
+  /** A journal row's edit sheet. */
+  openEntry(entryId: string): void;
+  openDesign(): void;
+  /** Close the open sheet. Writes nothing — only the sheets' own buttons write (#109). */
+  closeSheet(): void;
+  /** 기록하기: append one activity row to the sheet's date, then close (§6.3). */
+  recordFromSheet(amount: number, note: string): Promise<void>;
+  /** A reason chip: append a skip row to the sheet's date, then close. */
+  skipFromSheet(reason: SkipReason, note: string): Promise<void>;
+  /** The open edit sheet's row as the draft would store it, or `null`. */
+  editedEntry(draft: EntryDraft): HabitEntry | null;
+  saveEntryFromSheet(draft: EntryDraft): Promise<void>;
+  removeEntryFromSheet(): Promise<void>;
+  /** The confirm sheet's main button: pause or archive, then close. */
+  confirmFromSheet(): Promise<void>;
   /**
    * Does deleting this row need a result-aware confirm, and on what basis? `null`
-   * means no — delete it immediately (#13 AC 4), and also the answer for an id no row
-   * of this habit's loaded history carries.
+   * means no — and also the answer for an id no row of this habit carries.
    */
   deletePreview(entryId: string): DetailDeleteEffect | null;
   /**
-   * Write the design box (AC 8). Resolves to per-field messages when the patch is
-   * illegal and **nothing is written**, or to `null` when it is stored.
+   * Write the design (AC 8). Resolves to per-field messages when the patch is illegal
+   * and **nothing is written**, or to `null` when it is stored, which closes the sheet.
    */
   saveDesign(patch: DesignPatch): Promise<DesignErrors | null>;
-  /**
-   * The foot-of-screen lifecycle controls, in the order they are shown (#19). An
-   * active habit offers both 잠깐 쉬기 and 보관하기; a stopped one offers the single
-   * way back. Empty until the habit is loaded.
-   *
-   * #19's eighth acceptance criterion reads *"보관된 습관은 대시보드에서 숨지만
-   * 기록이 보존되고 되돌릴 수 있다"*. The hiding is `useDashboard`'s and the
-   * preservation is the domain's; what this line satisfies is the last clause,
-   * **되돌릴 수 있다** — the detail screen is reachable for an archived habit (nothing
-   * filters `lifecycle` on the way in), so 다시 꺼내기 is the way back. The screen that
-   * would *list* archived habits is #43; until it ships, reaching one takes an id the
-   * user already has.
-   */
-  lifecycleActions: LifecycleAction[];
   toast: QuickLogToast | null;
   undoLast(): Promise<void>;
+  celebration: StreakCelebration | null;
+  dismissCelebration(): void;
+  /** Re-read, e.g. on returning from Reflection. */
+  reload(): void;
 }
+
+/** A day-state chip's tone, by state (`.st` in `design/_tokens.redesign.css`). */
+const BADGE_TONE: Record<DayState, DayBadgeTone> = {
+  done: 'done',
+  over: 'done',
+  partial: 'done',
+  skip: 'neutral',
+  missed: 'crit',
+  pending: 'quiet',
+};
+
+/** The journal days shown before 더 보기 (§6.5 Journal). */
+const JOURNAL_RECENT_DAYS = 3;
 
 /** The habit's effective target: count only, strictly above the floor (§3.2 / §4.1). */
 function effectiveTarget(habit: Habit): number | undefined {
@@ -449,26 +478,38 @@ function effectiveTarget(habit: Habit): number | undefined {
   return habit.target;
 }
 
-function journalDay(habit: Habit, day: ClassifiedDay, today: string): JournalDay {
+function journalDay(habit: Habit, day: ClassifiedDay, today: string, focusDate?: string): JournalDay {
+  const isToday = day.date === today;
   return {
     date: day.date,
-    isToday: day.date === today,
+    isToday,
     state: day.state,
-    sum: day.sum,
-    skipReason: day.skipReason,
-    chipAmount: habit.kind === 'count' && day.sum > 0 ? day.sum : undefined,
+    title: journalDayTitle(day.date, isToday),
+    badge: dayStateBadge(day.state),
+    tone: BADGE_TONE[day.state],
     rows: day.entries.map((entry) => {
       // On today there is nothing to have backfilled, and a row logged by hand at
       // 12:00 sharp would otherwise be labelled — and frozen — as one.
-      const backfilled = entry.date !== today && isBackfilledRow(entry, localNoonOn(entry.date));
-      return { entry, backfilled, timeEditable: !backfilled };
+      const backfilled = !isToday && isBackfilledRow(entry, localNoonOn(entry.date));
+      return {
+        entry,
+        time: localClock(entry.timestamp),
+        summary: journalRowSummary({
+          isCount: habit.kind === 'count',
+          actual: entry.actual,
+          unit: habit.floorUnit,
+          skipReason: entry.skipReason,
+        }),
+        backfilled,
+        timeEditable: !backfilled,
+      };
     }),
-    recoverable: day.state === 'missed',
     backfillable: isBackfillableDate(habit, day.date, today),
+    focused: day.date === focusDate,
   };
 }
 
-/** Also the Reflection screen's weekly-totals evidence (§6.4, `useReflection`). */
+/** Also the Reflection screen's weekly-totals evidence (§6.7, `useReflection`). */
 export function growthChart(habit: Habit, entries: HabitEntry[], today: string): GrowthChart | null {
   if (habit.kind !== 'count') return null;
 
@@ -483,8 +524,7 @@ export function growthChart(habit: Habit, entries: HabitEntry[], today: string):
   const percent = (value: number): number => (scale > 0 ? (value / scale) * 100 : 0);
 
   const best = Math.max(...totals);
-  // Most recent on a tie, and no ⭐ at all on an all-zero history: a "best week" of
-  // nothing recorded is not an achievement to mark.
+  // Most recent on a tie, and no ⭐ at all on an all-zero history.
   const bestIndex = best > 0 ? totals.lastIndexOf(best) : -1;
 
   return {
@@ -503,41 +543,111 @@ export function growthChart(habit: Habit, entries: HabitEntry[], today: string):
   };
 }
 
-function formingExpectation(
-  habit: Habit,
-  entries: HabitEntry[],
-  today: string,
-): FormingExpectation | null {
-  if (habit.lifecycle !== 'forming') return null;
-
-  // The habit's whole life, so the count is cumulative repetitions rather than a
-  // rolling window: C7b measures how many times the behaviour has actually happened.
-  const lifetime = daysBetween(dateOf(habit.createdAt), today) + 1;
-  const days = showedUpDays(entries, habit, today, lifetime);
-  const expectedDays = TUNING.formingExpectationDays;
-
-  return { days, expectedDays, ratio: Math.min(1, days / expectedDays) };
+/**
+ * The habit's phase for the hero: its lifecycle, or for a stopped habit the lifecycle
+ * the open pause resumes to (ADR-0003), so pausing does not swap the card.
+ */
+function phaseOf(habit: Habit): 'forming' | 'established' {
+  if (habit.lifecycle === 'paused' || habit.lifecycle === 'archived') {
+    return habit.pauses?.[habit.pauses.length - 1]?.resumeTo ?? 'forming';
+  }
+  return habit.lifecycle;
 }
 
-function panelsFor(habit: Habit, hasChart: boolean, hasForming: boolean): DetailPanel[] {
-  const chartFirst = habit.lifecycle === 'established' && hasChart;
+function heroOf(habit: Habit, entries: HabitEntry[], today: string, streak: number, longest: number): DetailHero {
+  const todayRow = dayStates(habit, entries, today, today, today)[0];
+  const nextStep = nextStepLine({
+    floorMet: todayRow != null && isFloorMet(todayRow.state),
+    streak,
+    hadRun: longest > 0,
+    isCount: habit.kind === 'count',
+    sum: todayRow?.sum ?? 0,
+    floor: habit.floor,
+    unit: habit.floorUnit,
+  });
 
+  if (phaseOf(habit) === 'forming') {
+    // The habit's whole life, so the count is cumulative repetitions rather than a
+    // rolling window: C7b measures how many times the behaviour has actually happened.
+    const lifetime = daysBetween(dateOf(habit.createdAt), today) + 1;
+    const days = showedUpDays(entries, habit, today, lifetime);
+    const expected = TUNING.formingExpectationDays;
+    return {
+      kind: 'forming',
+      ratio: Math.min(1, days / expected),
+      daysLabel: daysLabel(days),
+      expectedLabel: expectedDaysLabel(expected),
+      streak,
+      nextStep,
+    };
+  }
+
+  const chart = growthChart(habit, entries, today);
+  if (chart == null) return { kind: 'streak', streak, nextStep };
+  return {
+    kind: 'weekly',
+    chart,
+    totalLabel: weeklyTotalLabel(chart.thisWeek, habit.floorUnit),
+    floorLabel: floorLineLabel(chart.weeklyFloor),
+    targetLabel: chart.weeklyTarget == null ? null : targetLineLabel(chart.weeklyTarget),
+    startLabel: weeksAgoLabel(chart.bars[0].weeksAgo),
+    endLabel: DETAIL_COPY.thisWeek,
+  };
+}
+
+function pillsOf(streak: number, longest: number, rate: number | null, engagement: number): DetailPill[] {
+  const pills: DetailPill[] = [
+    { key: 'streak', label: SCREEN_WORDS.streak, value: `${streak}`, unit: DETAIL_COPY.days, help: TOOLTIPS.streak },
+    {
+      key: 'longestStreak',
+      label: DETAIL_COPY.bestStreak,
+      value: `${longest}`,
+      unit: DETAIL_COPY.days,
+      help: TOOLTIPS.bestStreak,
+    },
+    {
+      key: 'successRate',
+      label: DETAIL_COPY.successRate,
+      // `null` is the §4.4 min-sample guard: `—`, never a 0% that reads as a score.
+      value: rate == null ? DETAIL_COPY.noRate : `${Math.round(rate * 100)}`,
+      unit: rate == null ? undefined : DETAIL_COPY.percent,
+      help: TOOLTIPS.successRate,
+    },
+  ];
+  // §6.5 Numbers: the fourth pill only when it says something 연속 does not.
+  if (engagement > streak) {
+    pills.push({
+      key: 'engagementStreak',
+      label: SCREEN_WORDS.engagementStreak,
+      value: `${engagement}`,
+      unit: DETAIL_COPY.days,
+      help: TOOLTIPS.engagementStreak,
+    });
+  }
+  return pills;
+}
+
+function menuOf(habit: Habit): DetailMenuItem[] {
+  const reflect: DetailMenuItem = { key: 'reflect', label: DASHBOARD_COPY.reflect, ink: 'text' };
+  // A stopped habit gets the single way back, named for how the stop reads — the same
+  // `resumeHabit` either way (#19).
+  if (habit.lifecycle === 'paused') {
+    return [reflect, { key: 'resume', label: LIFECYCLE_LABELS.resume, ink: 'text' }];
+  }
+  if (habit.lifecycle === 'archived') {
+    return [reflect, { key: 'unarchive', label: LIFECYCLE_LABELS.unarchive, ink: 'text' }];
+  }
   return [
-    chartFirst ? 'chart' : null,
-    'pills',
-    'heatmap',
-    hasForming ? 'forming' : null,
-    !chartFirst && hasChart ? 'chart' : null,
-    'design',
-    'journal',
-  ].filter((panel): panel is DetailPanel => panel != null);
+    reflect,
+    { key: 'pause', label: DETAIL_COPY.menuPause, ink: 'text' },
+    { key: 'archive', label: DETAIL_COPY.menuArchive, ink: 'critInk' },
+  ];
 }
 
 /**
  * The same three rules `app/habit/new.tsx` applies at creation, because a habit that
- * violates §3.2 is a data defect wherever it is written from — the design box here and
- * the Reflection commit (`useReflection`). Messages are that form's, so one wording
- * serves all three.
+ * violates §3.2 is a data defect wherever it is written from — the design sheet here
+ * and the Reflection commit (`useReflection`).
  */
 export function designErrors(floor: number, floorUnit: string, target: number | undefined): DesignErrors {
   const errors: DesignErrors = {};
@@ -547,10 +657,9 @@ export function designErrors(floor: number, floorUnit: string, target: number | 
   if (floorUnit.length === 0) errors.floorUnit = '단위를 적어 주세요 (예: 회, 쪽, 분).';
   if (target != null) {
     if (!Number.isFinite(target)) errors.target = '목표는 숫자로 적어 주세요.';
-    // §3.2 (strict): a target at or below the floor says nothing, and `over` could
-    // never be reached above it.
+    // §3.2 (strict): a target at or below the floor says nothing.
     else if (errors.floor == null && target <= floor) {
-      errors.target = '목표는 최소량보다 커야 합니다.';
+      errors.target = '목표는 최소량보다 커야 해요.';
     }
   }
   return errors;
@@ -571,42 +680,47 @@ interface Loaded {
 
 const EMPTY: Loaded = { habit: null, entries: [] };
 
+/** What is open — the hook's only sheet state. Everything shown is derived from it. */
+type SheetIntent =
+  | { kind: 'record' | 'skip'; date: string }
+  | { kind: 'entry'; id: string }
+  | { kind: 'confirm'; action: 'pause' | 'archive' }
+  | { kind: 'design' }
+  | { kind: 'pastDays' };
+
 export function useHabitDetail(
   habitId: string,
   {
     today = localToday(),
     now = () => new Date(),
-  }: { today?: string; now?: () => Date } = {},
+    date,
+  }: { today?: string; now?: () => Date; date?: string } = {},
 ): HabitDetailView {
   const repository = useRepository();
   const { failure, report, clear, attempt } = useFailure();
   const [loaded, setLoaded] = useState<Loaded>(EMPTY);
   const [loading, setLoading] = useState(true);
-  const [backfillDate, setBackfillDate] = useState<string | null>(null);
+  const [intent, setIntent] = useState<SheetIntent | null>(null);
+  const [journalOpen, setJournalOpen] = useState(false);
   /**
    * Bumped by a write, so the load effect is the single place that reads. `loading` is
-   * raised only for the first load, never for a reload — as on the other two screens:
-   * filling a past day must not blank the journal it just changed.
+   * raised only for the first load, never for a reload: filling a past day must not
+   * blank the journal it just changed.
    */
   const [version, setVersion] = useState(0);
 
-  function reload() {
-    setVersion((current) => current + 1);
-  }
+  // Stable, so the screen can hand it to `useFocusEffect`.
+  const reload = useCallback(() => setVersion((current) => current + 1), []);
 
   useEffect(() => {
     let cancelled = false;
 
     async function load() {
       const habit = await repository.getHabit(habitId);
-      // From birth, not from the journal window: `computeStreak` and `deleteOutcome`
-      // walk back to `createdAt`, and a clipped range would report a run the user
-      // never had. V1 keeps entry volume small and §7.3 makes performance a
-      // non-criterion.
+      // From birth: `computeStreak` and `deleteOutcome` walk back to `createdAt`, and a
+      // clipped range would report a run the user never had.
       const entries =
-        habit == null
-          ? []
-          : await repository.getEntries(habit.id, dateOf(habit.createdAt), today);
+        habit == null ? [] : await repository.getEntries(habit.id, dateOf(habit.createdAt), today);
 
       if (!cancelled) {
         setLoaded({ habit, entries });
@@ -618,9 +732,8 @@ export function useHabitDetail(
     load().catch(() => {
       if (cancelled) return;
       // 실패 기록과 `setLoading(false)` 는 한 쌍이다. 후자만 붙이면 무한 스피너가 "습관을
-      // 찾을 수 없습니다" 로 바뀔 뿐이고, 그것이 더 나쁘다 (`HabitDetailView.failure`).
+      // 찾을 수 없어요" 로 바뀔 뿐이고, 그것이 더 나쁘다.
       setLoading(false);
-      // 다시 시도는 `version` 카운터 — 읽기는 이 효과 하나뿐이다.
       report(LOAD_FAILED_NOTE, reload);
     });
 
@@ -631,45 +744,65 @@ export function useHabitDetail(
 
   const { habit, entries } = loaded;
 
-  const quick = useQuickLog({
-    // With no composer open the writes go to today, which is not a backfill — so the
-    // §6.3 rules apply exactly when a past date is being filled.
-    date: backfillDate ?? today,
-    today,
-    now,
-    onChange: reload,
-  });
+  const quick = useQuickLog({ date: today, today, now, onChange: reload });
 
   const journal =
     habit == null
       ? []
       : dayStates(habit, entries, dateOf(habit.createdAt), today, today)
-          .map((day) => journalDay(habit, day, today))
-          // Newest first — the canvas reads downward from the most recent day.
+          .map((day) => journalDay(habit, day, today, date))
+          // Newest first — the board reads downward from the most recent day.
           .reverse();
-  const chart = habit == null ? null : growthChart(habit, entries, today);
-  const forming = habit == null ? null : formingExpectation(habit, entries, today);
+  const focusIndex = journal.findIndex((day) => day.focused);
+  const journalShown = journalOpen
+    ? journal
+    : journal.slice(0, Math.max(JOURNAL_RECENT_DAYS, focusIndex + 1));
+
+  const streak = habit == null ? 0 : computeStreak(entries, habit, today);
+  const longest = habit == null ? 0 : longestStreak(entries, habit);
+  const stat = habit == null ? undefined : TUNING.stats.find((s) => s.id === habit.statId);
+
   const heatWindow = windowEndingAt(today, TUNING.heatmapDays);
-  /** The open composer's date, classified once — the form reads everything off it. */
-  const composer =
-    habit == null || backfillDate == null
+  const heatmap: DetailHeatmap =
+    habit == null
+      ? { weekdays: [], cells: [], legend: [] }
+      : {
+          weekdays: heatWindow.slice(0, 7).map((date) => WEEKDAY_LABELS[weekdayOf(date)]),
+          // `DAY_STATE_WORDS`' key order is the §6.0 table's order.
+          legend: (Object.keys(DAY_STATE_WORDS) as DayState[]).map((state) => ({
+            state,
+            word: DAY_STATE_WORDS[state],
+          })),
+          cells: heatCells(habit, entries, heatWindow[0], heatWindow[heatWindow.length - 1], today).map(
+            (cell) => ({
+              date: cell.date,
+              state: cell.state,
+              label:
+                cell.state == null
+                  ? monthDayLabel(cell.date)
+                  : dayCellLabel(monthDayLabel(cell.date), cell.state),
+              tappable: isBackfillableDate(habit, cell.date, today),
+            }),
+          ),
+        };
+
+  const design: DesignBox | null =
+    habit == null
       ? null
-      : logAffordances(habit, dayStates(habit, entries, backfillDate, backfillDate, today)[0]);
+      : {
+          cue: habit.cue,
+          identity: habit.identity,
+          floor: habit.floor,
+          floorUnit: habit.floorUnit,
+          target: effectiveTarget(habit),
+          editsAmounts: habit.kind === 'count',
+        };
 
-  function openBackfill(date: string): void {
-    if (habit == null || !isBackfillableDate(habit, date, today)) return;
-    setBackfillDate(date);
-  }
-
-  async function fillDay(actual: number, opts?: { note?: string }): Promise<void> {
-    if (habit == null) throw new Error('useHabitDetail.fillDay: 습관을 아직 불러오지 못했습니다');
-    // Binary has no amount: its floor is 1 and a row is always `actual: 1` (§3.3).
-    await quick.logActivity(habit, habit.kind === 'count' ? actual : 1, opts);
-  }
-
-  async function skipDay(reason: SkipReason, opts?: { note?: string }): Promise<void> {
-    if (habit == null) throw new Error('useHabitDetail.skipDay: 습관을 아직 불러오지 못했습니다');
-    await quick.logSkip(habit, reason, opts);
+  /** 오늘, 어제, or "3월 24일" — how the sheets name a date (B4). */
+  function dayWordOf(date: string): string {
+    if (date === today) return DAY_WORDS.today;
+    if (date === addDays(today, -1)) return DAY_WORDS.yesterday;
+    return monthDayLabel(date);
   }
 
   function deletePreview(entryId: string): DetailDeleteEffect | null {
@@ -679,17 +812,155 @@ export function useHabitDetail(
     const outcome = deleteOutcome(habit, entries, entry, today);
     const showsStreak = entry.date !== today && outcome.streakAfter < outcome.streakBefore;
 
-    // The gate is this screen's, not the domain's: the journal warns on one more
-    // consequence than Today does, because it holds the past dates on which a streak
-    // can actually break (AC 9).
+    // The journal warns on one more consequence than Today does, because it holds the
+    // past dates on which a streak can actually break (AC 9).
     if (!outcome.emptiesDay && !outcome.carriesMiss && !showsStreak) return null;
 
     return { habit, entry, showsStreak, ...outcome };
   }
 
+  function sheetOf(open: SheetIntent | null): DetailSheet | null {
+    if (open == null || habit == null) return null;
+    switch (open.kind) {
+      case 'record':
+        return {
+          ...recordSheetView({
+            habit,
+            affordances: logAffordances(habit, dayStates(habit, entries, open.date, open.date, today)[0]),
+            dayWord: dayWordOf(open.date),
+            isToday: open.date === today,
+            now,
+            // The date in large type, the habit above it (§6.3, as on the Dashboard).
+            title: longDateLabel(open.date, weekdayOf(open.date)),
+            eyebrow: labelOf(habit),
+          }),
+          date: open.date,
+        };
+      case 'skip':
+        return { ...skipSheetView(habit, dayWordOf(open.date)), date: open.date };
+      case 'entry': {
+        const day = journal.find((d) => d.rows.some((row) => row.entry.id === open.id));
+        const row = day?.rows.find((r) => r.entry.id === open.id);
+        if (day == null || row == null) return null;
+        const effect = deletePreview(row.entry.id);
+        return {
+          kind: 'editEntry',
+          item: {
+            kind: 'habit',
+            habit,
+            entry: row.entry,
+            backfilled: row.backfilled,
+            time: row.time,
+            title: longDateLabel(day.date, weekdayOf(day.date)),
+            summary: row.summary,
+          },
+          clock: row.time,
+          timeLabel: row.backfilled ? TODAY_COPY.backfillTime : editTimeLabel(row.time),
+          timeEditable: row.timeEditable,
+          deleteEffect: effect,
+          dayLabel: dayWordOf(day.date),
+        };
+      }
+      case 'confirm':
+        return {
+          kind: 'confirm',
+          action: open.action,
+          eyebrow: labelOf(habit),
+          title: open.action === 'pause' ? DETAIL_COPY.pauseTitle : DETAIL_COPY.archiveTitle,
+          body: LIFECYCLE_NOTE,
+          confirmLabel: LIFECYCLE_LABELS[open.action],
+          keepLabel: TODAY_COPY.keep,
+        };
+      case 'pastDays': {
+        // Older than the heatmap's first cell, inside the §6.3 backfill range.
+        const oldest = heatWindow[0];
+        const days = journal.filter((day) => compareDates(day.date, oldest) < 0 && day.backfillable);
+        return {
+          kind: 'pastDays',
+          eyebrow: labelOf(habit),
+          title: DETAIL_COPY.pastDaysTitle,
+          days,
+          empty: days.length === 0 ? DETAIL_COPY.pastDaysEmpty : null,
+        };
+      }
+      case 'design':
+        return design == null
+          ? null
+          : { kind: 'design', eyebrow: labelOf(habit), title: DETAIL_COPY.designTitle, design };
+    }
+  }
+
+  const sheet = sheetOf(intent);
+
+  function openRecord(date: string): void {
+    if (habit == null || !isBackfillableDate(habit, date, today)) return;
+    setIntent({ kind: 'record', date });
+  }
+
+  function openSkip(date: string): void {
+    if (habit == null || !isBackfillableDate(habit, date, today)) return;
+    setIntent({ kind: 'skip', date });
+  }
+
+  async function recordFromSheet(amount: number, note: string): Promise<void> {
+    if (sheet?.kind !== 'record') return;
+    await writeRecord(quick, sheet, amount, note, sheet.date);
+    setIntent(null);
+  }
+
+  async function skipFromSheet(reason: SkipReason, note: string): Promise<void> {
+    if (sheet?.kind !== 'skip') return;
+    await writeSkip(quick, sheet, reason, note, sheet.date);
+    setIntent(null);
+  }
+
+  function editedEntry(draft: EntryDraft): HabitEntry | null {
+    if (sheet?.kind !== 'editEntry') return null;
+    return draftedEntry(sheet.item.entry, sheet.item.habit, draft);
+  }
+
+  async function saveEntryFromSheet(draft: EntryDraft): Promise<void> {
+    const entry = editedEntry(draft);
+    if (entry == null) throw new RangeError('useHabitDetail.saveEntryFromSheet: the draft cannot be stored');
+    await quick.editEntry(entry);
+    setIntent(null);
+  }
+
+  async function removeEntryFromSheet(): Promise<void> {
+    if (sheet?.kind !== 'editEntry') return;
+    await quick.removeEntry(sheet.item.entry.id);
+    setIntent(null);
+  }
+
+  /**
+   * A lifecycle write: `lifecycle.ts`'s pure transition plus the write and the reload.
+   * Caught here: the confirm sheet and the menu call this as is, so a failure would
+   * otherwise reach nowhere — and a habit the user believes archived would stay put.
+   */
+  async function runLifecycle(next: (subject: Habit, day: string) => Habit): Promise<void> {
+    if (habit == null) return;
+    const subject = habit;
+    await attempt(SAVE_FAILED_NOTE, async () => {
+      await repository.upsertHabit(next(subject, today));
+      reload();
+    });
+  }
+
+  async function confirmFromSheet(): Promise<void> {
+    if (sheet?.kind !== 'confirm') return;
+    const { action } = sheet;
+    setIntent(null);
+    await runLifecycle(action === 'pause' ? pauseHabit : archiveHabit);
+  }
+
+  async function pickMenu(key: DetailMenuItem['key']): Promise<void> {
+    if (key === 'pause' || key === 'archive') setIntent({ kind: 'confirm', action: key });
+    else if (key === 'resume' || key === 'unarchive') await runLifecycle(resumeHabit);
+  }
+
   async function saveDesign(patch: DesignPatch): Promise<DesignErrors | null> {
     if (habit == null) {
-      throw new Error('useHabitDetail.saveDesign: 습관을 아직 불러오지 못했습니다');
+      throw new Error('useHabitDetail.saveDesign: 습관을 아직 불러오지 못했어요');
     }
 
     const amounts = habit.kind === 'count';
@@ -712,104 +983,87 @@ export function useHabitDetail(
       floorUnit,
       target,
     });
+    setIntent((open) => (open?.kind === 'design' ? null : open));
     reload();
     return null;
   }
 
-  /**
-   * The lifecycle writers. Each one is `lifecycle.ts`'s pure transition plus the two
-   * things it deliberately leaves out — the write and the reload — exactly as
-   * `saveDesign` above is.
-   */
-  async function runLifecycle(
-    subject: Habit,
-    next: (subject: Habit, day: string) => Habit,
-  ): Promise<void> {
-    // `saveDesign` 과 달리 여기서 잡는다: 설계 편집기는 자기 `try/catch` 를 갖고 있지만
-    // 잠깐 쉬기·보관하기 버튼은 이 함수를 그대로 부르는 자리라 실패가 어디에도 닿지 않는다.
-    // 보관했다고 믿은 습관이 그대로 남아 있는 것은 조용히 삼켜진 탭과 같은 종류의 버그다.
-    await attempt(SAVE_FAILED_NOTE, async () => {
-      await repository.upsertHabit(next(subject, today));
-      reload();
-    });
-  }
-
-  function lifecycleActions(subject: Habit): LifecycleAction[] {
-    function act(
-      kind: LifecycleAction['kind'],
-      next: (habit: Habit, day: string) => Habit,
-    ): LifecycleAction {
-      return { kind, label: LIFECYCLE_LABELS[kind], run: () => runLifecycle(subject, next) };
-    }
-
-    // An open interval is what actually stops the classifier (ADR-0003), and the
-    // lifecycle field is its ⟺ twin, so the two readings agree by construction. The
-    // only question is 정지 중인가: a stopped habit gets the single way back — the same
-    // `resumeHabit`, named for how the stop reads — and an active one both ways out.
-    const stopped = subject.lifecycle === 'paused' || subject.lifecycle === 'archived';
-    if (stopped) {
-      return [act(subject.lifecycle === 'paused' ? 'resume' : 'unarchive', resumeHabit)];
-    }
-    return [act('pause', pauseHabit), act('archive', archiveHabit)];
-  }
+  const light = habit == null ? null : deriveStatusLight(habit, entries, today);
+  const pills =
+    habit == null
+      ? []
+      : pillsOf(
+          streak,
+          longest,
+          successRate(entries, habit, today, TUNING.windows.floorRate),
+          engagementStreak(entries, habit, today),
+        );
+  const target = habit == null ? undefined : effectiveTarget(habit);
 
   return {
     loading,
     habit,
-    stat: habit == null ? undefined : TUNING.stats.find((s) => s.id === habit.statId),
-    pills: {
-      streak: habit == null ? 0 : computeStreak(entries, habit, today),
-      engagementStreak: habit == null ? 0 : engagementStreak(entries, habit, today),
-      showEngagement: habit?.kind === 'count',
-      engagementLeads: habit?.kind === 'count' && habit.lifecycle === 'forming',
-      longestStreak: habit == null ? 0 : longestStreak(entries, habit),
-      showLongestStreak: habit?.kind === 'binary',
-      successRate:
-        habit == null ? null : successRate(entries, habit, today, TUNING.windows.floorRate),
-      weeklyXP:
-        habit == null
-          ? 0
-          : computeXP(entries, habit) -
-            computeXP(
-              entries.filter((entry) => compareDates(entry.date, mondayOf(today)) < 0),
-              habit,
-            ),
-    },
-    panelOrder: habit == null ? [] : panelsFor(habit, chart != null, forming != null),
-    journal,
-    // The journal is already newest-first and covers the whole history, so the first
-    // `missed` day in it is the most recent one.
-    nextBackfillDate: journal.find((day) => day.state === 'missed')?.date ?? null,
-    heatmap:
-      habit == null
-        ? []
-        : heatCells(habit, entries, heatWindow[0], heatWindow[heatWindow.length - 1], today),
-    chart,
-    forming,
-    design:
+    stat,
+    head:
+      habit == null || light == null
+        ? null
+        : {
+            icon: habitIcon(habit),
+            name: habit.name,
+            light,
+            lightHelp: TOOLTIPS.statusLight,
+            reflectLabel: light === 'intervention' ? DASHBOARD_COPY.reflect : null,
+            stoppedNote:
+              habit.lifecycle === 'paused'
+                ? DETAIL_COPY.paused
+                : habit.lifecycle === 'archived'
+                  ? DETAIL_COPY.archived
+                  : null,
+          },
+    hero: habit == null ? null : heroOf(habit, entries, today, streak, longest),
+    pills,
+    pillColumns: pills.length > 3 ? 2 : 3,
+    heatmap,
+    designCard:
       habit == null
         ? null
         : {
-            cue: habit.cue,
-            identity: habit.identity,
-            floor: habit.floor,
-            floorUnit: habit.floorUnit,
-            target: effectiveTarget(habit),
-            editsAmounts: habit.kind === 'count',
+            cue: habit.cue ?? DETAIL_COPY.cueEmpty,
+            cueInk: habit.cue == null || habit.cue.length === 0 ? 'critInk' : 'text',
+            floor: habit.kind === 'count' ? dailyAmountLabel(habit.floor, habit.floorUnit) : null,
+            target: target == null ? null : dailyAmountLabel(target, habit.floorUnit),
+            stat: stat == null ? null : statLabel(stat),
+            identity: habit.identity ?? DETAIL_COPY.identityEmpty,
+            identityInk: habit.identity == null ? 'muted' : 'text',
           },
-    backfillDate,
-    composerAffordances: composer,
-    openBackfill,
-    closeBackfill: () => setBackfillDate(null),
-    fillDay,
-    skipDay,
-    editEntry: quick.editEntry,
-    removeEntry: quick.removeEntry,
+    design,
+    journal,
+    journalShown,
+    journalMoreLabel: journalShown.length < journal.length ? DETAIL_COPY.more : null,
+    showMoreJournal: () => setJournalOpen(true),
+    backfillLabel: habit == null ? null : DETAIL_COPY.backfill,
+    openPastDays: () => setIntent({ kind: 'pastDays' }),
+    menu: habit == null ? [] : menuOf(habit),
+    pickMenu,
+    sheet,
+    openRecord,
+    openSkip,
+    openEntry: (id: string) => setIntent({ kind: 'entry', id }),
+    openDesign: () => setIntent({ kind: 'design' }),
+    closeSheet: () => setIntent(null),
+    recordFromSheet,
+    skipFromSheet,
+    editedEntry,
+    saveEntryFromSheet,
+    removeEntryFromSheet,
+    confirmFromSheet,
     deletePreview,
     saveDesign,
-    lifecycleActions: habit == null ? [] : lifecycleActions(habit),
     toast: quick.toast,
     failure: failure ?? quick.failure,
     undoLast: quick.undoLast,
+    celebration: quick.celebration,
+    dismissCelebration: quick.dismissCelebration,
+    reload,
   };
 }

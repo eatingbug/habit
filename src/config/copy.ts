@@ -1,10 +1,14 @@
 import type {
+  DayState,
   DiagnosisComponent,
   Habit,
   LogType,
   ReflectionAction,
+  Severity,
   SkipReason,
 } from '@/models';
+
+import { TUNING } from './tuning';
 
 /**
  * User-facing strings that no single layer can own.
@@ -15,7 +19,7 @@ import type {
  * here, where the three conditionals that *are* the judgment can be asserted.
  *
  * The skip reason labels are needed by a **hook** (`useQuickLog` puts one on the undo
- * toast's detail line) and by a **component** (`SkipReasonChips` renders all four).
+ * toast's detail line) and by a **component** (`SkipSheet` renders all four).
  * Neither can own them: a hook importing a component is a layer inversion, and a hook
  * importing the component that renders the chips would be exactly that. `src/config/`
  * already holds user-facing names for this reason — `TUNING.stats` carries the
@@ -85,16 +89,6 @@ export const LOG_TYPE_LABELS: Record<LogType, string> = {
  */
 export const FREE_LOG_NO_TEXT_NOTE = '점수에는 영향 없어요';
 
-/**
- * The target selector's free option — the canvas's **first** tab
- * (`design/parts/Today.logic.js:135`, `{ id: 'free', label: '오늘 일기' }`).
- *
- * Beside the labels above rather than in the screen for the same reason: the option
- * list itself is `useToday.targetOptions`, and a hook cannot read copy that lives in
- * `app/`.
- */
-export const FREE_TARGET_LABEL = '오늘 일기';
-
 /** What `deleteConfirmLines` needs to know — see `useToday.DeleteEffect` for each. */
 export interface DeleteConfirmFacts {
   habitName: string;
@@ -140,13 +134,15 @@ export interface DeleteConfirmFacts {
  * that register, in the same order: what is lost first, then the day's new reading.
  *
  * The miss clause deliberately carries **no day-state label**. `stateLabel('skip')`
- * reads `못 함`, and the two clauses can appear together (a miss-carrying skip with
- * another row surviving): "…'못 함' 기록이 사라져요. 지운 뒤 오늘: 못 함" would use
+ * reads `못 했어요`, and the two clauses can appear together (a miss-carrying skip with
+ * another row surviving): "…'못 했어요' 기록이 사라져요. 지운 뒤 오늘: 못 했어요" would use
  * one term for the 미스 being erased and for the day's surviving state, one sentence
  * apart, which is the mixing `CONTEXT.md`'s glossary forbids. It would also give the
  * label a second source, three lines below a docblock promising the map stays the
- * screen's. So the clause names what the row was **counted as** (실패) and what stops
- * — never how the day now reads.
+ * screen's. So the clause names what the row **was** (a skip with a reason, in the
+ * §6.8 tooltips' own words "이유를 골라 못 했다고 찍은") and what stops — never how
+ * the day now reads. It no longer says 실패: the redesigned Today shows this confirm,
+ * and no Today copy uses that word (#127).
  *
  * Every clause is the caller's to ask for, and two of them are asked for by only one
  * screen:
@@ -167,7 +163,7 @@ export function deleteConfirmLines(facts: DeleteConfirmFacts): string[] {
     lines.push(`이 기록을 지우면 ${day} ${facts.habitName}에 남는 기록이 없어요.`);
   }
   if (facts.carriesMiss) {
-    lines.push('실패로 세던 기록이 바로 이 줄이라, 지우면 그 실패는 더 세지 않아요.');
+    lines.push('못 했다고 찍은 기록이 바로 이 줄이라, 지우면 그날을 못 한 날로 세지 않아요.');
   }
   if (facts.streakBefore != null && facts.streakAfter != null) {
     lines.push(`연속 날수가 다시 계산돼요 — ${facts.streakBefore}일 → ${facts.streakAfter}일.`);
@@ -178,199 +174,6 @@ export function deleteConfirmLines(facts: DeleteConfirmFacts): string[] {
   return lines;
 }
 
-/**
- * The toast's amount half (§6.2 B6 copy). It cannot be built from `floorUnit` alone:
- * a binary habit carries `floorUnit: 'time'`, so `+1${floorUnit}` would render
- * `+1time`. Its detail is the fixed `✓ 완료` instead.
- *
- * It sits here with the rest of the toast's copy rather than in the hook, so the
- * `+1time` guard has exactly one home.
- */
-function detailOf(habit: Habit, actual: number): string {
-  return habit.kind === 'binary' ? '✓ 완료' : `+${actual}${habit.floorUnit}`;
-}
-
-/** What the log-time toast needs to know about the log that just landed. */
-export interface RewardToastFacts {
-  /** The habit logged — `kind` and `floorUnit` shape the amount half of `detail`. */
-  habit: Habit;
-  /** The amount the row records. */
-  actual: number;
-  /**
-   * The log's delta, as the primitives the cascade below reads — the caller takes them
-   * off `describeLogEffect`'s `LogEffect` (§4.2 C1) and passes them one by one. The
-   * type itself is not imported: see `rewardToastLines`. `savedAtRiskDay` is on
-   * `LogEffect` and deliberately absent here — no line of this copy reads it.
-   */
-  xpGained: number;
-  statLevelUp: boolean;
-  streakMilestoneHit?: number;
-  pushedToOver: boolean;
-  floorCrossedToday: boolean;
-  showedUp: boolean;
-  /** Is the row on a date other than today? Only the "showed up" line reads this. */
-  isBackfill: boolean;
-  /**
-   * The habit's stat's display name, or absent when `statId` names no configured stat
-   * — the same data defect `useDashboard`'s optional `stat` describes. The level-up
-   * line is then skipped rather than rendered with a hole in it, and the next branch
-   * speaks instead.
-   */
-  statName?: string;
-  /** The stat's level **after** this log — `computeStatLevel`, never recomputed here. */
-  statLevel: number;
-}
-
-/**
- * The log-time toast's two derived slots — SPEC §4.2 C1 / §6.2, issue #17.
- *
- * Copy, not judgment about scoring: every fact arrives already decided by the domain. It sits
- * in `src/config` for the reason `deleteConfirmLines` does — `jest.config.js` matches
- * `src/**` only, so the same cascade written inside `app/` would be copy no test can
- * reach. And it takes **primitives** for that function's reason too: SPEC §2.2's
- * dependency rule puts `src/config` *below* `src/domain` ("Domain imports only models
- * and config"), so importing `LogEffect` here would invert that direction. The caller
- * is UI, may import both, and passes the fields this cascade reads.
- *
- * `detail` is the mono slot (`Toast`'s `.rx`): the amount, plus ` · +N XP` only when
- * the log actually earned some. A trailing `+0 XP` would be noise on a day whose XP
- * was already banked, and the honest word for that day is the `sub` line instead —
- * nothing goes unacknowledged.
- *
- * `sub` is one plain sentence, so the branches are a priority cascade, rarest first: a
- * level-up outranks a milestone, which outranks the day's own crossings. Copy is the
- * canvas's, from Today's four-way version (`design/parts/Today.logic.js:59`/`:63`) —
- * the one that has the sub-floor branch — plus the Dashboard's already-banked line
- * (`design/parts/Dashboard.logic.js:35`). One wording serves both screens, exactly as
- * the skip toast's does (see `logSkip` in `src/hooks/useQuickLog.ts`).
- *
- * Two lines are **캔버스 출처 없음 — 신규 문구**: the level-up and the milestone. The
- * canvas has no toast for either. `이어 간 날 {N}일 보너스` borrows its vocabulary from
- * `design/parts/YesNo.body.html:18` (`이어 간 날 보너스`), and the level-up line uses
- * the stat name and level the Dashboard's own stat card shows.
- *
- * **The one declared deviation:** the toast's main verb stays `기록됨` even on a log
- * that earned no XP, where both canvases swap their main line
- * (`design/parts/Dashboard.logic.js:35` → `이미 오늘 몫은 끝났어요`;
- * `design/parts/Today.logic.js:58` → `기록했어요 · XP 없음`). SPEC §6.2 B6 specifies that
- * literal string for the undo toast (`기록됨 +N {unit} · 실행취소`), the two canvases do
- * not agree with each other on what replaces it, and one wording serves both screens
- * here as the skip toast's already does. That day is acknowledged on `sub` instead.
- *
- * On a backfill the "showed up" line says `그 날` rather than the canvas's `오늘`
- * (`design/parts/Today.logic.js:59`), a mechanical substitution: it is the only
- * sentence here that names a day, and it would be plainly false beside a row filled
- * onto yesterday. The XP itself is not softened — a backfill earns for real (ADR-0001).
- */
-export function rewardToastLines(facts: RewardToastFacts): { detail: string; sub?: string } {
-  return {
-    detail:
-      detailOf(facts.habit, facts.actual) +
-      (facts.xpGained > 0 ? ` · +${facts.xpGained} XP` : ''),
-    sub:
-      facts.statLevelUp && facts.statName != null
-        ? `${facts.statName} 레벨 ${facts.statLevel}`
-        : facts.streakMilestoneHit != null
-          ? `이어 간 날 ${facts.streakMilestoneHit}일 보너스`
-          : facts.pushedToOver
-            ? '목표까지 넘었어요 🎯'
-            : facts.floorCrossedToday
-              ? '최소만큼 했어요 💪'
-              : facts.showedUp
-                ? `${facts.isBackfill ? '그 날' : '오늘'} 나타났어요`
-                : facts.habit.kind === 'binary' && facts.xpGained === 0
-                  ? 'XP는 하루 한 번만'
-                  : '최소보다 더 했어요',
-  };
-}
-
-/** What the feed row's reward line needs to know — see `rowRewardLine`. */
-export interface RowRewardFacts {
-  /** The XP this row caused (`attributeDayXP`). Never a literal from the canvas. */
-  xp: number;
-  /** The day's activity sum through this row. */
-  sum: number;
-  floor: number;
-  floorMet: boolean;
-  crossedFloor: boolean;
-  /** The target this row crossed, absent when it crossed none. */
-  crossedTarget?: number;
-}
-
-/**
- * The line a habit **activity** row keeps in the feed (issue #37) — the canvas's
- * `rewardtag` slot (`design/parts/Today.body.html:88`,
- * `<span class="{{ f.rcls }}">{{ f.reward }}</span>`).
- *
- * Four branches, all four the canvas's own `logAmount`: the sub-floor one
- * (`design/parts/Today.logic.js:60`) and the three above it (`:65–68`) — target
- * crossed, floor crossed, neither.
- *
- * **Every number here is computed, never transcribed.** The canvas's own figures (60 /
- * 60 / 12 at `design/parts/Today.logic.js:54–56`) disagree with `TUNING`
- * (`xpPerFloorCompletion` 60, `xpBonusTargetExceed` 60, `xpPerAboveFloorUnit` 6), so the
- * canvas is authority for the sentence and for nothing inside it. `sum` is the day's
- * running total through the row — the canvas's `after` — not the row's own amount.
- *
- * `+0 XP` **is** printed, unlike `rewardToastLines`, which drops it as noise. This line
- * persists next to the other rows of the same day, where the whole question it has to
- * answer is why one of them earned and the next did not: the floor XP goes to the row
- * that crossed the floor (`attributeDayXP`). A row that stayed silent about its zero
- * would be the one asked about.
- *
- * A binary habit takes the `crossedFloor` branch and reads `→ 1/1 오늘 몫 완료 · +N XP`:
- * its floor is 1 by §3.2, it has no target to cross, and a second row on the same day
- * earns nothing and falls to the last branch. The template needs no binary arm.
- *
- * Here rather than in `app/today.tsx` for this file's standing reason: `jest.config.js`
- * matches `src/**` only.
- */
-export function rowRewardLine(facts: RowRewardFacts): string {
-  if (!facts.floorMet) {
-    return `→ ${facts.sum}/${facts.floor} · 최소엔 못 미쳤지만 “나타남” 하루 추가`;
-  }
-  if (facts.crossedTarget != null) {
-    return `→ 합 ${facts.sum} · 목표 ${facts.crossedTarget} 넘음 · +${facts.xp} XP`;
-  }
-  if (facts.crossedFloor) {
-    return `→ ${facts.sum}/${facts.floor} 오늘 몫 완료 · +${facts.xp} XP`;
-  }
-  return `→ 합 ${facts.sum} · +${facts.xp} XP`;
-}
-
-/**
- * The at-risk save banner's two halves (SPEC §4.3 C2, issue #18 AC 5) — copy from
- * `design/parts/Today.body.html:13`.
- *
- * Two strings and not one, because the canvas splits them typographically: the banner's
- * surface and border are `--warn` (`design/_tokens.css:93–94`) and so is the **bold**
- * first sentence (`:97`), while the single `<span class="dot r">` beside it is the only
- * crit-red thing in the box. Returning one joined sentence would lose which half is
- * bold and warn-coloured, and the screen would have to re-split it.
- *
- * Takes the habit's **name** rather than a `Habit` for `deleteConfirmLines`' reason:
- * §2.2 puts `src/config` below `src/domain`, and `src/domain/score.ts:1` already
- * imports `@/config/tuning`, so importing anything from `@/domain` here would close a
- * cycle. Nothing but the name is needed.
- *
- * **Declared deviation.** SPEC §4.3 C2 (`docs/SPEC.md:547–548`) quotes the banner as
- * `어제 놓쳤어요 — 오늘 최소 한 번이면 이어갈 수 있어요`; this follows the canvas's three-clause version instead,
- * which names the habit and adds the backfill invitation. The invitation is not a false
- * promise: the date stepper that honours it shipped with #14.
- *
- * **One word is ours: `기록을`.** The canvas writes `어제 명상을 놓쳤어요`, whose object
- * particle is `을` only because 명상 ends in a consonant; a habit named 요가 or 달리기
- * would need `를`, and half of all names would read as broken Korean. Rather than
- * inflecting the particle from the name's last syllable — a rule with its own edge
- * cases on a name ending in a digit or a Latin letter — the name is made a modifier of
- * an invariant noun. The register is the canvas's, unchanged.
- */
-export function saveBannerLines(habitName: string): { lead: string; rest: string } {
-  return {
-    lead: `어제 ${habitName} 기록을 놓쳤어요.`,
-    rest: '오늘 한 번이면 흐름이 이어져요. 어제도 지금 채워 넣을 수 있어요.',
-  };
-}
 
 /**
  * The habit detail screen's lifecycle controls — 잠깐 쉬기 · 보관하기 · 다시 시작 ·
@@ -421,14 +224,14 @@ export const LIFECYCLE_NOTE =
  * `app/reflect/[id].tsx` because `useReflection` hands the screen its options already
  * labelled, and a hook cannot read copy that lives in `app/`.
  *
- * Canvas: `fill_cue` (`design/parts/Reflection.body.html:48`), `lower_floor` (`:52`),
- * `keep` (`:54`). `pause` and `archive` are `LIFECYCLE_LABELS`' own words — `:53`
+ * `fill_cue` and `adjust_cue` are SPEC §6.7's Diagnosis copy table (#111). Canvas:
+ * `lower_floor` (`design/parts/Reflection.body.html:52`), `keep` (`:54`). `pause` and `archive` are `LIFECYCLE_LABELS`' own words — `:53`
  * draws `잠깐 쉬기` too — so one action has one name on both screens. The other three
  * are **캔버스 출처 없음 — 신규 문구**.
  */
 export const REFLECTION_ACTION_LABELS: Record<ReflectionAction, string> = {
-  fill_cue: '할 시간 정하기',
-  adjust_cue: '할 시간 바꾸기',
+  fill_cue: '언제·어디서 정하기',
+  adjust_cue: '언제·어디서 바꾸기',
   fill_identity: '하는 이유 적기',
   lower_floor: '최소량 줄이기',
   raise_target: '목표 올리기',
@@ -439,10 +242,10 @@ export const REFLECTION_ACTION_LABELS: Record<ReflectionAction, string> = {
 
 /**
  * The line under the recommended action — "with explanation" (§6.4). `fill_cue` is the
- * canvas's (`Reflection.body.html:49`); the rest are **캔버스 출처 없음 — 신규 문구**.
+ * canvas's (`ReReflection.body.html`); the rest are **캔버스 출처 없음 — 신규 문구**.
  */
 export const REFLECTION_ACTION_REASONS: Record<ReflectionAction, string> = {
-  fill_cue: '언제, 어디서 할지만 정해도 훨씬 잘 됩니다. 맞으면 누르기만 하세요.',
+  fill_cue: '언제, 어디서 할지만 정해도 훨씬 잘 돼요. 맞으면 누르기만 하세요.',
   adjust_cue: '지금 정한 때가 자꾸 어긋나요. 더 잘 지켜지는 때로 옮겨 보세요.',
   fill_identity: '왜 하는지가 분명하면 내키지 않는 날에도 이어 가기 쉬워요.',
   lower_floor: '최소량을 못 할 수가 없을 만큼 낮추면 이어 가기가 쉬워져요.',
@@ -454,13 +257,14 @@ export const REFLECTION_ACTION_REASONS: Record<ReflectionAction, string> = {
 
 /**
  * The flag card's component badge (§6.4 "Component (CUE / FLOOR / IDENTITY / LOAD)").
- * `cue` and `floor` are the canvas's (`Reflection.body.html:37` · `:42`); `identity` and
- * `load` are **캔버스 출처 없음 — 신규 문구**.
+ * `cue` and `identity` are SPEC §6.7's Diagnosis copy table (#111), the same words as
+ * `SCREEN_WORDS`. `floor` is the canvas's (`Reflection.body.html:42`); `load` is
+ * **캔버스 출처 없음 — 신규 문구**.
  */
 export const COMPONENT_LABELS: Record<DiagnosisComponent, string> = {
-  cue: '언제 할지',
+  cue: '언제·어디서',
   floor: '최소량',
-  identity: '하는 이유',
+  identity: '이유',
   load: '양 늘리기',
 };
 
@@ -476,10 +280,53 @@ export function declineMessage(weeks: number): string {
   return `주마다 한 양이 ${weeks}주 연속 줄었어요.`;
 }
 
-/** Cites the totals the light read and the level the guard compared the last one to. */
+/**
+ * Cites the totals the light read and the level the guard compared the last one to.
+ * The level is the **daily** target or floor (`guardLevel`), so the copy says 하루: the
+ * chart under the card draws the weekly lines.
+ */
 export function declineEvidence(totals: number[], level: 'target' | 'floor', value: number): string {
   const name = level === 'target' ? '목표' : '최소량';
-  return `지난 ${totals.length}주 합계 ${totals.join(' → ')} · 마지막 주가 ${name} ${value} 이하`;
+  return `지난 ${totals.length}주 합계 ${totals.join(' → ')} · 마지막 주가 하루 ${name} ${value} 이하`;
+}
+
+/**
+ * The weekly chart under a Rule 3 or decline card (`ReReflectionChart`, #147). The
+ * figures are `growthChart`'s; the words follow the board.
+ */
+export const CHART_THIS_WEEK = '이번 주';
+
+/** The ⭐'s accessible name. */
+export const CHART_BEST_WEEK = '최고 주';
+
+/** "주마다 한 양 · 최근 12주" — the chart's head: the measure, then the span. */
+export function chartHeadLabel(weeks: number): string {
+  return `주마다 한 양 · 최근 ${weeks}주`;
+}
+
+/** "최고 64" — the best week's total. */
+export function chartBestLabel(best: number): string {
+  return `최고 ${best}`;
+}
+
+/** "최소 35" — the weekly floor line. */
+export function chartFloorLabel(weeklyFloor: number): string {
+  return `최소 ${weeklyFloor}`;
+}
+
+/** "목표 70" — the weekly target line. */
+export function chartTargetLabel(weeklyTarget: number): string {
+  return `목표 ${weeklyTarget}`;
+}
+
+/** "11주 전" — the oldest bar's week. */
+export function chartWeeksAgoLabel(weeks: number): string {
+  return `${weeks}주 전`;
+}
+
+/** The chart's one accessible name: the bars are a shape, not 12 readouts. */
+export function chartSummary(weeks: number, best: number): string {
+  return `${chartHeadLabel(weeks)}. ${chartBestLabel(best)}`;
 }
 
 /** The design field a text action writes, placeholder included (`Reflection.body.html:50`). */
@@ -552,7 +399,7 @@ export const SESSION_CHECKING_NOTE = '로그인 상태를 확인하는 중…';
 /** 로그인 자체가 시작되지 못했을 때. 실패한 탭이 아무 말 없이 끝나지 않게 한다. */
 export const SIGN_IN_FAILED_NOTE = '로그인을 시작하지 못했어요. 잠시 뒤 다시 눌러 주세요.';
 
-/** 로그아웃 버튼 — 대시보드 머리말의 테마 토글 옆. */
+/** 로그아웃 버튼 — 설정 화면의 맨 아래 (#126). */
 export const SIGN_OUT_LABEL = '로그아웃';
 
 /**
@@ -571,3 +418,859 @@ export const LOAD_FAILED_NOTE = '불러오지 못했어요. 연결을 확인하�
 
 /** 실패 배너가 달고 있는 버튼. */
 export const RETRY_LABEL = '다시 시도';
+
+/** 목록을 읽는 동안 남는 한 줄 (#126). 옛 화면들은 같은 문구를 직접 적는다. */
+export const LOADING_NOTE = '불러오는 중…';
+
+/** 아래 탭 바의 세 낱말 (SPEC §6.1). 접근성 이름도 같다. */
+export const TAB_LABELS = {
+  today: '오늘',
+  dashboard: '대시보드',
+  journal: '글 모음',
+} as const;
+
+/**
+ * 설정 화면과 보관한 습관 화면 (SPEC §6.3 Settings, `ReSettings`, #126).
+ * `open` 과 `back` 은 아이콘만 있는 버튼의 접근성 이름이다 (§6.0 Icons).
+ * 보관한 습관 목록과 그 빈 화면은 아트보드가 없다. 빈 화면은 §6.0 의 이모지 하나,
+ * 문장 하나, 버튼 하나를 따른다.
+ */
+export const SETTINGS_COPY = {
+  open: '설정',
+  back: '뒤로',
+  title: '설정',
+  themeLabel: '테마',
+  themeOptions: { system: '자동', light: '라이트', dark: '다크' },
+  archivedTitle: '보관한 습관',
+  archivedEmptyEmoji: '🗄️',
+  archivedEmpty: '보관한 습관이 없어요.',
+  archivedEmptyAction: '설정으로 돌아가기',
+} as const;
+
+/**
+ * 설정의 "보관한 습관 N개" 줄. 개수를 모르면(읽는 중이거나 읽기 실패) 숫자를 빼고
+ * "보관한 습관" 만 쓴다. 읽지 못한 것을 "0개" 라고 말하지 않기 위해서다.
+ *
+ * 아트보드는 "N개" 를 줄 오른쪽에 따로 그린다. 그 조각이 `archivedCountLabel` 이고,
+ * `archivedRowLabel` 은 접근성 이름으로 쓰는 한 줄 전체다.
+ */
+export function archivedCountLabel(count: number | null): string {
+  return count == null ? '' : `${count}개`;
+}
+
+export function archivedRowLabel(count: number | null): string {
+  return count == null
+    ? SETTINGS_COPY.archivedTitle
+    : `${SETTINGS_COPY.archivedTitle} ${archivedCountLabel(count)}`;
+}
+
+/**
+ * 공통 상태 단어 (SPEC §6.0, #127). 오늘 화면 티켓이 두고, 대시보드, 습관 상세, 글 모음
+ * 티켓이 다시 쓴다. 모든 화면이 같은 하루 상태를 같은 낱말과 같은 표시로 보여 준다.
+ */
+
+/** 하루 상태 여섯의 화면 낱말 (§6.0 Day-state marks). 어느 이름에도 "실패"가 없다. */
+export const DAY_STATE_WORDS: Record<DayState, string> = {
+  done: '했어요',
+  over: '목표까지 했어요',
+  partial: '조금 했어요',
+  skip: '못 했어요',
+  missed: '기록 없음',
+  pending: '아직이에요',
+};
+
+/** 하루 상태 표시 안의 글자. `pending` 은 점선 테두리뿐이라 글자가 없다. */
+export const DAY_STATE_GLYPHS: Record<DayState, string> = {
+  done: '✓',
+  over: '★',
+  partial: '½',
+  skip: '−',
+  missed: '!',
+  pending: '',
+};
+
+/**
+ * 상태등 세 단계의 낱말과 모양 (§6.0 Visual rules). 키는 `src/domain/statusLight.ts` 의
+ * `StatusLight` 값이다. `personal_best` 는 `stable` 에 `BEST_RECORD_GLYPH` 를 더해 그린다.
+ * `src/config` 는 도메인 아래 층이라 그 타입을 가져오지 않고 키만 맞춘다 (§2.2).
+ */
+export const STATUS_LIGHT_WORDS = {
+  stable: '괜찮아요',
+  caution: '살펴보세요',
+  intervention: '손봐야 해요',
+} as const;
+
+export const STATUS_LIGHT_GLYPHS = {
+  stable: '●',
+  caution: '◆',
+  intervention: '▲',
+} as const;
+
+/** 최고 기록이 상태등에 더하는 표시. */
+export const BEST_RECORD_GLYPH = '★';
+
+/** 화면이 부르는 이름 (§6.0 Screen words). XP는 별, 스탯은 능력치다. */
+export const SCREEN_WORDS = {
+  star: '별',
+  stat: '능력치',
+  cue: '언제·어디서',
+  identity: '이유',
+  engagementStreak: '조금이라도 한 날',
+  streak: '연속',
+  floor: '최소량',
+  dayShare: '오늘 몫',
+} as const;
+
+/** 아이콘만 있는 버튼의 접근성 이름 (§6.0 Icons). */
+export const ICON_LABELS = {
+  help: '설명 보기',
+  close: '닫기',
+} as const;
+
+/** `?` 툴팁 문구 (§6.8 Copy 표). 표의 문장 그대로다. */
+export const TOOLTIPS = {
+  streak:
+    '최소량을 채운 날이 이어진 날수예요. 기록 없이 지나간 날이나 이유를 골라 못 했다고 찍은 날이 있으면 0부터 다시 세요.',
+  engagementStreak:
+    '최소량에 못 미쳐도 조금이라도 한 날까지 세요. 기록 없는 날이나 이유를 골라 못 했다고 찍은 날이 있으면 0부터 다시 세요.',
+  successRate:
+    '최근 28일 중 최소량을 채운 날의 비율이에요. 예외로 찍은 날은 빼고, 5일이 쌓이기 전에는 —로 보여요.',
+  bestStreak: '지금까지 가장 길게 이어진 연속이에요. 연속이 끊겨도 줄지 않아요.',
+  starsAndLevel: '최소량을 채우면 별을 받아요. 별이 모이면 레벨이 올라요.',
+  characterLevel:
+    '능력치 가운데 가장 높은 레벨이에요. 습관을 하면 그 습관의 능력치에 별이 쌓여요.',
+  statusLight:
+    '최근 기록을 보고 습관이 잘 굴러가는지 알려 줘요. 손봐야 해요가 뜨면 회고하기로 원인을 찾아요.',
+  sevenDayDots:
+    '점을 누르면 그날 기록을 채울 수 있어요. 테두리만 있는 점은 기록 없는 날이고, 실패로 세요.',
+  recentThreeWeeks:
+    '최근 3주를 하루 한 칸으로 보여 줘요. 칸을 누르면 그날 기록을 채울 수 있어요.',
+  forming: '날짜가 아니라 실제로 한 날로 세요. 보통 두 달쯤 걸리니 더뎌도 괜찮아요.',
+  weeklyTotal:
+    '막대 하나가 한 주 동안 한 양을 모두 더한 값이에요. 가로선은 하루 최소량과 목표를 7일로 곱한 기준이에요.',
+  floor: '아무리 바빠도 할 수 있는 양이에요. 이만큼 하면 그날 몫을 한 거예요.',
+  target: '최소량보다 큰 선택 목표예요. 넘기면 별을 더 받지만 안 해도 괜찮아요.',
+  kind: '횟수 · 양은 한 만큼 적고, 최소량을 채우면 그날 몫을 해요. 예 · 아니오는 했는지만 보고, 이어 간 날이 쌓이면 별을 더 받아요.',
+  cue: '습관을 시작할 때와 곳이에요. 비워 둬도 되고, 잘 안 될 때 먼저 정해 보자고 물어볼게요.',
+  stat: '이 습관으로 받은 별이 쌓이는 갈래예요. 가장 높은 능력치 레벨이 캐릭터 레벨이 돼요.',
+  identity:
+    '어떤 사람이 되고 싶어서 하는지 적어요. 내키지 않는 날 다시 꺼내 보면 이어 가기 쉬워요.',
+  yesterdayBanner:
+    '기록 없이 지나간 날은 연속이 끊긴 것으로 세요. 했는지 못 했는지 채우면 그 기록으로 다시 계산해요.',
+  freeLog: '떠오른 생각이나 방금 한 일을 적어요. 별이나 연속에는 영향이 없어요.',
+  reflectionBackfill:
+    '기록 없이 지나간 날은 했는지 못 했는지 알 수 없어요. 그래서 원인을 짚기 전에 먼저 물어봐요.',
+  reflectionSevenDays:
+    '! 칸은 기록 없이 지나간 날이고, − 칸은 이유를 골라 못 했다고 찍은 날이에요. 둘 다 실패로 세지만 이유는 − 칸만 알 수 있어요.',
+  reflectionHowItReads:
+    '직접 남긴 기록만 보고 원인을 짚어요. 기록 없이 지나간 날은 이유를 몰라서 빼요.',
+} as const;
+
+/** The two days a Today sheet writes to, as copy names them (§6.2 B4). */
+export const DAY_WORDS = {
+  today: '오늘',
+  yesterday: '어제',
+} as const;
+
+/**
+ * The toast's amount half. It cannot be built from `floorUnit` alone: a binary habit
+ * carries `floorUnit: 'time'`, so `+1${floorUnit}` would render `+1time`. Its amount is
+ * the day-state word `✓ 했어요` instead.
+ */
+function amountOf(habit: Habit, actual: number): string {
+  return habit.kind === 'binary'
+    ? `${DAY_STATE_GLYPHS.done} ${DAY_STATE_WORDS.done}`
+    : `+${actual}${habit.floorUnit}`;
+}
+
+/** What the undo toast needs to know about the activity log that just landed. */
+export interface UndoToastFacts {
+  /** The habit logged — `kind` and `floorUnit` shape the amount. */
+  habit: Habit;
+  /** The amount the row records. */
+  actual: number;
+  /** 별 this log earned (`describeLogEffect`'s `xpGained`). */
+  xpGained: number;
+  /** How much the day still lacks to its floor after this log. Above 0 only on `partial`. */
+  remainingToFloor: number;
+  statLevelUp: boolean;
+  /**
+   * The stat's display name, or absent when `statId` names no configured stat. The
+   * level-up line is then skipped rather than rendered with a hole in it.
+   */
+  statName?: string;
+  /** The stat's level **after** this log — `computeStatLevel`, never recomputed here. */
+  statLevel: number;
+  pushedToOver: boolean;
+  /** The log's day went from not floor-met to floor-met. */
+  floorCrossed: boolean;
+  /** A streak banner or milestone popup shows for this log. */
+  celebrated: boolean;
+  /** This habit and date were celebrated before this log (one date celebrates once). */
+  alreadyCelebrated: boolean;
+  /** Is the row on a date other than today? */
+  isBackfill: boolean;
+}
+
+/**
+ * "의지 레벨 3으로 올랐어요" — the toast's level-up line (#127 decision). The particle
+ * follows how the number is read: 으로 after a closed syllable (영, 삼, 육, 십), 로 after
+ * an open one or ㄹ (일, 이, 사, 오, 칠, 팔, 구).
+ */
+export function levelUpLine(statName: string, level: number): string {
+  const particle = [0, 3, 6].includes(level % 10) ? '으로' : '로';
+  return `${statName} 레벨 ${level}${particle} 올랐어요`;
+}
+
+/**
+ * The undo toast's second and third lines for an activity log — SPEC §6.2 Undo toast
+ * copy and C1. The first line is always `기록됨` (B6).
+ *
+ * `detail` is the amount, plus ` · 별 +N` only when the log earned 별 ("A log that earns
+ * no 별 drops the 별 part of the second line").
+ *
+ * `sub` is one line, so the branches are a priority order:
+ * - a level-up first. It stays even when a banner shows (#127 decision);
+ * - nothing else when a banner or popup celebrates the log: "the toast has no streak.
+ *   It holds the amount, 별 and 실행취소";
+ * - the `partial` row of the table;
+ * - passing the target (C1's "목표까지 넘겼어요"; its 별 is already on the second line);
+ * - the "another log on a day already celebrated" row of the table;
+ * - a floor crossed with no streak rise, e.g. a backfill onto an isolated past day
+ *   (오늘 몫을 채웠어요, 그날 몫을 채웠어요; #127 decision).
+ */
+export function undoToastLines(facts: UndoToastFacts): { detail: string; sub?: string } {
+  const detail =
+    amountOf(facts.habit, facts.actual) + (facts.xpGained > 0 ? ` · 별 +${facts.xpGained}` : '');
+
+  let sub: string | undefined;
+  if (facts.statLevelUp && facts.statName != null) {
+    sub = levelUpLine(facts.statName, facts.statLevel);
+  } else if (facts.celebrated) {
+    sub = undefined;
+  } else if (facts.remainingToFloor > 0) {
+    sub = `조금이라도 했어요 · 최소량까지 ${facts.remainingToFloor}${facts.habit.floorUnit} 남았어요`;
+  } else if (facts.pushedToOver) {
+    sub = '목표까지 넘겼어요';
+  } else if (facts.alreadyCelebrated || !facts.floorCrossed) {
+    sub = '더 했어요';
+  } else {
+    sub = `${facts.isBackfill ? '그날' : DAY_WORDS.today} 몫을 채웠어요`;
+  }
+  return { detail, sub };
+}
+
+/**
+ * The undo toast's lines for a skip (SPEC §6.2 Undo toast copy, #127 decision): the
+ * reason second, then 예외라서 연속은 그대로예요 for an exception, or for any other
+ * reason the row's note after 이유:, or 쉬었어요 alone with no note. It never says the
+ * streak broke; the streak pill shows that.
+ */
+export function skipToastLines({ reason, note }: { reason: SkipReason; note?: string }): {
+  detail: string;
+  sub: string;
+} {
+  return {
+    detail: SKIP_REASON_LABELS[reason],
+    sub:
+      reason === 'exception'
+        ? '예외라서 연속은 그대로예요'
+        : note != null && note.length > 0
+          ? `쉬었어요 · 이유: ${note}`
+          : '쉬었어요',
+  };
+}
+
+/** The undo toast's first line (§6.2 B6) and its action. */
+export const UNDO_TOAST_COPY = {
+  title: '기록됨',
+  undo: '실행취소',
+} as const;
+
+/** The streak banner's and the milestone popup's fixed words (§6.2 Streak celebration). */
+export const CELEBRATION_COPY = {
+  /** After the streak number, which is drawn in `streak` ink: "3" + "일 연속!". */
+  streakSuffix: '일 연속!',
+} as const;
+
+/** Weekday labels from Sunday, for the celebration's week and the date headers. */
+export const WEEKDAY_LABELS = ['일', '월', '화', '수', '목', '금', '토'] as const;
+
+/**
+ * The celebration's line under the streak. On today: "📖 독서 오늘 몫을 채웠어요"
+ * (`ReTodayStreak`). On a backfill: the SPEC's "어제를 채워서 13일 연속이 됐어요", after
+ * the habit. `filledDay` is 어제 or "M월 D일"; the object particle follows it (어제를,
+ * 27일을), and every "M월 D일" ends in 일, so the two cases are all there is.
+ */
+export function celebrationLine({
+  icon,
+  name,
+  streak,
+  filledDay,
+}: {
+  icon: string;
+  name: string;
+  streak: number;
+  filledDay?: string;
+}): string {
+  if (filledDay == null) return `${icon} ${name} ${DAY_WORDS.today} 몫을 채웠어요`;
+  const particle = filledDay === DAY_WORDS.yesterday ? '를' : '을';
+  return `${icon} ${name} ${filledDay}${particle} 채워서 ${streak}일 연속이 됐어요`;
+}
+
+/** The ★ line a target crossing adds to the banner or popup (§6.2). */
+export function starLine(stars: number): string {
+  return `★ 목표까지 넘겼어요 · 별 +${stars}`;
+}
+
+/** The milestone popup's bonus line, shown only when the day earns the bonus (§6.2). */
+export function milestoneBonusLine(stars: number): string {
+  return `기념일 보너스 · 별 +${stars}`;
+}
+
+/**
+ * The habit's icon: the one picked on the New habit screen (#130), else its stat's icon
+ * (`TUNING.stats`). `🌱` when `statId` names no configured stat.
+ */
+export function habitIcon(habit: Pick<Habit, 'statId' | 'icon'>): string {
+  return habit.icon ?? TUNING.stats.find((stat) => stat.id === habit.statId)?.icon ?? '🌱';
+}
+
+/** "10월 9일" — a date by month and day, for copy that names a past day. */
+export function monthDayLabel(date: string): string {
+  const { month, day } = monthAndDay(date);
+  return `${month}월 ${day}일`;
+}
+
+/** The month and day of a `YYYY-MM-DD` date, as numbers. */
+function monthAndDay(date: string): { month: number; day: number } {
+  const [, month, day] = date.split('-').map(Number);
+  return { month, day };
+}
+
+/** "10월 10일 토요일" — the Today header and the yesterday sheet's eyebrow. */
+export function longDateLabel(date: string, weekday: number): string {
+  return `${monthDayLabel(date)} ${WEEKDAY_LABELS[weekday]}요일`;
+}
+
+/**
+ * The shared record and skip reason sheets' words (§6.2 Record sheet, Skip reason
+ * sheet). Shared, not Today's: Today, the Dashboard's 7-day dots and Habit Detail's
+ * date cells open the same sheets ("One log form").
+ */
+export const SHEET_COPY = {
+  notePlaceholder: '메모 (선택)',
+  record: '기록하기',
+  skipHint: '이유를 누르면 바로 기록돼요.',
+  /** The stepper's accessible names. */
+  stepDown: '하나 줄이기',
+  stepUp: '하나 늘리기',
+  /** The time reveal's two fields and its reset. */
+  hour: '시',
+  minute: '분',
+  backToNow: '지금으로',
+} as const;
+
+/**
+ * The redesigned Today screen's copy (SPEC §6.2, the `ReToday*` artboards, #127).
+ * Fixed words are here; the sentences that carry a number or a name are the functions
+ * below, which `useToday` calls.
+ */
+export const TODAY_COPY = {
+  title: '오늘 할 일',
+  fill: '채우기',
+  did: DAY_STATE_WORDS.done,
+  didNot: DAY_STATE_WORDS.skip,
+  yesterdayListTitle: '어제 기록이 빈 습관',
+  freeLogButton: '끄적이기',
+  /** The way back from a past date, opened from 글 모음 (§6.4). */
+  backToToday: '오늘로 돌아가기',
+  freeLogTitle: '✏️ 끄적이기',
+  freeLogPlaceholder: '떠오른 생각을 적어요',
+  freeLogSubmit: '남기기',
+  /** The edit sheet's actions and the delete confirm's two answers. */
+  save: '저장',
+  remove: '삭제',
+  confirmRemove: '지울게요',
+  keep: '그대로 둘게요',
+  /** The edit sheet's row kind switch — the day-state words of the two row kinds. */
+  editKinds: { activity: DAY_STATE_WORDS.done, skip: DAY_STATE_WORDS.skip },
+  /** A backfilled row's stamp, in the edit sheet (§6.3 noon pin). */
+  backfillTime: '낮 12:00으로 남아요',
+  /** The empty screen: one emoji, one sentence, one button (§6.0 Icons). */
+  emptyEmoji: '🌱',
+  empty: '아직 습관이 없어요.',
+  emptyAction: '습관 만들기',
+  /** The fold's accessible action words. */
+  foldOpen: '펼치기',
+  foldClose: '접기',
+} as const;
+
+/** "✅ 3개 중 1개 했어요" — the count chip. */
+export function countChipLabel(total: number, done: number): string {
+  return `✅ ${total}개 중 ${done}개 ${DAY_STATE_WORDS.done}`;
+}
+
+/**
+ * The yesterday banner's title (#135): the habit's name when one habit is blank, the
+ * count when two or more are.
+ */
+export function yesterdayBannerTitle(names: string[]): string {
+  return names.length === 1
+    ? `🌙 어제 ${names[0]} 기록이 비어 있어요.`
+    : `🌙 어제 기록이 빈 습관 ${names.length}개`;
+}
+
+/** "오늘 기록 2개" — the fold over the day's records. */
+export function foldLabel(count: number): string {
+  return `${DAY_WORDS.today} 기록 ${count}개`;
+}
+
+/** The 언제·어디서 value on a habit card, with no label (§6.0 Screen words). */
+export function cueLine(cue: string): string {
+  return `🕐 ${cue}`;
+}
+
+/** The card's status words, mark first: ✓ 했어요, ★ 목표까지 했어요, − 못 했어요. */
+export function cardBadge(state: DayState): string | null {
+  return state === 'done' || state === 'over' || state === 'skip' ? dayStateBadge(state) : null;
+}
+
+/** "6 / 10쪽", or past the target "30쪽 · 목표 30쪽" (§6.2 Habit card). */
+export function cardProgressLine({
+  sum,
+  floor,
+  unit,
+  target,
+}: {
+  sum: number;
+  floor: number;
+  unit: string;
+  /** Given only when the day is `over`. */
+  target?: number;
+}): string {
+  return target != null ? `${sum}${unit} · 목표 ${target}${unit}` : `${sum} / ${floor}${unit}`;
+}
+
+/** "{어느 날} 못 했어요 · 왜?" — the skip reason sheet's title and the record sheet's link. */
+export function skipSheetTitle(dayWord: string): string {
+  return `${dayWord} ${DAY_STATE_WORDS.skip} · 왜?`;
+}
+
+/** "지금 6쪽" — today's sum, in the record sheet's head. */
+export function recordSumLabel(sum: number, unit: string): string {
+  return `지금 ${sum}${unit}`;
+}
+
+/** "지금 14:20" — the record sheet's time, a plain label (B3). */
+export function nowLabel(clock: string): string {
+  return `지금 ${clock}`;
+}
+
+/** "어제 12:00" — a backfill's time in the record sheet: it is stamped at noon (B3, §6.3). */
+export function backfillTimeLabel(dayWord: string): string {
+  return `${dayWord} 12:00`;
+}
+
+/**
+ * "지금 14:20 · 시간 바꾸기" — the free log's time button (B3). The date does not change:
+ * a free log is today's only (#16, #127 decision).
+ */
+export function freeLogTimeLabel(clock: string): string {
+  return `지금 ${clock} · 시간 바꾸기`;
+}
+
+/** "07:10 · 시간 바꾸기" — an existing row's time button in the edit sheet (#127 decision). */
+export function editTimeLabel(clock: string): string {
+  return `${clock} · 시간 바꾸기`;
+}
+
+/**
+ * The record sheet's one result line under the stepper (C7a): what this amount does to
+ * the day. The SPEC gives one case, "이걸로 오늘 몫을 채워요 ✓". The other three are in
+ * the same register: still short of the floor, past the target, and a day whose floor
+ * is already met.
+ */
+export function recordResultLine({
+  sum,
+  amount,
+  floor,
+  target,
+  unit,
+  dayWord,
+}: {
+  /** The day's sum before this amount. */
+  sum: number;
+  amount: number;
+  floor: number;
+  /** The habit's target when the engine honours one (`> floor`, count only). */
+  target?: number;
+  unit: string;
+  /** 오늘 or 어제 (`DAY_WORDS`). */
+  dayWord: string;
+}): string {
+  const next = sum + amount;
+  const passesTarget = target != null && sum < target && next >= target;
+  if (sum < floor && next < floor) return `최소량까지 ${floor - next}${unit} 남아요`;
+  if (passesTarget) return '이걸로 목표까지 넘겨요 ★';
+  if (sum < floor) return `이걸로 ${dayWord} 몫을 채워요 ✓`;
+  return `${dayWord} 몫은 이미 채웠어요`;
+}
+
+/**
+ * 대시보드 (SPEC §6.3, `ReDashboard`, `ReDashboardStats`, `ReDashboardEmpty`, #129).
+ * Fixed words are here; the sentences that carry a number are the functions below,
+ * which `useDashboard` calls. Day-state, status light, tooltip and record sheet words
+ * are the shared ones above.
+ */
+export const DASHBOARD_COPY = {
+  title: '대시보드',
+  reflect: '회고하기',
+  newHabit: '습관 만들기',
+  /** The empty screen: one emoji, one sentence, one button (§6.0 Icons). */
+  emptyEmoji: '🌱',
+  empty: '아직 습관이 없어요',
+  /** The level line at the top level, where there is no next threshold (#129 decision). */
+  topLevel: '최고 레벨이에요',
+} as const;
+
+/** "캐릭터 레벨 4" — the level card's head and the stat sheet's title. */
+export function characterLevelLabel(level: number): string {
+  return `캐릭터 레벨 ${level}`;
+}
+
+/** "레벨 3" — one stat's level in the stat sheet. */
+export function statLevelLabel(level: number): string {
+  return `레벨 ${level}`;
+}
+
+/** "다음 레벨까지 별 120개", or `DASHBOARD_COPY.topLevel` when there is no next level. */
+export function starsToNextLevelLabel(stars: number | null): string {
+  return stars == null ? DASHBOARD_COPY.topLevel : `다음 레벨까지 ${SCREEN_WORDS.star} ${stars}개`;
+}
+
+/** "💪 3 · 📖 2 · 🧘 4" — the level card's one stat line. */
+export function statLineLabel(stats: { icon: string; level: number }[]): string {
+  return stats.map((stat) => `${stat.icon} ${stat.level}`).join(' · ');
+}
+
+/** "손볼 습관 1개" — the head over the habit rows. It has no `?` (§6.8). */
+export function needsAttentionLabel(count: number): string {
+  return `손볼 습관 ${count}개`;
+}
+
+/** "🔥 12" — a row's streak. */
+export function streakCountLabel(streak: number): string {
+  return `🔥 ${streak}`;
+}
+
+/** "10월 8일 목요일 기록 없음" — a 7-day dot's accessible name. */
+export function dayCellLabel(dateLabel: string, state: DayState): string {
+  return `${dateLabel} ${DAY_STATE_WORDS[state]}`;
+}
+
+// --- 새 습관 (#130, SPEC §6.6) ----------------------------------------------
+
+/** 새 습관 화면의 문구 (`ReNewHabit`, `ReNewHabitYesNo`). `labels`의 키 순서가 화면의 칸 순서다. */
+export const NEW_HABIT_COPY = {
+  title: '습관 만들기',
+  subtitle: '나중에 언제든 고칠 수 있어요',
+  labels: {
+    name: '이름',
+    kind: '측정 방식',
+    floor: '최소량',
+    target: '목표',
+    cue: SCREEN_WORDS.cue,
+    stat: SCREEN_WORDS.stat,
+    identity: SCREEN_WORDS.identity,
+  },
+  /** 목표, 언제·어디서, 이유 뒤에 붙는다. */
+  optional: '· 선택',
+  placeholders: {
+    name: '예: 턱걸이',
+    floor: '5',
+    floorUnit: '회',
+    target: '10',
+    cue: '예: 아침 커피 마신 뒤, 문틀 바에서',
+    identity: '예: 나는 매일 몸을 쓰는 사람이니까',
+  },
+  kinds: { count: '횟수 · 양', binary: '예 · 아니오' },
+  /** 단위 칸의 접근성 이름. */
+  floorUnitLabel: '단위',
+  submit: '습관 만들기',
+  /** 이름 왼쪽 아이콘 버튼의 접근성 이름이자 아이콘 시트의 제목. */
+  pickIcon: '아이콘 고르기',
+  /** 아이콘 시트에서 고른 아이콘을 지우는 버튼. */
+  useStatIcon: '능력치 아이콘 쓰기',
+  errors: {
+    name: '이름을 적어 주세요.',
+    floor: '최소량은 1 이상의 숫자로 적어 주세요.',
+    floorUnit: '단위를 적어 주세요 (예: 회, 쪽, 분).',
+    target: '목표는 숫자로 적어 주세요.',
+    targetNotAboveFloor: '목표는 최소량보다 커야 해요.',
+  },
+} as const;
+
+/** 아이콘 시트가 늘어놓는 습관 아이콘. 능력치 아이콘 셋을 포함한다. */
+export const NEW_HABIT_ICONS = [
+  '💪', '🏃', '🚶', '🧘', '📖', '✍️', '🧠', '💻',
+  '🎸', '🎨', '💧', '🥗', '😴', '🦷', '🧹', '🌱',
+] as const;
+
+// ---------------------------------------------------------------------------
+// 글 모음 (SPEC §6.4, the `ReJournal` artboard, #132)
+// ---------------------------------------------------------------------------
+
+/**
+ * The 글 모음 tab's fixed words. The lines that carry a date, a kind or a state are the
+ * functions below, which `useJournal` calls.
+ */
+export const JOURNAL_COPY = {
+  title: TAB_LABELS.journal,
+  /** The two filter chips that are not a habit: 전체, then 끄적이기 (free logs). */
+  all: '전체',
+  freeLogs: TODAY_COPY.freeLogButton,
+  /** The empty screen: one emoji, one sentence, one button (§6.0 Icons). */
+  emptyEmoji: '📝',
+  empty: '아직 남긴 글이 없어요.',
+  emptyAction: TODAY_COPY.freeLogButton,
+  /** A filter with nothing under it, while other filters still hold rows. */
+  noMatch: '여기에는 아직 글이 없어요.',
+} as const;
+
+/** A date group's head: "오늘 · 10월 10일" for today, else "10월 9일". */
+export function journalDateLabel(date: string, today: string): string {
+  return date === today ? `${DAY_WORDS.today} · ${monthDayLabel(date)}` : monthDayLabel(date);
+}
+
+/** A free log row's head: "✏️ 끄적이기 · 떠오른 생각". */
+export function journalFreeLogLabel(type: LogType): string {
+  return `✏️ ${TODAY_COPY.freeLogButton} · ${LOG_TYPE_LABELS[type]}`;
+}
+
+/** A day-state as its mark and word: "✓ 했어요", "½ 조금 했어요", "− 못 했어요". */
+export function dayStateBadge(state: DayState): string {
+  const glyph = DAY_STATE_GLYPHS[state];
+  return glyph.length > 0 ? `${glyph} ${DAY_STATE_WORDS[state]}` : DAY_STATE_WORDS[state];
+}
+
+/**
+ * 회고 화면 (SPEC §6.7, `ReReflection`, #131). 진단 카드의 성분 이름과 처방 이름은
+ * 위의 `COMPONENT_LABELS` 와 `REFLECTION_ACTION_LABELS` 에 있다.
+ */
+
+/**
+ * 진단 카드의 배지: 심각도 모양과 성분 이름 ("▲ 언제·어디서"). 모양은 상태등과 같다.
+ * `critical` 은 손봐야 해요의 ▲, 나머지는 살펴보세요의 ◆ 다.
+ */
+export function diagnosisBadge(severity: Severity, name: string): string {
+  const glyph = severity === 'critical' ? STATUS_LIGHT_GLYPHS.intervention : STATUS_LIGHT_GLYPHS.caution;
+  return `${glyph} ${name}`;
+}
+
+/** 접힌 진단 카드를 펼치는 버튼 (§6.7). */
+export function moreDiagnosesLabel(count: number): string {
+  return `다른 점 ${count}개 더 보기`;
+}
+
+/** 회고 화면의 제목: "명상, 잠깐 볼까요". */
+export function reflectionTitle(habitName: string): string {
+  return `${habitName}, 잠깐 볼까요`;
+}
+
+/** 추천 행동의 머리: "✓ 이렇게 해 볼까요: 언제·어디서 정하기". */
+export function proposalLine(actionLabel: string): string {
+  return `✓ 이렇게 해 볼까요: ${actionLabel}`;
+}
+
+/** "10/8" — 저널 메모의 날짜. */
+export function shortDateLabel(date: string): string {
+  const { month, day } = monthAndDay(date);
+  return `${month}/${day}`;
+}
+
+/** "10/5 (월)" — 백필 질문의 날짜 줄. `weekday` 는 일요일이 0이다. */
+export function weekdayDateLabel(date: string, weekday: number): string {
+  return `${shortDateLabel(date)} (${WEEKDAY_LABELS[weekday]})`;
+}
+
+/**
+ * 회고 화면의 고정 문구 (`ReReflection`). `useReflection` 이 화면에 그대로 넘긴다. 공통 문구
+ * (불러오는 중, 다시 시도, 실행취소, `?` 툴팁) 도 여기서 함께 넘긴다.
+ */
+export const REFLECTION_COPY = {
+  back: '뒤로',
+  did: DAY_STATE_WORDS.done,
+  didNot: '안 했어요',
+  recoverNote: '했어요를 누르면 그날이 성공으로 바뀌고 연속도 다시 이어져요.',
+  sevenDays: '최근 7일은 이랬어요',
+  howItReads: '이렇게 보여요',
+  /** 캔버스 출처 없음. 기록 없는 날만 있는 🔴 는 진단이 없다 (ADR-0002). */
+  nothingToFlag: '지금 기록으로는 짚을 것이 없어요. 기록이 없는 날을 채우면 더 정확히 볼 수 있어요.',
+  commit: '이대로 고칠게요',
+  notFound: '습관을 찾을 수 없어요.',
+  /** 비어 있는 언제·어디서를 고치려 할 때. */
+  cueRequired: '언제·어디서를 적어 주세요.',
+  loading: LOADING_NOTE,
+  retry: RETRY_LABEL,
+  undo: UNDO_TOAST_COPY.undo,
+  backfillHelp: TOOLTIPS.reflectionBackfill,
+  sevenDaysHelp: TOOLTIPS.reflectionSevenDays,
+  howItReadsHelp: TOOLTIPS.reflectionHowItReads,
+} as const;
+// ---------------------------------------------------------------------------
+// 습관 상세 (SPEC §6.5, the `ReDetail*` artboards, #128)
+// ---------------------------------------------------------------------------
+
+/**
+ * The redesigned Habit Detail screen's fixed words. The sentences that carry a number,
+ * a date or a name are the functions below, which `useHabitDetail` calls. Shared words
+ * (day-state words, status-light words, tooltips, `SCREEN_WORDS`) are reused, not
+ * repeated here.
+ */
+export const DETAIL_COPY = {
+  /** The ⋯ button's accessible name (§6.0 Icons) and the journal's 더 보기. */
+  more: '더 보기',
+  /** An id that names no stored habit. */
+  notFound: '습관을 찾을 수 없어요.',
+  /** The hero card heads. */
+  forming: '자리 잡는 중',
+  weekly: '주마다 한 양',
+  /** The ⭐ on the best week's bar (accessible name). */
+  bestWeek: '최고 주',
+  thisWeek: '이번 주',
+  /** The hero's next step when the streak broke after a run. */
+  restart: '다시 시작하면 돼요',
+  /** Pill names that `SCREEN_WORDS` does not hold. */
+  bestStreak: '최고 연속',
+  successRate: '성공률',
+  /** Units after a pill or hero number. */
+  days: '일',
+  percent: '%',
+  /** `—` stands for a rate below the min-sample guard (§6.8 성공률 tooltip). */
+  noRate: '—',
+  heatmap: '최근 3주',
+  /** The design card. */
+  designTitle: '지금 이렇게 하기로 했어요',
+  edit: '수정',
+  target: NEW_HABIT_COPY.labels.target,
+  cueEmpty: '아직 안 정했어요. 이것부터 정해 보세요',
+  identityShow: '이유 보기',
+  identityHide: '이유 접기',
+  identityEmpty: '아직 안 적었어요.',
+  /** The journal card. */
+  journal: '저널',
+  backfill: '+ 지난 날 기록 추가',
+  /** The 지난 날 기록 추가 picker (#128 decision; no artboard draws it). */
+  pastDaysTitle: '지난 날 고르기',
+  pastDaysEmpty: '3주보다 오래된 날이 아직 없어요.',
+  /** The ⋯ menu. 다시 시작 and 다시 꺼내기 are `LIFECYCLE_LABELS`'. */
+  menuPause: `⏸ ${LIFECYCLE_LABELS.pause}`,
+  menuArchive: `🗄 ${LIFECYCLE_LABELS.archive}`,
+  /** The confirm sheets (`ReDetailPause`); the body is `LIFECYCLE_NOTE`. */
+  pauseTitle: '잠깐 쉴까요?',
+  archiveTitle: '보관할까요?',
+  /** The line under the head of a stopped habit, which no artboard draws (#128 decision). */
+  paused: '⏸ 쉬는 중이에요',
+  archived: '🗄 보관한 습관이에요',
+} as const;
+
+/** "34일" — the forming ring's count of days done. */
+export function daysLabel(days: number): string {
+  return `${days}${DETAIL_COPY.days}`;
+}
+
+/** "보통 66일" — the forming ring's expectation (§6.5, Lally). */
+export function expectedDaysLabel(days: number): string {
+  return `보통 ${days}${DETAIL_COPY.days}`;
+}
+
+/**
+ * The hero's next step beside the 연속 number (§6.5): "오늘 4쪽 더 하면 3일". The board
+ * gives two cases, a count habit part-way to its floor and a broken streak ("다시
+ * 시작하면 돼요"). The rest are in the same register (#128 decision):
+ * - today's floor already met: "오늘 몫을 채웠어요";
+ * - a streak of 0 after a run: "다시 시작하면 돼요";
+ * - a count habit with nothing yet today: "오늘 10쪽 하면 1일";
+ * - a yes/no habit: "오늘 하면 3일".
+ */
+export function nextStepLine({
+  floorMet,
+  streak,
+  hadRun,
+  isCount,
+  sum,
+  floor,
+  unit,
+}: {
+  floorMet: boolean;
+  streak: number;
+  /** A streak existed before: the longest streak is above 0. */
+  hadRun: boolean;
+  isCount: boolean;
+  /** Today's summed activity. */
+  sum: number;
+  floor: number;
+  unit: string;
+}): string {
+  if (floorMet) return `${DAY_WORDS.today} 몫을 채웠어요`;
+  if (streak === 0 && hadRun) return DETAIL_COPY.restart;
+  const next = `${streak + 1}${DETAIL_COPY.days}`;
+  if (!isCount) return `${DAY_WORDS.today} 하면 ${next}`;
+  if (sum > 0) return `${DAY_WORDS.today} ${floor - sum}${unit} 더 하면 ${next}`;
+  return `${DAY_WORDS.today} ${floor}${unit} 하면 ${next}`;
+}
+
+/** "이번 주 72회" — the weekly hero's running total. */
+export function weeklyTotalLabel(total: number, unit: string): string {
+  return `${DETAIL_COPY.thisWeek} ${total}${unit}`;
+}
+
+/** "최소 35" — the weekly hero's floor line. */
+export function floorLineLabel(weeklyFloor: number): string {
+  return `최소 ${weeklyFloor}`;
+}
+
+/** "목표 70" — the weekly hero's target line. */
+export function targetLineLabel(weeklyTarget: number): string {
+  return `${DETAIL_COPY.target} ${weeklyTarget}`;
+}
+
+/** "11주 전" — the weekly hero's left axis label: the oldest bar's week. */
+export function weeksAgoLabel(weeks: number): string {
+  return `${weeks}주 전`;
+}
+
+/** "하루 10쪽" — the design card's 최소량 and 목표 values. */
+export function dailyAmountLabel(amount: number, unit: string): string {
+  return `하루 ${amount}${unit}`;
+}
+
+/** "📖 지능" — the design card's 능력치 value. */
+export function statLabel(stat: { icon: string; name: string }): string {
+  return `${stat.icon} ${stat.name}`;
+}
+
+/** "10월 10일 (오늘)" — a journal day's head. */
+export function journalDayTitle(date: string, isToday: boolean): string {
+  return isToday ? `${monthDayLabel(date)} (${DAY_WORDS.today})` : monthDayLabel(date);
+}
+
+/**
+ * One journal row's amount line (`ReDetail*`): "+6쪽" on a count habit, "✓ 했어요" on a
+ * yes/no habit, "못 했어요 · 예외" on a skip row.
+ */
+export function journalRowSummary({
+  isCount,
+  actual,
+  unit,
+  skipReason,
+}: {
+  isCount: boolean;
+  actual: number;
+  unit: string;
+  skipReason?: SkipReason;
+}): string {
+  if (skipReason != null) return `${DAY_STATE_WORDS.skip} · ${SKIP_REASON_LABELS[skipReason]}`;
+  return isCount ? `+${actual}${unit}` : `${DAY_STATE_GLYPHS.done} ${DAY_STATE_WORDS.done}`;
+}

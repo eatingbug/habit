@@ -6,11 +6,11 @@ import { TUNING } from '@/config/tuning';
 import { RepositoryProvider } from '@/context/RepositoryContext';
 import { LocalRepository, MemoryKV, type HabitRepository, type KVStore } from '@/data';
 import { addDays } from '@/domain/dates';
+import { localClock } from '@/lib/device';
 import type { FreeLog, Habit, HabitEntry, SkipReason } from '@/models';
 
 import {
   feedItemId,
-  FREE_TARGET,
   useToday,
   type TodayFreeFeedItem,
   type TodayHabitFeedItem,
@@ -129,6 +129,11 @@ function habitFeed(view: TodayView): TodayHabitFeedItem[] {
   return view.feed.filter((item): item is TodayHabitFeedItem => item.kind === 'habit');
 }
 
+/** Habit cards whose floor is met — what the count chip counts. */
+function floorMetCount(view: TodayView): number {
+  return view.rows.filter((row) => row.floorMet).length;
+}
+
 function rowOf(view: TodayView, habitId: string): TodayHabitRow {
   const row = view.rows.find((r) => r.habit.id === habitId);
   if (row == null) throw new Error(`no row for ${habitId}`);
@@ -145,9 +150,8 @@ describe('useToday', () => {
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.rows).toEqual([]);
     expect(result.current.feed).toEqual([]);
-    expect(result.current.questsDone).toBe(0);
-    expect(result.current.logCount).toBe(0);
-    expect(result.current.xpToday).toBe(0);
+    expect(floorMetCount(result.current)).toBe(0);
+    expect(result.current.feed.length).toBe(0);
   });
 
   it('starts the day pending and recomputes it to done on a floor-sized log', async () => {
@@ -160,9 +164,25 @@ describe('useToday', () => {
     expect(dayOf(result.current, 'h1')?.state).toBe('done');
     expect(dayOf(result.current, 'h1')?.sum).toBe(5);
     expect(dayOf(result.current, 'h1')?.isMiss).toBe(false);
-    expect(result.current.questsDone).toBe(1);
-    expect(result.current.logCount).toBe(1);
-    expect(result.current.xpToday).toBe(TUNING.xpPerFloorCompletion);
+    expect(floorMetCount(result.current)).toBe(1);
+    expect(result.current.feed.length).toBe(1);
+  });
+
+  it('picks up a write made on another screen when reloaded (the tab stays mounted)', async () => {
+    const repository = new LocalRepository(await seed([habit()]));
+    const result = await todayScreen(repository);
+    expect(dayOf(result.current, 'h1')?.state).toBe('pending');
+
+    await repository.upsertEntry({
+      id: 'elsewhere',
+      habitId: 'h1',
+      date: TODAY,
+      timestamp: `${TODAY}T09:00:00.000Z`,
+      actual: 5,
+    });
+    act(() => result.current.reload());
+
+    await waitFor(() => expect(dayOf(result.current, 'h1')?.state).toBe('done'));
   });
 
   it('classifies a sub-floor amount as partial, which is not a miss', async () => {
@@ -172,10 +192,7 @@ describe('useToday', () => {
 
     expect(dayOf(result.current, 'h1')?.state).toBe('partial');
     expect(dayOf(result.current, 'h1')?.isMiss).toBe(false);
-    expect(result.current.questsDone).toBe(0);
-    // A `partial` earns no XP (§4.1, effect 1) — and still beats silence on every
-    // other measure, which is what makes it worth logging.
-    expect(result.current.xpToday).toBe(0);
+    expect(floorMetCount(result.current)).toBe(0);
   });
 
   it('keeps both of two logs on one day and sums them to done (§7.3, sum 6)', async () => {
@@ -192,10 +209,7 @@ describe('useToday', () => {
     expect(new Set(day?.entries.map((e) => e.id)).size).toBe(2);
     expect(day?.sum).toBe(6);
     expect(day?.state).toBe('done');
-    expect(result.current.logCount).toBe(2);
-    expect(result.current.xpToday).toBe(
-      TUNING.xpPerFloorCompletion + 1 * TUNING.xpPerAboveFloorUnit,
-    );
+    expect(result.current.feed.length).toBe(2);
   });
 
   it('reaches over past the target, and an over day still counts as done', async () => {
@@ -207,7 +221,7 @@ describe('useToday', () => {
     expect(dayOf(result.current, 'h1')?.sum).toBe(9);
     expect(dayOf(result.current, 'h1')?.state).toBe('over');
     // `over` implies `done` (§4.1), so the tally must not lose the quest.
-    expect(result.current.questsDone).toBe(1);
+    expect(floorMetCount(result.current)).toBe(1);
   });
 
   it('ignores a corrupt target <= floor rather than emitting a phantom over', async () => {
@@ -235,16 +249,13 @@ describe('useToday', () => {
 
     await log(result, 'b1', 1);
     expect(dayOf(result.current, 'b1')?.state).toBe('done');
-    const once = result.current.xpToday;
-    expect(once).toBe(TUNING.xpPerFloorCompletion);
 
     await log(result, 'b1', 1);
 
     // Two facts are kept, but the *day* is scored once (§4.1 / §4.2).
     expect(dayOf(result.current, 'b1')?.entries).toHaveLength(2);
     expect(dayOf(result.current, 'b1')?.state).toBe('done');
-    expect(result.current.questsDone).toBe(1);
-    expect(result.current.xpToday).toBe(once);
+    expect(floorMetCount(result.current)).toBe(1);
   });
 
   it('refuses a non-positive amount instead of writing a zero row (§3.3)', async () => {
@@ -273,10 +284,10 @@ describe('useToday', () => {
     const stamps = habitFeed(result.current).map((item) => item.entry.timestamp);
     expect([...stamps].sort()).toEqual(stamps);
     expect(habitFeed(result.current).every((item) => item.entry.date === TODAY)).toBe(true);
-    expect(result.current.logCount).toBe(3);
+    expect(result.current.feed.length).toBe(3);
   });
 
-  it('does not show yesterday in the feed, but scores only today in the XP tally', async () => {
+  it('does not show yesterday in the feed', async () => {
     const repository = new LocalRepository(await seed([habit()]));
     await repository.upsertEntry({
       id: 'yesterday',
@@ -288,39 +299,45 @@ describe('useToday', () => {
     const result = await todayScreen(repository);
 
     expect(result.current.feed).toEqual([]);
-    expect(result.current.xpToday).toBe(0);
 
     await log(result, 'h1', 5);
 
     expect(result.current.feed).toHaveLength(1);
-    // Yesterday's 60 XP is not re-counted; only what this day added is.
-    expect(result.current.xpToday).toBe(TUNING.xpPerFloorCompletion);
   });
 
-  it('hides an archived habit and keeps a paused one selectable (§3.2, ADR-0003)', async () => {
-    const result = await todayScreen(
-      new LocalRepository(
-        await seed([
-          habit({ id: 'archived', name: '접은 습관', lifecycle: 'archived' }),
-          habit({
-            id: 'paused',
-            name: '쉬는 습관',
-            lifecycle: 'paused',
-            pauses: [{ from: addDays(TODAY, -1) }],
-          }),
-        ]),
-      ),
+  it('leaves archived and paused habits off the cards and the count chip (#127)', async () => {
+    const repository = new LocalRepository(
+      await seed([
+        habit({ id: 'h1', name: '팔굽혀펴기' }),
+        habit({ id: 'archived', name: '접은 습관', lifecycle: 'archived' }),
+        habit({
+          id: 'paused',
+          name: '쉬는 습관',
+          lifecycle: 'paused',
+          pauses: [{ from: addDays(TODAY, -1) }],
+        }),
+      ]),
     );
+    const result = await todayScreen(repository);
 
-    expect(result.current.rows.map((row) => row.habit.id)).toEqual(['paused']);
-    // An empty paused day has no state at all — the engine has no opinion (ADR-0003).
-    expect(dayOf(result.current, 'paused')).toBeUndefined();
+    expect(result.current.rows.map((row) => row.habit.id)).toEqual(['h1']);
+    expect(result.current.countChip).toBe('✅ 1개 중 0개 했어요');
 
-    await log(result, 'paused', 5);
+    // A row made for the paused habit elsewhere (Habit Detail) is still a record of today.
+    await repository.upsertEntry({
+      id: 'rested',
+      habitId: 'paused',
+      date: TODAY,
+      timestamp: `${TODAY}T08:00:00.000Z`,
+      actual: 5,
+    });
+    await act(async () => {
+      result.current.reload();
+    });
 
-    // …but a paused day that holds rows classifies normally and still earns.
-    expect(dayOf(result.current, 'paused')?.state).toBe('done');
-    expect(result.current.xpToday).toBe(TUNING.xpPerFloorCompletion);
+    await waitFor(() => expect(result.current.feed).toHaveLength(1));
+    expect(result.current.rows.map((row) => row.habit.id)).toEqual(['h1']);
+    expect(result.current.countChip).toBe('✅ 1개 중 0개 했어요');
   });
   describe('one-tap logging and undo (#11)', () => {
     it('undoes the row it just appended and reverts the day to pending', async () => {
@@ -329,15 +346,14 @@ describe('useToday', () => {
 
       await log(result, 'h1', 5);
       expect(dayOf(result.current, 'h1')?.state).toBe('done');
-      expect(result.current.toast?.detail).toBe(`+5reps · +${TUNING.xpPerFloorCompletion} XP`);
+      expect(result.current.toast?.detail).toBe(`+5reps · 별 +${TUNING.xpPerFloorCompletion}`);
 
       await act(async () => {
         await result.current.undoLast();
       });
 
       expect(dayOf(result.current, 'h1')?.state).toBe('pending');
-      expect(result.current.logCount).toBe(0);
-      expect(result.current.xpToday).toBe(0);
+      expect(result.current.feed.length).toBe(0);
       expect(result.current.toast).toBeNull();
     });
 
@@ -375,7 +391,7 @@ describe('useToday', () => {
       expect(day?.entries).toHaveLength(2);
       expect(day?.entries.map((e) => e.actual)).toEqual([5, 5]);
       expect(day?.sum).toBe(10);
-      expect(result.current.logCount).toBe(2);
+      expect(result.current.feed.length).toBe(2);
     });
 
     it('flips hasActivityToday after the day\u2019s first record', async () => {
@@ -413,7 +429,7 @@ describe('useToday', () => {
 
       await log(result, 'b1', 1);
 
-      expect(result.current.toast?.detail).toBe(`✓ 완료 · +${TUNING.xpPerFloorCompletion} XP`);
+      expect(result.current.toast?.detail).toBe(`✓ 했어요 · 별 +${TUNING.xpPerFloorCompletion}`);
       expect(rowOf(result.current, 'b1').defaultAmount).toBe(1);
     });
   });
@@ -466,22 +482,6 @@ describe('useToday', () => {
       expect(rowOf(result.current, 'h1').progress).toEqual({ sum: 9, floor: 5, remaining: 0 });
     });
 
-    it('progresses an empty paused day, which has no state at all', async () => {
-      const result = await todayScreen(
-        new LocalRepository(
-          await seed([habit({ id: 'paused', lifecycle: 'paused', pauses: [{ from: TODAY }] })]),
-        ),
-      );
-
-      // ADR-0003: no `ClassifiedDay`, but the composer still has to work.
-      expect(dayOf(result.current, 'paused')).toBeUndefined();
-      expect(rowOf(result.current, 'paused').progress).toEqual({
-        sum: 0,
-        floor: 5,
-        remaining: 5,
-      });
-    });
-
   });
   it('throws rather than dropping a log for a habit it cannot resolve', async () => {
     const result = await todayScreen(new LocalRepository(await seed([habit()])));
@@ -497,9 +497,9 @@ describe('useToday', () => {
       expect(dayOf(result.current, 'h1')?.state).toBe('skip');
       expect(rowOf(result.current, 'h1').skipReasonToday).toBe('cue');
       // A skip is a record, so it belongs in the day's log — but it completed nothing.
-      expect(result.current.logCount).toBe(1);
+      expect(result.current.feed.length).toBe(1);
       expect(habitFeed(result.current)[0].entry.skipReason).toBe('cue');
-      expect(result.current.questsDone).toBe(0);
+      expect(floorMetCount(result.current)).toBe(0);
     });
 
     it('does not count an exception skip as a miss', async () => {
@@ -556,9 +556,9 @@ describe('useToday', () => {
 
       expect(dayOf(result.current, 'h1')?.state).toBe('done');
       expect(rowOf(result.current, 'h1').skipReasonToday).toBeUndefined();
-      expect(result.current.questsDone).toBe(1);
+      expect(floorMetCount(result.current)).toBe(1);
       // Both rows are facts and both stay (§3.3, append-only).
-      expect(result.current.logCount).toBe(2);
+      expect(result.current.feed.length).toBe(2);
     });
   });
 
@@ -592,9 +592,8 @@ describe('useToday', () => {
 
       // One row still, and the day recomputed from it — nothing stored a state.
       expect(result.current.feed).toHaveLength(1);
-      expect(result.current.logCount).toBe(1);
+      expect(result.current.feed.length).toBe(1);
       expect(dayOf(result.current, 'h1')?.state).toBe('done');
-      expect(result.current.xpToday).toBe(TUNING.xpPerFloorCompletion);
     });
 
     it('turns that row into a skip and back, on the same row (AC 2)', async () => {
@@ -721,7 +720,7 @@ describe('useToday', () => {
         const result = await todayScreen(repository);
 
         // The question is whether the delete *erases* the miss, not whether the day is
-        // one. Warning here would claim a loss the very next line ("지운 뒤 오늘: 못 함")
+        // one. Warning here would claim a loss the very next line ("지운 뒤 오늘: 못 했어요")
         // contradicts.
         expect(dayOf(result.current, 'h1')?.isMiss).toBe(true);
         expect(result.current.deletePreview('r1')).toBeNull();
@@ -877,20 +876,6 @@ describe('useToday', () => {
       });
     });
 
-    it('measures the day’s XP against the whole run, so a backfill is worth something (D1)', async () => {
-      const repository = new LocalRepository(await seed([habit()]));
-      const result = await screenOn(repository, YESTERDAY);
-
-      expect(result.current.xpToday).toBe(0);
-
-      await log(result, 'h1', 5);
-
-      // The figure is `computeXP`'s (proven in `score.test.ts`); what is asserted here
-      // is that the delta is taken over the *selected* day's rows, not silently over
-      // today's — a backfilled day would otherwise always read +0 XP.
-      expect(result.current.xpToday).toBeGreaterThan(0);
-    });
-
     it('pins the stepper to today when there are no habits at all (D3)', async () => {
       const result = await todayScreen(new LocalRepository(new MemoryKV()));
 
@@ -955,7 +940,7 @@ describe('useToday', () => {
 
       expect(dayOf(result.current, 'h1')?.state).toBe('done');
       expect(dayOf(result.current, 'h1')?.isMiss).toBe(false);
-      expect(result.current.questsDone).toBe(1);
+      expect(floorMetCount(result.current)).toBe(1);
     });
 
     it('reason-tags a past day with a noon-pinned skip row (AC 4)', async () => {
@@ -1064,7 +1049,7 @@ describe('useToday', () => {
   });
   /**
    * Free logs (#16). Every negative assertion here is paired with a positive one: a
-   * `FreeLog` is not a `HabitEntry`, so "write a free log, expect `xpToday` unchanged"
+   * `FreeLog` is not a `HabitEntry`, so "write a free log, expect the day unchanged"
    * would pass with the whole feature deleted. Each test therefore also asserts that
    * the log **landed** in the feed.
    */
@@ -1190,7 +1175,7 @@ describe('useToday', () => {
       expect(await feedIdsWith('z-row', 'a-log')).toEqual(['a-log', 'z-row']);
     });
 
-    it('counts as a log while touching no XP, no quest and no day state (AC 4)', async () => {
+    it('counts as a record while touching no floor and no day state (AC 4)', async () => {
       const repository = new LocalRepository(await seed([habit()]));
       const result = await todayScreen(repository);
       expect(dayOf(result.current, 'h1')?.state).toBe('pending');
@@ -1202,14 +1187,12 @@ describe('useToday', () => {
       // It landed — without this half the assertions below pass with the whole
       // feature deleted.
       expect(freeFeed(result.current)).toHaveLength(1);
-      // §6.2's tally is "quests done / **logs** / XP earned today", and a free log is
-      // a log. The AC-4 exclusion list is XP·연속·하루 상태, none of which a count is.
-      expect(result.current.logCount).toBe(1);
+      // A free log is a record, so it counts in "오늘 기록 N개".
+      expect(result.current.foldLabel).toBe('오늘 기록 1개');
 
       expect(dayOf(result.current, 'h1')?.state).toBe('pending');
       expect(dayOf(result.current, 'h1')?.isMiss).toBe(false);
-      expect(result.current.questsDone).toBe(0);
-      expect(result.current.xpToday).toBe(0);
+      expect(floorMetCount(result.current)).toBe(0);
     });
 
     it('shows in a past day\u2019s feed without repairing it: a missed day stays missed (AC 4)', async () => {
@@ -1226,15 +1209,14 @@ describe('useToday', () => {
       // Reading a past day's free logs is unrestricted — only writing is
       // (`freeLogAvailable`).
       expect(freeFeed(result.current).map((item) => item.log.id)).toEqual(['past']);
-      expect(result.current.logCount).toBe(1);
+      expect(result.current.feed.length).toBe(1);
 
       // ADR-0001 — a day with no habit rows is `missed`, and a free log is not a
       // habit row. It repairs nothing.
       expect(dayOf(result.current, 'h1')?.state).toBe('missed');
       expect(dayOf(result.current, 'h1')?.isMiss).toBe(true);
       expect(dayOf(result.current, 'h1')?.entries).toEqual([]);
-      expect(result.current.questsDone).toBe(0);
-      expect(result.current.xpToday).toBe(0);
+      expect(floorMetCount(result.current)).toBe(0);
     });
 
     it('refuses a write on a past date while its existing free logs still read', async () => {
@@ -1313,7 +1295,7 @@ describe('useToday', () => {
       });
 
       expect(result.current.feed).toEqual([]);
-      expect(result.current.logCount).toBe(0);
+      expect(result.current.feed.length).toBe(0);
       // No confirm to satisfy and no undo toast to press (AC 6).
       expect(result.current.toast).toBeNull();
       expect(await repository.getFreeLogs(TODAY, TODAY)).toEqual([]);
@@ -1338,381 +1320,642 @@ describe('useToday', () => {
     });
   });
 
-  /**
-   * The at-risk save banner (#18 AC 5, SPEC §4.3 C2) — `design/parts/Today.body.html:10–16`.
-   *
-   * The banner is the whole of this ticket's Today surface, and the condition behind it
-   * is `atRiskToday`'s, already proven in `src/domain/streak.test.ts:194–228`. What is
-   * asserted here is what the domain cannot say: that **this screen** raises it, names
-   * one habit, and drops it again once the day is saved — inside a single `renderHook`,
-   * because two independent fixtures would prove only what the domain test already does.
-   */
-  describe('the at-risk save banner (#18)', () => {
-    const YESTERDAY = addDays(TODAY, -1);
+  /** A screen whose date the test can step, on **one** hook instance. */
+  async function steppableScreen(repository: HabitRepository, now = stepClock()) {
+    const view = renderHook(({ date }: { date: string }) => useToday({ today: TODAY, date, now }), {
+      wrapper: wrapperFor(repository),
+      initialProps: { date: TODAY },
+    });
+    await waitFor(() => expect(view.result.current.loading).toBe(false));
+    return view;
+  }
 
-    /** A screen whose date the test can step, on **one** hook instance. */
-    async function steppableScreen(repository: HabitRepository, now = stepClock()) {
-      const view = renderHook(({ date }: { date: string }) => useToday({ today: TODAY, date, now }), {
-        wrapper: wrapperFor(repository),
-        initialProps: { date: TODAY },
-      });
-      await waitFor(() => expect(view.result.current.loading).toBe(false));
-      return view;
-    }
+  async function act$(fn: () => Promise<void> | void): Promise<void> {
+    await act(async () => {
+      await fn();
+    });
+  }
 
-    /** Steps the date and waits for the reload the new date triggers to settle. */
-    async function stepTo(
-      view: Awaited<ReturnType<typeof steppableScreen>>,
-      date: string,
-    ): Promise<void> {
-      await act(async () => {
-        view.rerender({ date });
-      });
-      await waitFor(() => expect(view.result.current.date).toBe(date));
-    }
+  /** Waits until the reload a write triggers has settled on `expected`. */
+  async function settle(check: () => void): Promise<void> {
+    await waitFor(check);
+  }
 
-    it('raises the banner on a habit missed yesterday and still open today', async () => {
+  /** The redesigned Today header (§6.2 On screen). */
+  describe('the header and the count chip (§6.2)', () => {
+    it('reads the date as 3월 1일 일요일', async () => {
       const result = await todayScreen(new LocalRepository(await seed([habit()])));
 
-      // Nothing on yesterday, nothing yet today: `missed` behind, `pending` in front.
-      expect(result.current.saveBanner).toMatchObject({
-        habitName: '팔굽혀펴기',
-        lead: '어제 팔굽혀펴기 기록을 놓쳤어요.',
-        rest: '오늘 한 번이면 흐름이 이어져요. 어제도 지금 채워 넣을 수 있어요.',
+      expect(result.current.dateLabel).toBe('3월 1일 일요일');
+    });
+
+    it('with no date, offers no way back and keeps 끄적이기', async () => {
+      const result = await todayScreen(new LocalRepository(await seed([habit()])));
+
+      expect(result.current.backToToday).toBeNull();
+      expect(result.current.freeLogAvailable).toBe(true);
+    });
+
+    it('opened at a past date (§6.4), reads that date and offers a way back to today', async () => {
+      const { result } = renderHook(
+        () => useToday({ today: TODAY, date: addDays(TODAY, -1), now: stepClock() }),
+        { wrapper: wrapperFor(new LocalRepository(await seed([habit()]))) },
+      );
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      expect(result.current.date).toBe(addDays(TODAY, -1));
+      expect(result.current.dateLabel).toBe('2월 28일 토요일');
+      expect(result.current.backToToday).toEqual({
+        label: '오늘로 돌아가기',
+        href: { pathname: '/today', params: {} },
+      });
+      expect(result.current.freeLogAvailable).toBe(false);
+    });
+
+    it('has no count chip with no habits', async () => {
+      const result = await todayScreen(new LocalRepository(await seed([])));
+
+      expect(result.current.countChip).toBeNull();
+    });
+
+    it('counts the habits whose floor is met against all of them', async () => {
+      const third = binary({ id: 'b2', name: '스트레칭' });
+      const result = await todayScreen(new LocalRepository(await seed([habit(), binary(), third])));
+
+      expect(result.current.countChip).toBe('✅ 3개 중 0개 했어요');
+
+      await log(result, 'h1', 5);
+
+      await settle(() => expect(result.current.countChip).toBe('✅ 3개 중 1개 했어요'));
+    });
+  });
+
+  /** The habit card (§6.2 Habit card, C7a). Words and the bar's ratio are the hook's. */
+  describe('the habit card', () => {
+    it('shows the icon, the 언제·어디서 value with no label, and the progress line', async () => {
+      const result = await todayScreen(
+        new LocalRepository(await seed([habit({ cue: '아침 커피 후' }), binary()])),
+      );
+
+      expect(rowOf(result.current, 'h1')).toMatchObject({
+        icon: '💪',
+        cueLine: '🕐 아침 커피 후',
+        badge: null,
+        progressLine: '0 / 5reps',
+        progressRatio: 0,
+        floorMet: false,
+        canLog: true,
+      });
+      expect(rowOf(result.current, 'b1').cueLine).toBeNull();
+    });
+
+    it("shows the habit's own icon when one was picked, and the stat's icon otherwise", async () => {
+      const result = await todayScreen(
+        new LocalRepository(await seed([habit({ icon: '🏃' }), binary({ statId: 'willpower' })])),
+      );
+
+      expect(rowOf(result.current, 'h1').icon).toBe('🏃');
+      expect(rowOf(result.current, 'b1').icon).toBe('🧘');
+    });
+
+    it('fills the bar toward the floor and marks the card once the floor is met', async () => {
+      const result = await todayScreen(new LocalRepository(await seed([habit()])));
+
+      await log(result, 'h1', 3);
+      await settle(() => expect(rowOf(result.current, 'h1').progressLine).toBe('3 / 5reps'));
+      expect(rowOf(result.current, 'h1').progressRatio).toBe(0.6);
+
+      await log(result, 'h1', 2);
+      await settle(() => expect(rowOf(result.current, 'h1').badge).toBe('✓ 했어요'));
+      expect(rowOf(result.current, 'h1')).toMatchObject({
+        progressLine: '5 / 5reps',
+        progressRatio: 1,
+        floorMet: true,
+        // A count habit whose floor is met keeps its button pressable (§6.2 yes/no path).
+        canLog: true,
       });
     });
 
-    it('stays down when yesterday was done', async () => {
-      const repository = new LocalRepository(await seed([habit()]));
-      await repository.upsertEntry({
-        id: 'y1',
-        habitId: 'h1',
+    it('reads ★ 목표까지 했어요 and the target line past the target', async () => {
+      const result = await todayScreen(new LocalRepository(await seed([habit()])));
+
+      await log(result, 'h1', 8);
+
+      await settle(() => expect(rowOf(result.current, 'h1').badge).toBe('★ 목표까지 했어요'));
+      expect(rowOf(result.current, 'h1').progressLine).toBe('8reps · 목표 8reps');
+    });
+
+    it('reads 아직이에요 with no bar on a yes/no habit, and disables it once done', async () => {
+      const result = await todayScreen(new LocalRepository(await seed([binary()])));
+
+      expect(rowOf(result.current, 'b1')).toMatchObject({
+        progressLine: '아직이에요',
+        progressRatio: null,
+        canLog: true,
+      });
+
+      await log(result, 'b1', 1);
+
+      await settle(() => expect(rowOf(result.current, 'b1').badge).toBe('✓ 했어요'));
+      expect(rowOf(result.current, 'b1')).toMatchObject({ progressLine: null, canLog: false });
+    });
+
+    it('marks a card skipped today with the skip word', async () => {
+      const result = await todayScreen(new LocalRepository(await seed([habit()])));
+
+      await logSkip(result, habit(), 'cue');
+
+      await settle(() => expect(rowOf(result.current, 'h1').badge).toBe('− 못 했어요'));
+    });
+  });
+
+  /**
+   * The yesterday banner (#135, §6.2). One banner groups every habit whose yesterday is
+   * `missed`, and it is repaired where it shows (B4).
+   */
+  describe('the yesterday banner (#135)', () => {
+    const YESTERDAY = addDays(TODAY, -1);
+
+    function yesterdayRow(habitId: string, over: Partial<HabitEntry> = {}): HabitEntry {
+      return {
+        id: `y-${habitId}`,
+        habitId,
         date: YESTERDAY,
         timestamp: `${YESTERDAY}T09:00:00.000Z`,
         actual: 5,
-      });
-
-      const result = await todayScreen(repository);
-      expect(result.current.saveBanner).toBeNull();
-    });
-
-    /**
-     * AC 5, and the binding form of it (#18): the banner's **own** button, on the
-     * screen that is already showing it, takes the day to its floor and the banner is
-     * gone — with no second render of the hook. Today starts `partial`, the state
-     * `atRiskToday` admits alongside `pending` (`src/domain/streak.ts:142`) and the one
-     * where `✓ 완료` and the composer's `+1 더` part company.
-     */
-    it('clears itself when its own button finishes a partial today (AC 5)', async () => {
-      const repository = new LocalRepository(await seed([habit()]));
-      await repository.upsertEntry({
-        id: 't1',
-        habitId: 'h1',
-        date: TODAY,
-        timestamp: `${TODAY}T08:00:00.000Z`,
-        actual: 2,
-      });
-
-      const result = await todayScreen(repository);
-      expect(dayOf(result.current, 'h1')?.state).toBe('partial');
-      expect(result.current.saveBanner).not.toBeNull();
-
-      await act(async () => {
-        await result.current.saveBanner?.onSave();
-      });
-
-      expect(dayOf(result.current, 'h1')?.state).toBe('done');
-      expect(result.current.saveBanner).toBeNull();
-      // The floor was finished, not offered again: 2 + 3, not 2 + 5.
-      expect(dayOf(result.current, 'h1')?.sum).toBe(5);
-    });
-
-    it('clears itself on an empty today too, where one tap is the whole floor', async () => {
-      const result = await todayScreen(new LocalRepository(await seed([habit()])));
-
-      await act(async () => {
-        await result.current.saveBanner?.onSave();
-      });
-
-      expect(dayOf(result.current, 'h1')?.state).toBe('done');
-      expect(dayOf(result.current, 'h1')?.sum).toBe(5);
-      expect(result.current.saveBanner).toBeNull();
-    });
-
-    it('clears on a binary habit, whose one tap is a single row', async () => {
-      const result = await todayScreen(new LocalRepository(await seed([binary()])));
-      expect(result.current.saveBanner?.habitName).toBe('명상');
-
-      await act(async () => {
-        await result.current.saveBanner?.onSave();
-      });
-
-      expect(dayOf(result.current, 'b1')?.state).toBe('done');
-      expect(dayOf(result.current, 'b1')?.entries.map((e) => e.actual)).toEqual([1]);
-      expect(result.current.saveBanner).toBeNull();
-    });
-
-    /**
-     * The banner's own third clause — `어제도 지금 채워 넣을 수 있어요`. Repairing
-     * yesterday removes the miss the banner is about, so the banner goes down without
-     * today being touched at all (ADR-0001).
-     */
-    it('goes down when yesterday is backfilled instead (the banner\u2019s own invitation)', async () => {
-      const view = await steppableScreen(new LocalRepository(await seed([habit()])));
-      expect(view.result.current.saveBanner).not.toBeNull();
-
-      await stepTo(view, YESTERDAY);
-      await act(async () => {
-        await view.result.current.logActivity('h1', 5);
-      });
-      await stepTo(view, TODAY);
-
-      expect(view.result.current.saveBanner).toBeNull();
-      // Today is untouched — it was yesterday that stopped being a miss.
-      expect(dayOf(view.result.current, 'h1')?.state).toBe('pending');
-    });
-
-    /**
-     * The banner's own sentence promises **today** (`오늘 한 번이면`,
-     * `src/config/copy.ts:311`), so it is withheld on any date that is not today (#18).
-     * One hook instance, stepped: it is the same screen that must drop and
-     * recover the banner.
-     */
-    it('is withheld on a past date and returns on the step back to today', async () => {
-      const view = await steppableScreen(new LocalRepository(await seed([habit()])));
-      expect(view.result.current.saveBanner).not.toBeNull();
-
-      await stepTo(view, YESTERDAY);
-      expect(view.result.current.saveBanner).toBeNull();
-
-      await stepTo(view, TODAY);
-      expect(view.result.current.saveBanner?.habitName).toBe('팔굽혀펴기');
-    });
-
-    /**
-     * The canvas's banner names one habit and carries one button, so with two at risk
-     * it has to choose. This pins that choice on `rows` order, so a later reorder
-     * reddens a test instead of silently renaming the banner.
-     */
-    it('names the first at-risk habit in row order when two are at risk', async () => {
-      const result = await todayScreen(new LocalRepository(await seed([habit(), binary()])));
-
-      expect(result.current.rows.map((row) => row.habit.id)).toEqual(['h1', 'b1']);
-      expect(result.current.saveBanner?.habitName).toBe('팔굽혀펴기');
-
-      // Saving the first hands the banner to the second rather than clearing the screen.
-      await act(async () => {
-        await result.current.saveBanner?.onSave();
-      });
-      expect(result.current.saveBanner?.habitName).toBe('명상');
-    });
-
-    /**
-     * ADR-0003 ¶4 — a paused habit raises no banner. It is at risk on paper (nothing
-     * yesterday, nothing today) and the hook adds no lifecycle check of its own:
-     * `atRiskToday` withholds it, because a paused day is out of classification scope.
-     */
-    it('raises nothing for a paused habit that is at risk on paper', async () => {
-      const paused = habit({
-        lifecycle: 'paused',
-        pauses: [{ from: addDays(TODAY, -2) }],
-      });
-      const result = await todayScreen(new LocalRepository(await seed([paused])));
-
-      expect(result.current.rows.map((row) => row.habit.id)).toEqual(['h1']);
-      expect(result.current.saveBanner).toBeNull();
-    });
-  });
-
-  /**
-   * The composer's target selector (#16). What the options **are** and whether
-   * a selection resolves to the free path are the hook's; which one is selected is the
-   * screen's own UI state.
-   */
-  describe('the target selector', () => {
-    const YESTERDAY = addDays(TODAY, -1);
-
-    async function optionsOn(repository: HabitRepository, date: string) {
-      const { result } = renderHook(() => useToday({ today: TODAY, date, now: stepClock() }), {
-        wrapper: wrapperFor(repository),
-      });
-      await waitFor(() => expect(result.current.loading).toBe(false));
-      return result;
+        ...over,
+      };
     }
 
-    it('offers the free tab first, then the habits, on a one-habit install', async () => {
-      const repository = new LocalRepository(await seed([habit()]));
-      const result = await optionsOn(repository, TODAY);
+    async function seedWith(habits: Habit[], entries: HabitEntry[] = []) {
+      const repository = new LocalRepository(await seed(habits));
+      for (const entry of entries) await repository.upsertEntry(entry);
+      return repository;
+    }
 
-      // Two options on the commonest screen there is: gating the selector on the
-      // habits alone would hide the free path here (`Today.logic.js:135` puts it
-      // first).
-      expect(result.current.targetOptions).toEqual([
-        { value: FREE_TARGET, label: '오늘 일기' },
-        { value: 'h1', label: '팔굽혀펴기' },
+    const three = () => [habit(), binary(), binary({ id: 'b2', name: '스트레칭', statId: 'willpower' })];
+
+    it('stays down when no habit is blank yesterday (0)', async () => {
+      const result = await todayScreen(await seedWith([habit()], [yesterdayRow('h1')]));
+
+      expect(result.current.yesterdayBanner).toBeNull();
+    });
+
+    it('names the one blank habit and offers 했어요 and 못 했어요 in the banner (1)', async () => {
+      const result = await todayScreen(await seedWith([habit()]));
+
+      expect(result.current.yesterdayBanner).toMatchObject({
+        count: 1,
+        title: '🌙 어제 팔굽혀펴기 기록이 비어 있어요.',
+        single: { id: 'h1' },
+      });
+    });
+
+    it('counts several blank habits and leaves the rows to the list sheet (3)', async () => {
+      const result = await todayScreen(await seedWith(three()));
+
+      expect(result.current.yesterdayBanner).toMatchObject({
+        count: 3,
+        title: '🌙 어제 기록이 빈 습관 3개',
+        single: null,
+      });
+      expect(result.current.yesterdayBanner?.blanks.map((blank) => blank.label)).toEqual([
+        '💪 팔굽혀펴기',
+        '💪 명상',
+        '🧘 스트레칭',
       ]);
     });
 
-    it('offers the free tab alone when there are no habits yet', async () => {
-      const repository = new LocalRepository(await seed([]));
-      const result = await optionsOn(repository, TODAY);
+    it('does not count a skip, a paused habit or a habit created today', async () => {
+      const result = await todayScreen(
+        await seedWith(
+          [
+            habit(),
+            binary({ lifecycle: 'paused', pauses: [{ from: addDays(TODAY, -2) }] }),
+            binary({ id: 'b2', name: '새 습관', createdAt: `${TODAY}T08:00:00.000Z` }),
+          ],
+          [yesterdayRow('h1', { actual: 0, skipReason: 'exception' })],
+        ),
+      );
 
-      expect(result.current.targetOptions).toEqual([
-        { value: FREE_TARGET, label: '오늘 일기' },
-      ]);
-      // Nothing selected, and the free path is the only one there is.
-      expect(result.current.resolvesToFree(null)).toBe(true);
+      expect(result.current.yesterdayBanner).toBeNull();
     });
 
-    it('withdraws the free tab on a past date, leaving the habits', async () => {
-      const repository = new LocalRepository(await seed([habit(), binary()]));
-      const result = await optionsOn(repository, YESTERDAY);
+    it('is withheld on a past date', async () => {
+      const view = await steppableScreen(await seedWith([habit()]));
+      expect(view.result.current.yesterdayBanner).not.toBeNull();
 
-      expect(result.current.targetOptions.map((option) => option.value)).toEqual([
+      await act$(() => view.rerender({ date: YESTERDAY }));
+      await settle(() => expect(view.result.current.date).toBe(YESTERDAY));
+
+      expect(view.result.current.yesterdayBanner).toBeNull();
+    });
+
+    it('opens the list sheet on 채우기, with the date and one row per blank habit', async () => {
+      const result = await todayScreen(await seedWith(three()));
+
+      await act$(() => result.current.openYesterdayList());
+
+      expect(result.current.sheet).toMatchObject({
+        kind: 'yesterdayList',
+        eyebrow: '2월 28일 토요일',
+        title: '어제 기록이 빈 습관',
+      });
+      const sheet = result.current.sheet;
+      expect(sheet?.kind === 'yesterdayList' && sheet.blanks.map((b) => b.habit.id)).toEqual([
         'h1',
         'b1',
+        'b2',
       ]);
     });
 
-    it('refuses to resolve a free selection held across a step back to a past date', async () => {
-      const repository = new LocalRepository(await seed([habit()]));
+    it('counts down as the list is filled one by one, and hides at 0', async () => {
+      const repository = await seedWith(three());
+      const result = await todayScreen(repository);
 
-      const onToday = await optionsOn(repository, TODAY);
-      expect(onToday.current.resolvesToFree(FREE_TARGET)).toBe(true);
+      await act$(() => result.current.openYesterdayList());
 
-      // The same selection the screen is still holding, on the day after the step: it
-      // must not resolve to a composer the date has withdrawn, or the screen would
-      // show no composer at all.
-      const onYesterday = await optionsOn(repository, YESTERDAY);
-      expect(onYesterday.current.resolvesToFree(FREE_TARGET)).toBe(false);
-      // …and a habit that does exist on that date still resolves to its own composer.
-      expect(onYesterday.current.resolvesToFree('h1')).toBe(false);
-      expect(onYesterday.current.targetOptions.map((option) => option.value)).toEqual(['h1']);
+      // 했어요 → the record sheet for yesterday → 기록하기.
+      await act$(() => result.current.openRecord('h1', 'yesterday'));
+      expect(result.current.sheet).toMatchObject({ kind: 'record', day: 'yesterday' });
+      await act$(() => result.current.recordFromSheet(5));
+      await settle(() => expect(result.current.yesterdayBanner?.count).toBe(2));
+      expect(result.current.sheet?.kind).toBe('yesterdayList');
+
+      // 못 했어요 → the skip reason sheet for yesterday → a reason chip.
+      await act$(() => result.current.openSkip('b1', 'yesterday'));
+      await act$(() => result.current.skipFromSheet('cue'));
+      await settle(() => expect(result.current.yesterdayBanner?.count).toBe(1));
+      expect(result.current.yesterdayBanner?.title).toBe('🌙 어제 스트레칭 기록이 비어 있어요.');
+      expect(result.current.sheet?.kind).toBe('yesterdayList');
+
+      await act$(() => result.current.openRecord('b2', 'yesterday'));
+      await act$(() => result.current.recordFromSheet(1));
+      await settle(() => expect(result.current.yesterdayBanner).toBeNull());
+      expect(result.current.sheet).toBeNull();
+
+      const written = await repository.getEntries('h1', YESTERDAY, YESTERDAY);
+      expect(written).toHaveLength(1);
     });
 
-    it('resolves a habit selection to the habit path while free logs are available', async () => {
-      const repository = new LocalRepository(await seed([habit()]));
-      const result = await optionsOn(repository, TODAY);
+    it('writes 했어요 to yesterday at local noon, from the record sheet', async () => {
+      const repository = await seedWith([habit()]);
+      const result = await todayScreen(repository);
 
-      // The positive half: `resolvesToFree` returning `false` for everything would
-      // satisfy the two cases above on its own.
-      expect(result.current.resolvesToFree('h1')).toBe(false);
-      expect(result.current.resolvesToFree(FREE_TARGET)).toBe(true);
+      await act$(() => result.current.openRecord('h1', 'yesterday'));
+
+      expect(result.current.sheet).toMatchObject({
+        kind: 'record',
+        day: 'yesterday',
+        title: '💪 팔굽혀펴기',
+        sumLabel: null,
+        timeLabel: '어제 12:00',
+        skipLabel: '어제 못 했어요 · 왜?',
+        defaultAmount: 5,
+      });
+      const sheet = result.current.sheet;
+      expect(sheet?.kind === 'record' && sheet.resultLine(5)).toBe('이걸로 어제 몫을 채워요 ✓');
+
+      await act$(() => result.current.recordFromSheet(5, '늦게 기록'));
+
+      const [row] = await repository.getEntries('h1', YESTERDAY, YESTERDAY);
+      expect(row).toMatchObject({ date: YESTERDAY, actual: 5, note: '늦게 기록' });
+      expect(new Date(row.timestamp).getHours()).toBe(12);
+      await settle(() => expect(result.current.yesterdayBanner).toBeNull());
+      expect(result.current.sheet).toBeNull();
+    });
+
+    it('records a skip for yesterday from 못 했어요, under the yesterday head', async () => {
+      const repository = await seedWith([habit()]);
+      const result = await todayScreen(repository);
+
+      await act$(() => result.current.openSkip('h1', 'yesterday'));
+
+      expect(result.current.sheet).toMatchObject({
+        kind: 'skip',
+        day: 'yesterday',
+        eyebrow: '💪 팔굽혀펴기',
+        title: '어제 못 했어요 · 왜?',
+      });
+
+      await act$(() => result.current.skipFromSheet('floor', '피곤'));
+
+      const [row] = await repository.getEntries('h1', YESTERDAY, YESTERDAY);
+      expect(row).toMatchObject({ date: YESTERDAY, actual: 0, skipReason: 'floor', note: '피곤' });
+      expect(new Date(row.timestamp).getHours()).toBe(12);
+      await settle(() => expect(result.current.yesterdayBanner).toBeNull());
+      expect(result.current.sheet).toBeNull();
+    });
+
+    it('goes back to the list when a sheet opened from it is closed', async () => {
+      const result = await todayScreen(await seedWith(three()));
+
+      await act$(() => result.current.openYesterdayList());
+      await act$(() => result.current.openRecord('h1', 'yesterday'));
+      await act$(() => result.current.closeSheet());
+      expect(result.current.sheet?.kind).toBe('yesterdayList');
+
+      await act$(() => result.current.closeSheet());
+      expect(result.current.sheet).toBeNull();
     });
   });
-});
 
-/**
- * The feed row's standing reward line (#37).
- *
- * AC 2 is the reason the attribution rule is the one it is: the sum of the rows' XP has
- * to equal `xpToday`, and only the replayed delta holds that identity by construction
- * (`attributeDayXP`). So the invariant is asserted against `xpToday` itself — the hook's
- * own independently computed figure, which this ticket deliberately did not redefine as
- * the attribution sum, or the assertion would be a tautology.
- */
-describe('useToday — 행마다 남는 보상 줄 (#37)', () => {
-  function rewardXPSum(view: TodayView): number {
-    return habitFeed(view).reduce((total, item) => total + item.reward.xp, 0);
-  }
+  /** The record sheet (§6.2 Record sheet, B2, B3, C7a). */
+  describe('the record sheet', () => {
+    async function openOn(result: { current: TodayView }, habitId: string) {
+      await act(async () => {
+        result.current.openRecord(habitId);
+      });
+      const sheet = result.current.sheet;
+      if (sheet?.kind !== 'record') throw new Error('no record sheet');
+      return sheet;
+    }
 
-  function lines(view: TodayView): (string | null)[] {
-    return habitFeed(view).map((item) => item.reward.line);
-  }
+    it('heads with the habit and today’s sum, and shows the time as a plain label', async () => {
+      const result = await todayScreen(new LocalRepository(await seed([habit()])));
 
-  it('sums the rows to xpToday — one full row', async () => {
-    const result = await todayScreen(new LocalRepository(await seed([habit()])));
-    await log(result, 'h1', 5);
+      const sheet = await openOn(result, 'h1');
 
-    expect(rewardXPSum(result.current)).toBe(result.current.xpToday);
-    expect(result.current.xpToday).toBe(TUNING.xpPerFloorCompletion);
+      expect(sheet).toMatchObject({
+        day: 'today',
+        title: '💪 팔굽혀펴기',
+        sumLabel: '지금 0reps',
+        isCount: true,
+        unit: 'reps',
+        defaultAmount: 5,
+        skipLabel: '오늘 못 했어요 · 왜?',
+      });
+      expect(sheet.timeLabel).toMatch(/^지금 \d{2}:\d{2}$/);
+    });
+
+    it('says what the staged amount does in one result line', async () => {
+      const result = await todayScreen(new LocalRepository(await seed([habit()])));
+
+      let sheet = await openOn(result, 'h1');
+      expect(sheet.resultLine(5)).toBe('이걸로 오늘 몫을 채워요 ✓');
+      expect(sheet.resultLine(3)).toBe('최소량까지 2reps 남아요');
+      expect(sheet.resultLine(8)).toBe('이걸로 목표까지 넘겨요 ★');
+
+      await act$(() => result.current.recordFromSheet(5));
+      await settle(() => expect(rowOf(result.current, 'h1').progress.sum).toBe(5));
+
+      sheet = await openOn(result, 'h1');
+      expect(sheet.sumLabel).toBe('지금 5reps');
+      expect(sheet.resultLine(1)).toBe('오늘 몫은 이미 채웠어요');
+      expect(sheet.resultLine(3)).toBe('이걸로 목표까지 넘겨요 ★');
+    });
+
+    it('writes the staged amount and the note, then closes', async () => {
+      const repository = new LocalRepository(await seed([habit()]));
+      const result = await todayScreen(repository);
+
+      await openOn(result, 'h1');
+      await act$(() => result.current.recordFromSheet(4, '저녁에'));
+
+      expect(result.current.sheet).toBeNull();
+      const [row] = await repository.getEntries('h1', TODAY, TODAY);
+      expect(row).toMatchObject({ actual: 4, note: '저녁에' });
+    });
+
+    it('opens the skip reason sheet from its link, and a reason chip records the skip at once', async () => {
+      const repository = new LocalRepository(await seed([habit()]));
+      const result = await todayScreen(repository);
+
+      await openOn(result, 'h1');
+      await act$(() => result.current.openSkip('h1'));
+      expect(result.current.sheet).toMatchObject({ kind: 'skip', title: '오늘 못 했어요 · 왜?' });
+
+      await act$(() => result.current.skipFromSheet('identity'));
+
+      expect(result.current.sheet).toBeNull();
+      const [row] = await repository.getEntries('h1', TODAY, TODAY);
+      expect(row).toMatchObject({ date: TODAY, actual: 0, skipReason: 'identity' });
+    });
+
+    it('drops the skip link once the day holds activity', async () => {
+      const result = await todayScreen(new LocalRepository(await seed([habit()])));
+
+      await log(result, 'h1', 2);
+      await settle(() => expect(rowOf(result.current, 'h1').hasActivityToday).toBe(true));
+
+      expect((await openOn(result, 'h1')).skipLabel).toBeNull();
+    });
   });
 
-  it('sums the rows to xpToday — several partial rows, an over-target row, a skip', async () => {
-    const result = await todayScreen(
-      new LocalRepository(await seed([habit(), binary()])),
-    );
-    await log(result, 'h1', 1);
-    await log(result, 'h1', 1);
-    await log(result, 'h1', 3);
-    await log(result, 'h1', 4);
-    await logSkip(result, binary(), 'cue');
+  /** The 끄적이기 sheet, the fold and the feed rows (§6.2). */
+  describe('the 끄적이기 sheet and the fold', () => {
+    it('opens the 끄적이기 sheet with now and the time button, and closes it', async () => {
+      const result = await todayScreen(new LocalRepository(await seed([habit()])));
 
-    expect(habitFeed(result.current)).toHaveLength(5);
-    expect(rewardXPSum(result.current)).toBe(result.current.xpToday);
-    expect(result.current.xpToday).toBeGreaterThan(0);
+      await act$(() => result.current.openFreeLog());
+      const sheet = result.current.sheet;
+      expect(sheet?.kind).toBe('freeLog');
+      expect(sheet?.kind === 'freeLog' && sheet.timeLabel).toMatch(/^지금 \d{2}:\d{2} · 시간 바꾸기$/);
+
+      await act$(() => result.current.closeSheet());
+      expect(result.current.sheet).toBeNull();
+    });
+
+    it('writes a free log stamped now, or at the typed time, and closes (#16, #127)', async () => {
+      const repository = new LocalRepository(await seed([habit()]));
+      const result = await todayScreen(repository);
+
+      await act$(() => result.current.openFreeLog());
+      await act$(() => result.current.submitFreeFromSheet({ type: 'idea', text: ' 산책 ', time: null }));
+      expect(result.current.sheet).toBeNull();
+
+      await act$(() => result.current.openFreeLog());
+      await act$(() =>
+        result.current.submitFreeFromSheet({ type: 'mood', text: '맑음', time: { hour: '07', minute: '05' } }),
+      );
+      expect(result.current.sheet).toBeNull();
+
+      const logs = await repository.getFreeLogs(TODAY, TODAY);
+      expect(logs.map((log) => [log.type, log.text, log.date])).toEqual(
+        expect.arrayContaining([
+          ['idea', '산책', TODAY],
+          ['mood', '맑음', TODAY],
+        ]),
+      );
+      const typed = logs.find((log) => log.type === 'mood');
+      expect(localClock(typed?.timestamp ?? '')).toBe('07:05');
+    });
+
+    it('refuses a typed time that is not a time of day', async () => {
+      const result = await todayScreen(new LocalRepository(await seed([habit()])));
+
+      await act$(() => result.current.openFreeLog());
+
+      expect(result.current.freeTimeUsable(null)).toBe(true);
+      expect(result.current.freeTimeUsable({ hour: '25', minute: '00' })).toBe(false);
+      await expect(
+        result.current.submitFreeFromSheet({ type: 'idea', text: 'x', time: { hour: '', minute: '' } }),
+      ).rejects.toThrow(RangeError);
+      expect(result.current.sheet?.kind).toBe('freeLog');
+    });
+
+    it('edits a free log in place keeping its time, and deletes it, closing each time', async () => {
+      const repository = new LocalRepository(await seed([habit()]));
+      const result = await todayScreen(repository);
+      await act$(() => result.current.logFree('idea', '산책'));
+      await settle(() => expect(result.current.feed).toHaveLength(1));
+      const [free] = result.current.feed;
+      if (free.kind !== 'free') throw new Error('expected a free log');
+
+      await act$(() => result.current.openFeedItem(free.log.id));
+      expect(result.current.sheet).toMatchObject({
+        kind: 'editFree',
+        clock: free.time,
+        timeLabel: `${free.time} · 시간 바꾸기`,
+      });
+      await act$(() => result.current.submitFreeFromSheet({ type: 'win', text: '계단', time: null }));
+      expect(result.current.sheet).toBeNull();
+      const [edited] = await repository.getFreeLogs(TODAY, TODAY);
+      expect(edited).toMatchObject({ id: free.log.id, type: 'win', text: '계단', timestamp: free.log.timestamp });
+
+      await settle(() => expect(result.current.feed[0]?.summary).toBe('계단'));
+      await act$(() => result.current.openFeedItem(free.log.id));
+      await act$(() => result.current.removeFreeFromSheet());
+      expect(result.current.sheet).toBeNull();
+      expect(await repository.getFreeLogs(TODAY, TODAY)).toEqual([]);
+    });
+
+    it('labels the fold with the day’s record count', async () => {
+      const result = await todayScreen(new LocalRepository(await seed([habit()])));
+      expect(result.current.foldLabel).toBe('오늘 기록 0개');
+
+      await log(result, 'h1', 2);
+      await act$(() => result.current.logFree('idea', '산책'));
+
+      await settle(() => expect(result.current.foldLabel).toBe('오늘 기록 2개'));
+    });
+
+    it('gives each feed row its time, its title and one summary line', async () => {
+      const result = await todayScreen(new LocalRepository(await seed([habit(), binary()])));
+
+      await log(result, 'h1', 3, { note: '쉬엄쉬엄' });
+      await log(result, 'b1', 1);
+      await logSkip(result, habit({ id: 'h1' }), 'cue');
+      await act$(() => result.current.logFree('win', ''));
+
+      await settle(() => expect(result.current.feed).toHaveLength(4));
+      const [first, second, third, fourth] = result.current.feed;
+      expect(first).toMatchObject({ title: '💪 팔굽혀펴기', summary: '3reps' });
+      expect(first.time).toMatch(/^\d{2}:\d{2}$/);
+      expect(second).toMatchObject({ title: '💪 명상', summary: '✓ 했어요' });
+      expect(third).toMatchObject({ summary: '못 했어요 · 깜빡함' });
+      expect(fourth).toMatchObject({ title: '✏️ 잘한 일', summary: FREE_LOG_NO_TEXT_NOTE });
+    });
+
+    it('opens a feed row in its edit sheet', async () => {
+      const result = await todayScreen(new LocalRepository(await seed([habit()])));
+
+      await log(result, 'h1', 3);
+      await act$(() => result.current.logFree('idea', '산책'));
+      await settle(() => expect(result.current.feed).toHaveLength(2));
+
+      const [entry, free] = result.current.feed;
+      await act$(() => result.current.openFeedItem(feedItemId(entry)));
+      expect(result.current.sheet).toMatchObject({
+        kind: 'editEntry',
+        item: { kind: 'habit' },
+        clock: entry.time,
+        timeLabel: `${entry.time} · 시간 바꾸기`,
+        timeEditable: true,
+      });
+
+      await act$(() => result.current.openFeedItem(feedItemId(free)));
+      expect(result.current.sheet).toMatchObject({ kind: 'editFree', item: { kind: 'free' } });
+    });
   });
 
-  it('sums the rows to xpToday — an under-floor day and an empty day', async () => {
-    const empty = await todayScreen(new LocalRepository(await seed([habit()])));
-    expect(rewardXPSum(empty.current)).toBe(empty.current.xpToday);
-    expect(empty.current.xpToday).toBe(0);
+  /** The edit sheet's row is built and checked in the hook (#13, §3.3, B3). */
+  describe('the edit sheet', () => {
+    async function openedOn(repository: HabitRepository) {
+      const result = await todayScreen(repository);
+      await log(result, 'h1', 3, { note: '처음' });
+      await settle(() => expect(result.current.feed).toHaveLength(1));
+      const [item] = habitFeed(result.current);
+      await act$(() => result.current.openFeedItem(item.entry.id));
+      return { result, entry: item.entry };
+    }
 
-    await log(empty, 'h1', 2);
-    expect(rewardXPSum(empty.current)).toBe(empty.current.xpToday);
-    expect(empty.current.xpToday).toBe(0);
-  });
+    const draft = { kind: 'activity' as const, amount: '4', note: '', time: null };
 
-  /**
-   * 판정의 내용 그대로 — 바닥 XP 는 하루에 한 번뿐이라 **바닥을 넘는 행**이 그것을 다
-   * 가져가고, 같은 날의 나머지 행은 제 몫만 받는다. 3+2 는 첫 행이 아니라 둘째 행이
-   * 넘는다.
-   */
-  it('gives the floor XP to the row that crosses the floor, not to the first row', async () => {
-    const result = await todayScreen(new LocalRepository(await seed([habit()])));
-    await log(result, 'h1', 3);
-    await log(result, 'h1', 2);
+    it('keeps the id, the date and the time unless the time fields change (#127 decision)', async () => {
+      const { result, entry } = await openedOn(new LocalRepository(await seed([habit()])));
 
-    expect(habitFeed(result.current).map((item) => item.reward.xp)).toEqual([
-      0,
-      TUNING.xpPerFloorCompletion,
-    ]);
-    expect(rewardXPSum(result.current)).toBe(result.current.xpToday);
-  });
+      expect(result.current.editedEntry({ ...draft, note: ' 고침 ' })).toEqual({
+        ...entry,
+        actual: 4,
+        note: '고침',
+        skipReason: undefined,
+      });
 
-  it('writes the four canvas branches, with the numbers it computed', async () => {
-    const result = await todayScreen(new LocalRepository(await seed([habit()])));
+      const moved = result.current.editedEntry({ ...draft, time: { hour: '07', minute: '30' } });
+      expect(moved?.id).toBe(entry.id);
+      expect(moved?.date).toBe(entry.date);
+      expect(localClock(moved?.timestamp ?? '')).toBe('07:30');
+    });
 
-    await log(result, 'h1', 2);
-    expect(lines(result.current)).toEqual(['→ 2/5 · 최소엔 못 미쳤지만 “나타남” 하루 추가']);
-    // 캔버스가 이 줄의 색을 고르는 조건 그대로 (`Today.logic.js:79`).
-    expect(habitFeed(result.current).map((item) => item.reward.floorMet)).toEqual([false]);
+    it('moves the amount and the reason together across the row kinds (§3.3)', async () => {
+      const { result } = await openedOn(new LocalRepository(await seed([habit()])));
 
-    await log(result, 'h1', 3);
-    expect(lines(result.current)[1]).toBe(`→ 5/5 오늘 몫 완료 · +${TUNING.xpPerFloorCompletion} XP`);
-    expect(habitFeed(result.current).map((item) => item.reward.floorMet)).toEqual([false, true]);
+      expect(result.current.editedEntry({ ...draft, kind: 'skip', reason: 'floor' })).toMatchObject({
+        actual: 0,
+        skipReason: 'floor',
+      });
+    });
 
-    await log(result, 'h1', 3);
-    expect(lines(result.current)[2]).toBe(
-      `→ 합 8 · 목표 8 넘음 · +${TUNING.xpBonusTargetExceed + 3 * TUNING.xpPerAboveFloorUnit} XP`,
-    );
+    it('cannot store a skip with no reason, a count with no positive amount, or a bad time', async () => {
+      const { result } = await openedOn(new LocalRepository(await seed([habit()])));
 
-    await log(result, 'h1', 1);
-    expect(lines(result.current)[3]).toBe(`→ 합 9 · +${TUNING.xpPerAboveFloorUnit} XP`);
-  });
+      expect(result.current.editedEntry({ ...draft, kind: 'skip' })).toBeNull();
+      expect(result.current.editedEntry({ ...draft, amount: '0' })).toBeNull();
+      expect(result.current.editedEntry({ ...draft, amount: '' })).toBeNull();
+      expect(result.current.editedEntry({ ...draft, time: { hour: '24', minute: '00' } })).toBeNull();
+      await expect(result.current.saveEntryFromSheet({ ...draft, kind: 'skip' })).rejects.toThrow(RangeError);
+    });
 
-  /**
-   * 건너뜀 행의 둘째 줄은 캔버스에서도 사유다 (`design/parts/Today.logic.js:99`,
-   * `reward: reason`). 줄은 비우되 **XP 는 그대로 귀속한다** — 합이 `xpToday` 와
-   * 맞아야 하는 대상은 모든 습관 행이다.
-   */
-  it('leaves a skip row without a reward line, and still attributes its XP', async () => {
-    const result = await todayScreen(new LocalRepository(await seed([habit()])));
-    await logSkip(result, habit(), 'cue');
+    it('rewrites the one row on 저장 and closes', async () => {
+      const repository = new LocalRepository(await seed([habit()]));
+      const { result, entry } = await openedOn(repository);
 
-    const [row] = habitFeed(result.current);
-    expect(row.entry.skipReason).toBe('cue');
-    expect(row.reward.line).toBeNull();
-    expect(rewardXPSum(result.current)).toBe(result.current.xpToday);
-  });
+      await act$(() => result.current.saveEntryFromSheet({ ...draft, amount: '6', note: '고침' }));
 
-  it('reads a yes/no row as 1/1 오늘 몫 완료', async () => {
-    const result = await todayScreen(new LocalRepository(await seed([binary()])));
-    await log(result, 'b1', 1);
+      expect(result.current.sheet).toBeNull();
+      const rows = await repository.getEntries('h1', TODAY, TODAY);
+      expect(rows).toEqual([{ ...entry, actual: 6, note: '고침' }]);
+    });
 
-    expect(lines(result.current)).toEqual([
-      `→ 1/1 오늘 몫 완료 · +${TUNING.xpPerFloorCompletion} XP`,
-    ]);
-    expect(rewardXPSum(result.current)).toBe(result.current.xpToday);
+    it('carries the delete consequence, and deletes the row on 삭제 and closes', async () => {
+      const repository = new LocalRepository(await seed([habit()]));
+      const { result } = await openedOn(repository);
+
+      // The day's only row: deleting it empties the day (D2).
+      const sheet = result.current.sheet;
+      expect(sheet?.kind === 'editEntry' && sheet.deleteEffect?.emptiesDay).toBe(true);
+
+      await act$(() => result.current.removeEntryFromSheet());
+
+      expect(result.current.sheet).toBeNull();
+      expect(await repository.getEntries('h1', TODAY, TODAY)).toEqual([]);
+    });
+
+    it('shows a backfilled row’s noon pin instead of offering its time (§6.3)', async () => {
+      const view = await steppableScreen(new LocalRepository(await seed([habit()])));
+      await act$(() => view.rerender({ date: addDays(TODAY, -1) }));
+      await settle(() => expect(view.result.current.date).toBe(addDays(TODAY, -1)));
+      await log(view.result, 'h1', 5);
+      await settle(() => expect(view.result.current.feed).toHaveLength(1));
+
+      await act$(() => view.result.current.openFeedItem(feedItemId(view.result.current.feed[0])));
+
+      expect(view.result.current.sheet).toMatchObject({
+        kind: 'editEntry',
+        timeEditable: false,
+        timeLabel: '낮 12:00으로 남아요',
+      });
+    });
   });
 });

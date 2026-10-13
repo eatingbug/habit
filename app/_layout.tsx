@@ -7,21 +7,23 @@ import { SessionProvider, useSession } from '@/context/SessionContext';
 import { ThemeProvider, useTheme } from '@/theme/ThemeProvider';
 
 function Shell() {
-  const { name, colors } = useTheme();
+  const { name, redesign } = useTheme();
   return (
     <>
       <StatusBar style={name === 'dark' ? 'light' : 'dark'} />
       <Stack
         screenOptions={{
-          headerStyle: { backgroundColor: colors.surface },
-          headerTintColor: colors.text,
+          headerStyle: { backgroundColor: redesign.surface },
+          headerTintColor: redesign.text,
           headerShadowVisible: false,
-          contentStyle: { backgroundColor: colors.surface },
+          contentStyle: { backgroundColor: redesign.surface },
         }}
       >
-        <Stack.Screen name="today" options={{ title: '오늘' }} />
-        <Stack.Screen name="habit/new" options={{ title: '습관 만들기' }} />
-        <Stack.Screen name="habit/[id]" options={{ title: '습관' }} />
+        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen name="settings/index" options={{ headerShown: false }} />
+        <Stack.Screen name="settings/archived" options={{ headerShown: false }} />
+        <Stack.Screen name="habit/new" options={{ headerShown: false }} />
+        <Stack.Screen name="habit/[id]" options={{ headerShown: false }} />
         <Stack.Screen name="reflect/[id]" options={{ title: '회고' }} />
       </Stack>
     </>
