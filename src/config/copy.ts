@@ -19,7 +19,7 @@ import { TUNING } from './tuning';
  * here, where the three conditionals that *are* the judgment can be asserted.
  *
  * The skip reason labels are needed by a **hook** (`useQuickLog` puts one on the undo
- * toast's detail line) and by a **component** (`SkipReasonChips` renders all four).
+ * toast's detail line) and by a **component** (`SkipSheet` renders all four).
  * Neither can own them: a hook importing a component is a layer inversion, and a hook
  * importing the component that renders the chips would be exactly that. `src/config/`
  * already holds user-facing names for this reason — `TUNING.stats` carries the

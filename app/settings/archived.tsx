@@ -3,7 +3,7 @@ import { ChevronLeft } from 'lucide-react-native';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { IconButton } from '@/components';
+import { IconButton } from '@/components/re';
 import { LIFECYCLE_LABELS, LOADING_NOTE, RETRY_LABEL, SETTINGS_COPY } from '@/config/copy';
 import { useSettings } from '@/hooks/useSettings';
 import { RADIUS, TAP_TARGET, TYPE } from '@/theme/redesignTokens';
