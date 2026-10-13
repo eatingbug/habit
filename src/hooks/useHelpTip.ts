@@ -8,7 +8,10 @@ export interface TipAnchor {
   height: number;
 }
 
-/** A pointer position in window coordinates. */
+/**
+ * A pointer position in window coordinates: `clientX`/`clientY`, the frame
+ * `measureInWindow` uses. `null` when the event has none (a native press).
+ */
 export interface TipPoint {
   x: number;
   y: number;
@@ -29,16 +32,16 @@ type HelpTipAction =
   | { type: 'hoverIn'; anchor: TipAnchor }
   | { type: 'hoverOut' }
   | { type: 'press'; anchor: TipAnchor }
-  | { type: 'layerMove'; point: TipPoint }
-  | { type: 'layerPress'; point: TipPoint }
+  | { type: 'layerMove'; point: TipPoint | null }
+  | { type: 'layerPress'; point: TipPoint | null }
   | { type: 'close' };
 
 const HELP_TIP_CLOSED: HelpTipState = { mode: null, anchor: null, hoverReady: true };
 
-function inside(anchor: TipAnchor | null, { x, y }: TipPoint): boolean {
-  return (
-    anchor != null && x >= anchor.x && x <= anchor.x + anchor.width && y >= anchor.y && y <= anchor.y + anchor.height
-  );
+function inside(anchor: TipAnchor | null, point: TipPoint | null): boolean {
+  if (anchor == null || point == null) return false;
+  const { x, y } = point;
+  return x >= anchor.x && x <= anchor.x + anchor.width && y >= anchor.y && y <= anchor.y + anchor.height;
 }
 
 /**
@@ -84,8 +87,8 @@ export function useHelpTip() {
     hoverIn: (anchor: TipAnchor) => dispatch({ type: 'hoverIn', anchor }),
     hoverOut: () => dispatch({ type: 'hoverOut' }),
     press: (anchor: TipAnchor) => dispatch({ type: 'press', anchor }),
-    layerMove: (point: TipPoint) => dispatch({ type: 'layerMove', point }),
-    layerPress: (point: TipPoint) => dispatch({ type: 'layerPress', point }),
+    layerMove: (point: TipPoint | null) => dispatch({ type: 'layerMove', point }),
+    layerPress: (point: TipPoint | null) => dispatch({ type: 'layerPress', point }),
     close: () => dispatch({ type: 'close' }),
   };
 }

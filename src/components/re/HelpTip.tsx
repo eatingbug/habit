@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 
 import { ICON_LABELS } from '@/config/copy';
-import { useHelpTip, type TipAnchor } from '@/hooks/useHelpTip';
+import { useHelpTip, type TipAnchor, type TipPoint } from '@/hooks/useHelpTip';
 import { RADIUS, TAP_TARGET } from '@/theme/redesignTokens';
 import { useTheme } from '@/theme/ThemeProvider';
 
@@ -80,8 +80,8 @@ export function HelpTip({ text, children, tone = 'muted', accessibilityLabel, st
       <Modal visible={tip.mode != null && anchor != null} transparent animationType="none" onRequestClose={tip.close}>
         <Pressable
           style={StyleSheet.absoluteFill}
-          onPress={(event) => tip.layerPress({ x: event.nativeEvent.pageX, y: event.nativeEvent.pageY })}
-          onPointerMove={(event) => tip.layerMove({ x: event.nativeEvent.clientX, y: event.nativeEvent.clientY })}
+          onPress={(event) => tip.layerPress(clientPoint(event.nativeEvent))}
+          onPointerMove={(event) => tip.layerMove(clientPoint(event.nativeEvent))}
           accessible={false}
         />
         {anchor != null && (
@@ -111,6 +111,16 @@ export function HelpTip({ text, children, tone = 'muted', accessibilityLabel, st
       </Modal>
     </>
   );
+}
+
+/**
+ * The event's `clientX`/`clientY`, the frame `measureInWindow` uses. On web a press is a
+ * `MouseEvent`, which has them. A native press has none, and native has no hover.
+ */
+function clientPoint(event: object): TipPoint | null {
+  if (!('clientX' in event) || !('clientY' in event)) return null;
+  const { clientX, clientY } = event;
+  return typeof clientX === 'number' && typeof clientY === 'number' ? { x: clientX, y: clientY } : null;
 }
 
 /** The `?` glyph alone, for a `HelpTip` whose children are the trigger. */

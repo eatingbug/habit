@@ -74,6 +74,16 @@ describe('useHelpTip — mouse', () => {
     expect(t.current.mode).toBe('hover');
   });
 
+  it('the `?` box edges count as on the `?`, one pixel past does not', () => {
+    const t = tip();
+    act(() => t.current.hoverIn(Q));
+    act(() => t.current.layerMove({ x: Q.x + Q.width, y: Q.y + Q.height }));
+    expect(t.current.mode).toBe('hover');
+
+    act(() => t.current.layerMove({ x: Q.x + Q.width + 1, y: Q.y }));
+    expect(t.current.mode).toBeNull();
+  });
+
   it('a click away from the `?` while hovering closes it', () => {
     const t = tip();
     act(() => t.current.hoverIn(Q));
@@ -104,6 +114,16 @@ describe('useHelpTip — touch', () => {
     act(() => t.current.press(Q));
     act(() => t.current.press(Q));
     expect(t.current.mode).toBeNull();
+  });
+
+  it('a press with no window point, as on native, closes it and leaves hover ready', () => {
+    const t = tip();
+    act(() => t.current.press(Q));
+    act(() => t.current.layerPress(null));
+    expect(t.current.mode).toBeNull();
+
+    act(() => t.current.hoverIn(Q));
+    expect(t.current.mode).toBe('hover');
   });
 
   it('the back gesture closes it', () => {
