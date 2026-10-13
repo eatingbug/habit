@@ -1,11 +1,14 @@
-import { useState, type ReactNode } from 'react';
+import { useState } from 'react';
 import { Keyboard, StyleSheet, Text, View } from 'react-native';
 
-import { Button, HelpTip, InputField, Sheet } from '@/components/re';
-import { DETAIL_COPY, NEW_HABIT_COPY, SAVE_FAILED_NOTE, SCREEN_WORDS, TODAY_COPY, TOOLTIPS } from '@/config/copy';
+import { Button, FormField, InputField, Sheet } from '@/components/re';
+import { NEW_HABIT_COPY, SAVE_FAILED_NOTE, SCREEN_WORDS, TODAY_COPY, TOOLTIPS } from '@/config/copy';
 import type { DesignErrors, DesignPatch, DetailDesignSheet } from '@/hooks/useHabitDetail';
 import { TYPE } from '@/theme/redesignTokens';
 import { useTheme } from '@/theme/ThemeProvider';
+
+/** The amount boxes' width, as on New habit (`width:120px`). */
+const AMOUNT_WIDTH = 120;
 
 /**
  * The design card's edit sheet (수정, SPEC §6.5 Design card): 언제·어디서, 최소량 and 목표
@@ -23,6 +26,7 @@ export function DesignSheet({
 }) {
   const { redesign } = useTheme();
   const { design } = sheet;
+  const copy = NEW_HABIT_COPY;
   const [cue, setCue] = useState(design.cue ?? '');
   const [identity, setIdentity] = useState(design.identity ?? '');
   const [floor, setFloor] = useState(`${design.floor}`);
@@ -55,88 +59,74 @@ export function DesignSheet({
     }
   }
 
-  const error = (message?: string) =>
-    message == null ? null : <Text style={[TYPE.body, { color: redesign.critInk }]}>{message}</Text>;
-
   return (
     <Sheet visible onClose={onClose} eyebrow={sheet.eyebrow} title={sheet.title}>
-      <Field label={SCREEN_WORDS.cue}>
+      <FormField label={SCREEN_WORDS.cue} optional={copy.optional}>
         <InputField
           value={cue}
           onChangeText={setCue}
-          placeholder={NEW_HABIT_COPY.placeholders.cue}
+          placeholder={copy.placeholders.cue}
           accessibilityLabel={SCREEN_WORDS.cue}
         />
-      </Field>
+      </FormField>
 
       {design.editsAmounts && (
         <>
-          <Field label={SCREEN_WORDS.floor} help={TOOLTIPS.floor}>
-            <View style={styles.pair}>
-              <View style={styles.amount}>
-                <InputField
-                  value={floor}
-                  onChangeText={setFloor}
-                  placeholder={NEW_HABIT_COPY.placeholders.floor}
-                  accessibilityLabel={SCREEN_WORDS.floor}
-                />
-              </View>
+          <FormField label={SCREEN_WORDS.floor} help={TOOLTIPS.floor} error={[errors.floor, errors.floorUnit]}>
+            <View style={styles.row}>
+              <InputField
+                value={floor}
+                onChangeText={setFloor}
+                placeholder={copy.placeholders.floor}
+                accessibilityLabel={SCREEN_WORDS.floor}
+                width={AMOUNT_WIDTH}
+                keyboardType="number-pad"
+                invalid={errors.floor != null}
+              />
               <View style={styles.grow}>
-                <InputField value={floorUnit} onChangeText={setFloorUnit} placeholder={NEW_HABIT_COPY.placeholders.floorUnit} />
+                <InputField
+                  value={floorUnit}
+                  onChangeText={setFloorUnit}
+                  placeholder={copy.placeholders.floorUnit}
+                  accessibilityLabel={copy.floorUnitLabel}
+                  invalid={errors.floorUnit != null}
+                />
               </View>
             </View>
-            {error(errors.floor ?? errors.floorUnit)}
-          </Field>
-          <Field label={DETAIL_COPY.target} help={TOOLTIPS.target}>
-            <View style={styles.pair}>
-              <View style={styles.amount}>
-                <InputField
-                  value={target}
-                  onChangeText={setTarget}
-                  placeholder={NEW_HABIT_COPY.placeholders.target}
-                  accessibilityLabel={DETAIL_COPY.target}
-                />
-              </View>
+          </FormField>
+          <FormField label={copy.labels.target} optional={copy.optional} help={TOOLTIPS.target} error={errors.target}>
+            <View style={styles.row}>
+              <InputField
+                value={target}
+                onChangeText={setTarget}
+                placeholder={copy.placeholders.target}
+                accessibilityLabel={copy.labels.target}
+                width={AMOUNT_WIDTH}
+                keyboardType="number-pad"
+                invalid={errors.target != null}
+              />
               <Text style={[TYPE.body, { color: redesign.muted }]}>{floorUnit}</Text>
             </View>
-            {error(errors.target)}
-          </Field>
+          </FormField>
         </>
       )}
 
-      <Field label={SCREEN_WORDS.identity}>
+      <FormField label={SCREEN_WORDS.identity} optional={copy.optional}>
         <InputField
           value={identity}
           onChangeText={setIdentity}
-          placeholder={NEW_HABIT_COPY.placeholders.identity}
+          placeholder={copy.placeholders.identity}
           accessibilityLabel={SCREEN_WORDS.identity}
         />
-      </Field>
+      </FormField>
 
       <Button label={TODAY_COPY.save} variant="pri" block disabled={saving} onPress={() => void submit()} />
-      {error(saveError ?? undefined)}
+      {saveError != null && <Text style={[TYPE.body, { color: redesign.critInk }]}>{saveError}</Text>}
     </Sheet>
   );
 }
 
-/** `.flabel` over its input — a `label` name, its `?` when it has one. */
-function Field({ label, help, children }: { label: string; help?: string; children: ReactNode }) {
-  const { redesign } = useTheme();
-  return (
-    <View style={styles.field}>
-      <View style={styles.label}>
-        <Text style={[TYPE.label, { color: redesign.muted }]}>{label}</Text>
-        {help != null && <HelpTip text={help} />}
-      </View>
-      {children}
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
-  field: { gap: 6 },
-  label: { flexDirection: 'row', alignItems: 'center', gap: 4, minHeight: 32 },
-  pair: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  amount: { width: 120 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   grow: { flex: 1 },
 });
