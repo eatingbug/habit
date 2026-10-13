@@ -55,16 +55,9 @@ const CANVAS_ORDER = ['깜빡함', '너무 힘듦', '예외', '안 내킴'];
 
 /**
  * Every day-state label a caller can pass as `stateAfterLabel`: the shared
- * `DAY_STATE_WORDS` (Today) and the old labels the habit detail screen still uses until
- * its own redesign ticket. The confirm's miss clause must not reuse any of them.
+ * `DAY_STATE_WORDS`. The confirm's miss clause must not reuse any of them.
  */
 const STATE_LABELS = [
-  '성공',
-  '성공 · 목표 초과',
-  '조금 함',
-  '못 함',
-  '기록 없음 · 실패',
-  '아직 기록 없음',
   '했어요',
   '목표까지 했어요',
   '조금 했어요',
@@ -128,12 +121,12 @@ describe('deleteConfirmLines', () => {
     const lines = deleteConfirmLines({
       ...facts,
       carriesMiss: true,
-      stateAfterLabel: '못 함',
+      stateAfterLabel: '못 했어요',
     });
 
     expect(lines).toEqual([
       '못 했다고 찍은 기록이 바로 이 줄이라, 지우면 그날을 못 한 날로 세지 않아요.',
-      '지운 뒤 오늘: 못 함',
+      '지운 뒤 오늘: 못 했어요',
     ]);
     // The miss clause says what the row was *counted as* and what stops. Reusing the
     // day's label would read as the record both vanishing and remaining, one sentence
@@ -149,13 +142,13 @@ describe('deleteConfirmLines', () => {
       ...facts,
       emptiesDay: true,
       carriesMiss: true,
-      stateAfterLabel: '아직 기록 없음',
+      stateAfterLabel: '아직이에요',
     });
 
     expect(lines).toHaveLength(3);
     expect(lines[0]).toContain('남는 기록이 없어요');
     expect(lines[1]).toContain('못 한 날로 세지 않아요');
-    expect(lines[2]).toBe('지운 뒤 오늘: 아직 기록 없음');
+    expect(lines[2]).toBe('지운 뒤 오늘: 아직이에요');
   });
 
   it('omits the state line entirely with no label (a paused day, ADR-0003)', () => {
@@ -171,7 +164,7 @@ describe('deleteConfirmLines', () => {
       habitName: '독서',
       emptiesDay: true,
       carriesMiss: true,
-      stateAfterLabel: '아직 기록 없음',
+      stateAfterLabel: '아직이에요',
     }).join(' ');
 
     // Today is still open: emptying it leaves it `pending`, so there is no reversal to
@@ -187,13 +180,13 @@ describe('deleteConfirmLines', () => {
       ...facts,
       emptiesDay: true,
       dayLabel: '3월 27일',
-      stateAfterLabel: '기록 없음 · 실패',
+      stateAfterLabel: '기록 없음',
     });
 
     // The default is `오늘`, which is false of every day but today — so a caller that
     // passes a label must see it in *each* sentence that names the day, not the first.
     expect(lines[0]).toContain('3월 27일');
-    expect(lines[1]).toBe('지운 뒤 3월 27일: 기록 없음 · 실패');
+    expect(lines[1]).toBe('지운 뒤 3월 27일: 기록 없음');
     expect(lines.join(' ')).not.toContain('오늘');
   });
 

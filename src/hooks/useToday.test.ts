@@ -720,7 +720,7 @@ describe('useToday', () => {
         const result = await todayScreen(repository);
 
         // The question is whether the delete *erases* the miss, not whether the day is
-        // one. Warning here would claim a loss the very next line ("지운 뒤 오늘: 못 함")
+        // one. Warning here would claim a loss the very next line ("지운 뒤 오늘: 못 했어요")
         // contradicts.
         expect(dayOf(result.current, 'h1')?.isMiss).toBe(true);
         expect(result.current.deletePreview('r1')).toBeNull();
