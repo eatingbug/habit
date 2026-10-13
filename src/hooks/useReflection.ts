@@ -1,6 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 
 import {
+  chartBestLabel,
+  chartFloorLabel,
+  chartHeadLabel,
+  chartSummary,
+  chartTargetLabel,
+  chartWeeksAgoLabel,
   COMPONENT_LABELS,
   DAY_WORDS,
   DECLINE_BADGE,
@@ -45,7 +51,7 @@ import type {
 } from '@/models';
 
 import { useFailure, type Failure } from './failure';
-import { designErrors, growthChart, type GrowthChart } from './useHabitDetail';
+import { designErrors, growthChart, type GrowthBar, type GrowthChart } from './useHabitDetail';
 import { useQuickLog, type QuickLogToast } from './useQuickLog';
 
 /**
@@ -85,6 +91,37 @@ export interface MirrorNote {
   text: string;
 }
 
+/** A `GrowthBar`, and whether it is the week `today` falls in (drawn in `accent`). */
+export interface WeeklyBar extends GrowthBar {
+  now: boolean;
+}
+
+/** One reference line: its height (0–100) and its name, "최소 35" or "목표 70". */
+export interface ChartLine {
+  at: number;
+  label: string;
+}
+
+/**
+ * The weekly chart under a `load` or decline card (`ReReflectionChart`, #147):
+ * `growthChart`'s figures, each line paired with its name, and the words around it.
+ * The screen only places them.
+ */
+export interface WeeklyChart extends Omit<GrowthChart, 'bars' | 'floorLine' | 'targetLine'> {
+  bars: WeeklyBar[];
+  floor: ChartLine;
+  /** `null` when the habit has no effective target (`GrowthChart.weeklyTarget`). */
+  target: ChartLine | null;
+  /** "주마다 한 양 · 최근 12주". */
+  head: string;
+  /** "최고 64". */
+  bestLabel: string;
+  /** "11주 전" — under the oldest bar. */
+  startLabel: string;
+  /** The whole chart's accessible name. */
+  summary: string;
+}
+
 /**
  * One diagnosis card (§6.7): a flag from `diagnose`, or the Established decline 🔴
  * (§4.6), which `diagnose` never flags — without that card the light would open onto a
@@ -106,7 +143,7 @@ export interface DiagnosisCard {
    * The weekly-totals chart (#15), on a `load` flag and the decline card only — both
    * are claims about weeks, so the weeks are their evidence (§6.7, CONCEPT §6.2 rule 4).
    */
-  chart: GrowthChart | null;
+  chart: WeeklyChart | null;
 }
 
 /** The design field an action writes. */
@@ -285,6 +322,26 @@ function notesFor(entries: HabitEntry[], today: string): MirrorNote[] {
     .map((entry) => ({ date: entry.date, label: shortDateLabel(entry.date), text: entry.note! }));
 }
 
+function weeklyChart(habit: Habit, entries: HabitEntry[], today: string): WeeklyChart | null {
+  const chart = growthChart(habit, entries, today);
+  if (chart == null) return null;
+
+  const { bars, floorLine, targetLine, ...figures } = chart;
+  return {
+    ...figures,
+    bars: bars.map((bar) => ({ ...bar, now: bar.weeksAgo === 0 })),
+    floor: { at: floorLine, label: chartFloorLabel(chart.weeklyFloor) },
+    target:
+      targetLine == null || chart.weeklyTarget == null
+        ? null
+        : { at: targetLine, label: chartTargetLabel(chart.weeklyTarget) },
+    head: chartHeadLabel(bars.length),
+    bestLabel: chartBestLabel(chart.best),
+    startLabel: chartWeeksAgoLabel(bars.length - 1),
+    summary: chartSummary(bars.length, chart.best),
+  };
+}
+
 function declineFor(habit: Habit, entries: HabitEntry[], today: string): DiagnosisCard | null {
   const totals = decliningWeeks(habit, entries, today);
   if (totals == null) return null;
@@ -299,7 +356,7 @@ function declineFor(habit: Habit, entries: HabitEntry[], today: string): Diagnos
     badge: diagnosisBadge('critical', DECLINE_BADGE),
     message: declineMessage(totals.length),
     evidence: declineEvidence(totals, level > habit.floor ? 'target' : 'floor', level),
-    chart: growthChart(habit, entries, today),
+    chart: weeklyChart(habit, entries, today),
   };
 }
 
@@ -317,7 +374,7 @@ function cardsFor(
     badge: diagnosisBadge(flag.severity, COMPONENT_LABELS[flag.component]),
     message: flag.message,
     evidence: flag.evidence,
-    chart: flag.component === 'load' ? growthChart(habit, entries, today) : null,
+    chart: flag.component === 'load' ? weeklyChart(habit, entries, today) : null,
   }));
   const decline = declineFor(habit, entries, today);
   if (decline != null) cards.push(decline);
