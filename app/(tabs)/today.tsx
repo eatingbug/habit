@@ -1,4 +1,4 @@
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { ChevronDown, ChevronUp, Pencil } from 'lucide-react-native';
 import { useCallback, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -35,7 +35,9 @@ import { useTheme } from '@/theme/ThemeProvider';
 export default function Today() {
   const { redesign } = useTheme();
   const router = useRouter();
-  const view = useToday();
+  // Opened from 글 모음 (§6.4), the date a free log was written on. Absent: today.
+  const { date } = useLocalSearchParams<{ date?: string }>();
+  const view = useToday({ date });
   const { reload } = view;
   const [foldOpen, setFoldOpen] = useState(false);
 
@@ -63,6 +65,9 @@ export default function Today() {
             {TODAY_COPY.title}
           </Text>
         </View>
+        {view.backToToday != null && (
+          <Button label={view.backToToday} variant="soft" onPress={() => router.setParams({ date: undefined })} />
+        )}
         {view.countChip != null && <Chip label={view.countChip} tone="count" />}
 
         {/* A failed read is said here, once. Retry is the hook's (#51). */}
@@ -144,13 +149,15 @@ export default function Today() {
               </View>
             )}
 
-            <Button
-              label={TODAY_COPY.freeLogButton}
-              icon={Pencil}
-              variant="dash"
-              block
-              onPress={view.openFreeLog}
-            />
+            {view.freeLogAvailable && (
+              <Button
+                label={TODAY_COPY.freeLogButton}
+                icon={Pencil}
+                variant="dash"
+                block
+                onPress={view.openFreeLog}
+              />
+            )}
           </>
         )}
       </ScrollView>

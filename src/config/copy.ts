@@ -783,6 +783,8 @@ export const TODAY_COPY = {
   didNot: DAY_STATE_WORDS.skip,
   yesterdayListTitle: '어제 기록이 빈 습관',
   freeLogButton: '끄적이기',
+  /** The way back from a past date, opened from 글 모음 (§6.4). */
+  backToToday: '오늘로 돌아가기',
   freeLogTitle: '✏️ 끄적이기',
   freeLogPlaceholder: '떠오른 생각을 적어요',
   freeLogSubmit: '남기기',
