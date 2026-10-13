@@ -11,6 +11,9 @@ export interface CardProps {
   children: ReactNode;
 }
 
+/** `.card`'s inner padding. A row that tints to the card's edge cancels it. */
+export const CARD_PADDING = 16;
+
 /** `.card` — `surface`, a 2px `edge` border (an outline in dark), `--r-lg`, padding 16. */
 export function Card({ tone, style, children }: CardProps) {
   const { redesign } = useTheme();
@@ -30,5 +33,5 @@ export function Card({ tone, style, children }: CardProps) {
 }
 
 const styles = StyleSheet.create({
-  card: { borderWidth: 2, borderRadius: RADIUS.lg, padding: 16 },
+  card: { borderWidth: 2, borderRadius: RADIUS.lg, padding: CARD_PADDING },
 });

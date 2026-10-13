@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 import {
   dailyAmountLabel,
@@ -299,6 +299,8 @@ export interface JournalDay {
   rows: JournalRow[];
   /** May a row be appended to this date at all? (§6.3 range, `isBackfillableDate`.) */
   backfillable: boolean;
+  /** The date the screen was opened at (§6.4): tinted and scrolled to. */
+  focused: boolean;
 }
 
 /**
@@ -400,7 +402,10 @@ export interface HabitDetailView {
   design: DesignBox | null;
   /** The habit's **whole life**, one line per date, newest first. */
   journal: JournalDay[];
-  /** The days on screen: the last 3, or all after 더 보기 (§6.5 Journal). */
+  /**
+   * The days on screen: the last 3, or all after 더 보기 (§6.5 Journal). Opened at a
+   * date further back (§6.4), every day down to that date.
+   */
   journalShown: JournalDay[];
   /** "더 보기" while days are hidden, else `null`. */
   journalMoreLabel: string | null;
@@ -473,7 +478,7 @@ function effectiveTarget(habit: Habit): number | undefined {
   return habit.target;
 }
 
-function journalDay(habit: Habit, day: ClassifiedDay, today: string): JournalDay {
+function journalDay(habit: Habit, day: ClassifiedDay, today: string, focusDate?: string): JournalDay {
   const isToday = day.date === today;
   return {
     date: day.date,
@@ -500,6 +505,7 @@ function journalDay(habit: Habit, day: ClassifiedDay, today: string): JournalDay
       };
     }),
     backfillable: isBackfillableDate(habit, day.date, today),
+    focused: day.date === focusDate,
   };
 }
 
@@ -687,7 +693,8 @@ export function useHabitDetail(
   {
     today = localToday(),
     now = () => new Date(),
-  }: { today?: string; now?: () => Date } = {},
+    date,
+  }: { today?: string; now?: () => Date; date?: string } = {},
 ): HabitDetailView {
   const repository = useRepository();
   const { failure, report, clear, attempt } = useFailure();
@@ -702,9 +709,8 @@ export function useHabitDetail(
    */
   const [version, setVersion] = useState(0);
 
-  function reload() {
-    setVersion((current) => current + 1);
-  }
+  // Stable, so the screen can hand it to `useFocusEffect`.
+  const reload = useCallback(() => setVersion((current) => current + 1), []);
 
   useEffect(() => {
     let cancelled = false;
@@ -744,10 +750,13 @@ export function useHabitDetail(
     habit == null
       ? []
       : dayStates(habit, entries, dateOf(habit.createdAt), today, today)
-          .map((day) => journalDay(habit, day, today))
+          .map((day) => journalDay(habit, day, today, date))
           // Newest first — the board reads downward from the most recent day.
           .reverse();
-  const journalShown = journalOpen ? journal : journal.slice(0, JOURNAL_RECENT_DAYS);
+  const focusIndex = journal.findIndex((day) => day.focused);
+  const journalShown = journalOpen
+    ? journal
+    : journal.slice(0, Math.max(JOURNAL_RECENT_DAYS, focusIndex + 1));
 
   const streak = habit == null ? 0 : computeStreak(entries, habit, today);
   const longest = habit == null ? 0 : longestStreak(entries, habit);

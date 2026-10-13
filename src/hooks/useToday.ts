@@ -1,3 +1,4 @@
+import type { Href } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 
 import {
@@ -381,6 +382,12 @@ export interface DateControl {
   earliest: string;
 }
 
+/**
+ * Today on today: the Today route with no `date` param. Every entry that names no date
+ * goes here, so a date left by 글 모음 (§6.4) does not stick to the tab.
+ */
+export const TODAY_HREF = { pathname: '/today', params: {} } as const satisfies Href;
+
 export interface TodayView {
   /**
    * The day being recorded — 'YYYY-MM-DD'. Today unless the date control stepped it
@@ -391,6 +398,10 @@ export interface TodayView {
   dateControl: DateControl;
   /** "10월 10일 토요일" — the header above "오늘 할 일". */
   dateLabel: string;
+  /** "오늘로 돌아가기" and where it goes, on a past date (opened from 글 모음, §6.4). Else `null`. */
+  backToToday: { label: string; href: Href } | null;
+  /** May the 끄적이기 button show? Today only — see `logFree`. */
+  freeLogAvailable: boolean;
   /** "✅ 3개 중 1개 했어요", or `null` with no habits. */
   countChip: string | null;
   /** "오늘 기록 2개" — the fold over `feed`. */
@@ -1120,6 +1131,8 @@ export function useToday({
     date,
     dateControl,
     dateLabel: longDateLabel(date, weekdayOf(date)),
+    backToToday: dateControl.isBackfill ? { label: TODAY_COPY.backToToday, href: TODAY_HREF } : null,
+    freeLogAvailable,
     countChip: loaded.rows.length === 0 ? null : countChipLabel(loaded.rows.length, floorMetCount),
     foldLabel: foldLabel(loaded.feed.length),
     yesterdayBanner,

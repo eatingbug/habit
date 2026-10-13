@@ -1349,6 +1349,29 @@ describe('useToday', () => {
       expect(result.current.dateLabel).toBe('3월 1일 일요일');
     });
 
+    it('with no date, offers no way back and keeps 끄적이기', async () => {
+      const result = await todayScreen(new LocalRepository(await seed([habit()])));
+
+      expect(result.current.backToToday).toBeNull();
+      expect(result.current.freeLogAvailable).toBe(true);
+    });
+
+    it('opened at a past date (§6.4), reads that date and offers a way back to today', async () => {
+      const { result } = renderHook(
+        () => useToday({ today: TODAY, date: addDays(TODAY, -1), now: stepClock() }),
+        { wrapper: wrapperFor(new LocalRepository(await seed([habit()]))) },
+      );
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      expect(result.current.date).toBe(addDays(TODAY, -1));
+      expect(result.current.dateLabel).toBe('2월 28일 토요일');
+      expect(result.current.backToToday).toEqual({
+        label: '오늘로 돌아가기',
+        href: { pathname: '/today', params: {} },
+      });
+      expect(result.current.freeLogAvailable).toBe(false);
+    });
+
     it('has no count chip with no habits', async () => {
       const result = await todayScreen(new LocalRepository(await seed([])));
 

@@ -1,8 +1,9 @@
-import { Tabs } from 'expo-router';
+import { Tabs, router } from 'expo-router';
 import { LayoutGrid, NotebookPen, Sun, type LucideIcon } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { TAB_LABELS } from '@/config/copy';
+import { TODAY_HREF } from '@/hooks/useToday';
 import { TYPE } from '@/theme/redesignTokens';
 import { useTheme } from '@/theme/ThemeProvider';
 
@@ -59,6 +60,13 @@ export default function TabsLayout() {
           title: TAB_LABELS.today,
           tabBarAccessibilityLabel: TAB_LABELS.today,
           tabBarIcon: tabIcon(Sun),
+        }}
+        // The default press keeps the tab's params, so a date from 글 모음 would stick.
+        listeners={{
+          tabPress: (event) => {
+            event.preventDefault();
+            router.navigate(TODAY_HREF);
+          },
         }}
       />
       <Tabs.Screen

@@ -17,6 +17,7 @@ import { localClock, localToday } from '@/lib/device';
 import type { DayState } from '@/models';
 
 import { useFailure, type Failure } from './failure';
+import { TODAY_HREF } from './useToday';
 import { labelOf } from './recordSheet';
 
 /**
@@ -45,7 +46,7 @@ export interface JournalFreeItem {
   text: string | null;
   /** The row's accessible name: its words in reading order. */
   accessibilityLabel: string;
-  /** Where a tap goes: Today (§6.4). */
+  /** Where a tap goes: Today for the log's date (§6.4). */
   href: Href;
 }
 
@@ -64,7 +65,7 @@ export interface JournalNoteItem {
   time: string;
   text: string;
   accessibilityLabel: string;
-  /** Where a tap goes: the habit's Habit Detail (§6.4). */
+  /** Where a tap goes: the habit's Habit Detail at the note's date (§6.4). */
   href: Href;
 }
 
@@ -134,6 +135,8 @@ export interface JournalView {
   groups: JournalGroup[];
   /** No free log and no note at all: the empty screen (`JOURNAL_COPY.empty*`). */
   empty: boolean;
+  /** Where the empty screen's 끄적이기 goes: Today on today, with no date. */
+  emptyActionHref: Href;
   /** Rows exist, but none under the selected filter (`JOURNAL_COPY.noMatch`). */
   noMatch: boolean;
   loading: boolean;
@@ -220,7 +223,7 @@ export function useJournal({ today = localToday() }: { today?: string } = {}): J
                 accessibilityLabel: [labelOf(habit), stateChip?.label, time, text]
                   .filter((word) => word != null)
                   .join(' '),
-                href: `/habit/${habit.id}`,
+                href: { pathname: '/habit/[id]', params: { id: habit.id, date: entry.date } },
               },
             };
           });
@@ -242,7 +245,7 @@ export function useJournal({ today = localToday() }: { today?: string } = {}): J
             time,
             text,
             accessibilityLabel: [label, time, text].filter((word) => word != null).join(' '),
-            href: '/today',
+            href: { pathname: '/today', params: { date: log.date } },
           },
         };
       });
@@ -317,6 +320,7 @@ export function useJournal({ today = localToday() }: { today?: string } = {}): J
     select: setSelected,
     groups,
     empty,
+    emptyActionHref: TODAY_HREF,
     noMatch: loaded.rows.length > 0 && shown.length === 0,
     loading,
     failure,

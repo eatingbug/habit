@@ -323,6 +323,12 @@ describe('useJournal — empty', () => {
     expect(result.current.chips).toEqual([]);
   });
 
+  it('sends the empty screen’s 끄적이기 to Today with no date', async () => {
+    const result = await journal(await seed({}));
+
+    expect(result.current.emptyActionHref).toEqual({ pathname: '/today', params: {} });
+  });
+
   it('under a filter with nothing in it, is not empty but has no match', async () => {
     const result = await journal(
       await seed({ entries: [activity(READ, TODAY, 10, '08:00', '술술 읽혔다.')] }),
@@ -337,7 +343,7 @@ describe('useJournal — empty', () => {
 });
 
 describe('useJournal — where a tap goes', () => {
-  it('a free log goes to Today, a note to its habit’s Habit Detail', async () => {
+  it('a free log goes to Today on its date, a note to its habit’s Habit Detail on its date', async () => {
     const repository = await seed({
       entries: [activity(PULL, YESTERDAY, 3, '07:10', '그립을 바꿔 봐야겠다.')],
       logs: [freeLog(YESTERDAY, 'idea', '점심 먹고 10분 걸었다.', '14:05')],
@@ -346,8 +352,8 @@ describe('useJournal — where a tap goes', () => {
     const result = await journal(repository);
 
     expect(result.current.groups[0].items.map((item) => [item.kind, item.href])).toEqual([
-      ['free', '/today'],
-      ['note', '/habit/pull'],
+      ['free', { pathname: '/today', params: { date: YESTERDAY } }],
+      ['note', { pathname: '/habit/[id]', params: { id: 'pull', date: YESTERDAY } }],
     ]);
   });
 });

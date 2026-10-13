@@ -9,7 +9,7 @@
  */
 export { Banner, type BannerProps } from './Banner';
 export { Button, type ButtonProps, type ButtonVariant } from './Button';
-export { Card, type CardProps } from './Card';
+export { Card, CARD_PADDING, type CardProps } from './Card';
 export { Chip, ChoiceChip, type ChipProps, type ChipTone, type ChoiceChipProps } from './Chip';
 export { DayMark, type DayMarkProps } from './DayMark';
 export { FormField, type FormFieldProps } from './FormField';

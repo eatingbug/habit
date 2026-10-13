@@ -133,6 +133,19 @@ describe('useHabitDetail — loading', () => {
     expect(result.current.pills).toEqual([]);
     expect(result.current.menu).toEqual([]);
   });
+
+  it('keeps one `reload` across re-renders, so a focus effect keyed on it runs once', async () => {
+    const { result, rerender } = renderHook(
+      () => useHabitDetail('h1', { today: TODAY, now: stepClock() }),
+      { wrapper: wrapperFor(await seed(habit())) },
+    );
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    const first = result.current.reload;
+
+    rerender({});
+
+    expect(result.current.reload).toBe(first);
+  });
 });
 
 /** The pill with this key, or `undefined` when it is not shown. */
@@ -393,6 +406,58 @@ describe('useHabitDetail — the journal is a date walk (D7)', () => {
 
       expect(result.current.journalShown).toHaveLength(3);
       expect(result.current.journalMoreLabel).toBeNull();
+    });
+  });
+
+  describe('opened at a date, from 글 모음 (§6.4)', () => {
+    async function detailAt(repository: HabitRepository, date?: string) {
+      const { result } = renderHook(
+        () => useHabitDetail('h1', { today: TODAY, now: stepClock(), date }),
+        { wrapper: wrapperFor(repository) },
+      );
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      return result;
+    }
+
+    /** The dates of the journal days flagged `focused`. */
+    const focusedDates = (view: HabitDetailView) =>
+      view.journal.filter((day) => day.focused).map((day) => day.date);
+
+    it('with no date, focuses no day', async () => {
+      const result = await detailAt(await seed(habit()));
+
+      expect(focusedDates(result.current)).toEqual([]);
+      expect(result.current.journalShown).toHaveLength(3);
+    });
+
+    it('focuses a recent date inside the last 3 days', async () => {
+      const result = await detailAt(await seed(habit()), addDays(TODAY, -1));
+
+      expect(focusedDates(result.current)).toEqual([addDays(TODAY, -1)]);
+      expect(result.current.journalShown).toHaveLength(3);
+    });
+
+    it('shows the days down to an older date, and focuses it', async () => {
+      const date = addDays(TODAY, -5);
+      const result = await detailAt(await seed(habit(), [activity(date, 6)]), date);
+
+      expect(focusedDates(result.current)).toEqual([date]);
+      expect(result.current.journalShown.map((day) => day.date)).toEqual([
+        TODAY,
+        addDays(TODAY, -1),
+        addDays(TODAY, -2),
+        addDays(TODAY, -3),
+        addDays(TODAY, -4),
+        date,
+      ]);
+      expect(result.current.journalMoreLabel).toBe('더 보기');
+    });
+
+    it('focuses no day on a date outside the journal', async () => {
+      const result = await detailAt(await seed(habit()), addDays(CREATED, -1));
+
+      expect(focusedDates(result.current)).toEqual([]);
+      expect(result.current.journalShown).toHaveLength(3);
     });
   });
 });
