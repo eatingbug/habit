@@ -8,7 +8,7 @@ import {
   useSyncExternalStore,
   type ReactNode,
 } from 'react';
-import { useColorScheme } from 'react-native';
+import { Appearance } from 'react-native';
 
 import { deviceKV, type DeviceKV } from '@/context/deviceKV';
 import type { KVStore } from '@/data';
@@ -58,6 +58,12 @@ function subscribeNever() {
   return () => {};
 }
 
+/** What react-native's `useColorScheme` subscribes to. */
+function subscribeOsScheme(onChange: () => void) {
+  const subscription = Appearance.addChangeListener(onChange);
+  return () => subscription.remove();
+}
+
 /**
  * `storage` is for tests, as `RepositoryProvider`'s `repository` is: they pass a
  * `MemoryKV`. The app uses the device's own storage.
@@ -69,7 +75,12 @@ export function ThemeProvider({
   children: ReactNode;
   storage?: KVStore & Partial<Pick<DeviceKV, 'getSync'>>;
 }) {
-  const osScheme = useColorScheme();
+  // Not `useColorScheme`: on web it reads `matchMedia` on the first client render, so
+  // hydration picks dark while the static HTML was rendered light. React keeps the
+  // mismatched server styles, and the page background stays light (#150). The server
+  // snapshot (`null`, light) matches that HTML, and React re-renders with the OS scheme
+  // before paint. Native has no hydration, so it behaves as `useColorScheme` does.
+  const osScheme = useSyncExternalStore(subscribeOsScheme, Appearance.getColorScheme, () => null);
   /** A choice made in this session, or one the async read delivered. */
   const [chosen, setChosen] = useState<ThemePreference | null>(null);
 
