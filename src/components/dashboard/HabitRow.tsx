@@ -28,37 +28,45 @@ export function HabitRow({ row, onPress, onDay, onReflect }: HabitRowProps) {
   const { redesign } = useTheme();
 
   return (
-    <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={row.label}>
-      <Card tone={row.reflectable ? 'red' : undefined} style={styles.card}>
-        <View style={styles.head}>
+    <Card tone={row.reflectable ? 'red' : undefined} style={styles.card}>
+      {/* The row's tap target sits behind its content, so no control is nested inside it. */}
+      <Pressable
+        onPress={onPress}
+        accessibilityRole="button"
+        accessibilityLabel={row.label}
+        style={StyleSheet.absoluteFill}
+      />
+      <View style={styles.head} pointerEvents="box-none">
+        <View style={[styles.head, styles.grow]} pointerEvents="none">
           <StatusLight light={row.statusLight} />
           <Text style={[TYPE.title, styles.grow, { color: redesign.text }]} numberOfLines={1}>
             {row.label}
           </Text>
           <Text style={[TYPE.body, styles.streak, { color: redesign.streakInk }]}>{row.streakLabel}</Text>
-          <HelpTip text={TOOLTIPS.sevenDayDots} />
         </View>
+        <HelpTip text={TOOLTIPS.sevenDayDots} />
+      </View>
 
-        <View style={styles.days}>
-          {row.week.map((day) => (
-            <Pressable
-              key={day.date}
-              onPress={() => onDay(day.date)}
-              disabled={!day.tappable}
-              accessibilityRole="button"
-              accessibilityLabel={day.accessibilityLabel || day.label}
-              accessibilityState={{ disabled: !day.tappable }}
-              style={({ pressed }) => [styles.day, pressed && { opacity: 0.7 }]}
-            >
-              {day.state != null ? <DayMark state={day.state} size={DOT} /> : <View style={styles.blank} />}
-              <Text style={[TYPE.label, { color: redesign.muted }]}>{day.label}</Text>
-            </Pressable>
-          ))}
-        </View>
+      <View style={styles.days} pointerEvents="box-none">
+        {row.week.map((day) => (
+          <Pressable
+            key={day.date}
+            onPress={() => onDay(day.date)}
+            disabled={!day.tappable}
+            pointerEvents={day.tappable ? 'auto' : 'none'}
+            accessibilityRole="button"
+            accessibilityLabel={day.accessibilityLabel || day.label}
+            accessibilityState={{ disabled: !day.tappable }}
+            style={({ pressed }) => [styles.day, pressed && { opacity: 0.7 }]}
+          >
+            {day.state != null ? <DayMark state={day.state} size={DOT} /> : <View style={styles.blank} />}
+            <Text style={[TYPE.label, { color: redesign.muted }]}>{day.label}</Text>
+          </Pressable>
+        ))}
+      </View>
 
-        {row.reflectable && <Button label={DASHBOARD_COPY.reflect} variant="crit" block onPress={onReflect} />}
-      </Card>
-    </Pressable>
+      {row.reflectable && <Button label={DASHBOARD_COPY.reflect} variant="crit" block onPress={onReflect} />}
+    </Card>
   );
 }
 
