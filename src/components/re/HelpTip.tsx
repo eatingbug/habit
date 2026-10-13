@@ -1,7 +1,8 @@
 import { CircleQuestionMark } from 'lucide-react-native';
-import { useRef, type ReactNode } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
 import {
   Modal,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -52,7 +53,16 @@ export function HelpTip({ text, children, tone = 'muted', accessibilityLabel, st
   const window = useWindowDimensions();
   const trigger = useRef<View>(null);
   const tip = useHelpTip();
-  const { anchor } = tip;
+  const { anchor, mode, layerWheel } = tip;
+
+  // The open tooltip's layer takes the wheel on web, so a wheel closes the tooltip and
+  // the next wheel scrolls the page.
+  useEffect(() => {
+    if (Platform.OS !== 'web' || mode == null) return;
+    const onWheel = (event: WheelEvent) => layerWheel({ x: event.clientX, y: event.clientY });
+    document.addEventListener('wheel', onWheel, { passive: true });
+    return () => document.removeEventListener('wheel', onWheel);
+  }, [mode, layerWheel]);
 
   function measure(then: (anchor: TipAnchor) => void) {
     trigger.current?.measureInWindow((x, y, width, height) => then({ x, y, width, height }));

@@ -1,4 +1,4 @@
-import { useReducer } from 'react';
+import { useMemo, useReducer } from 'react';
 
 /** The `?` trigger's box in window coordinates, from `measureInWindow`. */
 export interface TipAnchor {
@@ -34,6 +34,7 @@ type HelpTipAction =
   | { type: 'press'; anchor: TipAnchor }
   | { type: 'layerMove'; point: TipPoint | null }
   | { type: 'layerPress'; point: TipPoint | null }
+  | { type: 'layerWheel'; point: TipPoint | null }
   | { type: 'close' };
 
 const HELP_TIP_CLOSED: HelpTipState = { mode: null, anchor: null, hoverReady: true };
@@ -68,6 +69,8 @@ function helpTipReducer(state: HelpTipState, action: HelpTipAction): HelpTipStat
       }
       return { ...state, mode: null, hoverReady: !onTrigger };
     }
+    case 'layerWheel':
+      return state.mode == null ? state : { ...state, mode: null, hoverReady: !inside(state.anchor, action.point) };
     case 'close':
       return { ...state, mode: null };
   }
@@ -80,15 +83,19 @@ function helpTipReducer(state: HelpTipState, action: HelpTipAction): HelpTipStat
  */
 export function useHelpTip() {
   const [state, dispatch] = useReducer(helpTipReducer, HELP_TIP_CLOSED);
+  // Stable, so a caller can subscribe to them in an effect.
+  const handlers = useMemo(
+    () => ({
+      hoverIn: (anchor: TipAnchor) => dispatch({ type: 'hoverIn', anchor }),
+      hoverOut: () => dispatch({ type: 'hoverOut' }),
+      press: (anchor: TipAnchor) => dispatch({ type: 'press', anchor }),
+      layerMove: (point: TipPoint | null) => dispatch({ type: 'layerMove', point }),
+      layerPress: (point: TipPoint | null) => dispatch({ type: 'layerPress', point }),
+      layerWheel: (point: TipPoint | null) => dispatch({ type: 'layerWheel', point }),
+      close: () => dispatch({ type: 'close' }),
+    }),
+    [],
+  );
 
-  return {
-    mode: state.mode,
-    anchor: state.anchor,
-    hoverIn: (anchor: TipAnchor) => dispatch({ type: 'hoverIn', anchor }),
-    hoverOut: () => dispatch({ type: 'hoverOut' }),
-    press: (anchor: TipAnchor) => dispatch({ type: 'press', anchor }),
-    layerMove: (point: TipPoint | null) => dispatch({ type: 'layerMove', point }),
-    layerPress: (point: TipPoint | null) => dispatch({ type: 'layerPress', point }),
-    close: () => dispatch({ type: 'close' }),
-  };
+  return { mode: state.mode, anchor: state.anchor, ...handlers };
 }

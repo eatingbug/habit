@@ -92,6 +92,33 @@ describe('useHelpTip — mouse', () => {
   });
 });
 
+describe('useHelpTip — wheel', () => {
+  it('a wheel closes a hover, and hover waits for the pointer to leave the `?`', () => {
+    const t = tip();
+    act(() => t.current.hoverIn(Q));
+    act(() => t.current.layerWheel(ON_Q));
+    expect(t.current.mode).toBeNull();
+
+    act(() => t.current.hoverIn(Q));
+    expect(t.current.mode).toBeNull();
+
+    act(() => t.current.hoverOut());
+    act(() => t.current.hoverIn(Q));
+    expect(t.current.mode).toBe('hover');
+  });
+
+  it('a wheel away from the `?` closes a pinned tooltip and leaves hover ready', () => {
+    const t = tip();
+    act(() => t.current.hoverIn(Q));
+    act(() => t.current.layerPress(ON_Q));
+    act(() => t.current.layerWheel(AWAY));
+    expect(t.current.mode).toBeNull();
+
+    act(() => t.current.hoverIn(Q));
+    expect(t.current.mode).toBe('hover');
+  });
+});
+
 describe('useHelpTip — touch', () => {
   it('a tap opens it and remembers where the `?` is', () => {
     const t = tip();
