@@ -1,9 +1,8 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Card, DayMark, HelpTip } from '@/components/re';
-import { DAY_STATE_WORDS, DETAIL_COPY, TOOLTIPS } from '@/config/copy';
+import { DETAIL_COPY, TOOLTIPS } from '@/config/copy';
 import type { DetailHeatmap } from '@/hooks/useHabitDetail';
-import type { DayState } from '@/models';
 import { TYPE } from '@/theme/redesignTokens';
 import { useTheme } from '@/theme/ThemeProvider';
 
@@ -60,10 +59,10 @@ export function RecentHeatmap({
         ))}
       </View>
       <View style={styles.legend}>
-        {(Object.keys(DAY_STATE_WORDS) as DayState[]).map((state) => (
-          <View key={state} style={styles.legendItem}>
-            <DayMark state={state} size={22} />
-            <Text style={[TYPE.label, { color: redesign.muted }]}>{DAY_STATE_WORDS[state]}</Text>
+        {heatmap.legend.map((item) => (
+          <View key={item.state} style={styles.legendItem}>
+            <DayMark state={item.state} size={22} />
+            <Text style={[TYPE.label, { color: redesign.muted }]}>{item.word}</Text>
           </View>
         ))}
       </View>

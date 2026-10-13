@@ -46,6 +46,7 @@ import { computeStreak, engagementStreak, longestStreak, showedUpDays } from '@/
 import { weeklyActualTotals } from '@/domain/weekly';
 import { localClock, localNoonOn, localToday } from '@/lib/device';
 import type { DayState, Habit, HabitEntry, SkipReason, Stat } from '@/models';
+import type { Palette } from '@/theme/redesignTokens';
 
 import { useFailure, type Failure } from './failure';
 import { logAffordances, useQuickLog, type QuickLogToast, type StreakCelebration } from './useQuickLog';
@@ -190,28 +191,47 @@ export interface DetailHeatCell {
   tappable: boolean;
 }
 
+/**
+ * A text colour, named by its `Palette` key. The hook picks it; the screen only looks it
+ * up in `useTheme().redesign`.
+ */
+export type DetailInk = Extract<keyof Palette, 'text' | 'muted' | 'critInk'>;
+
+/** A day-state chip's tone (`.st` in the tokens), a `re/Chip` tone. */
+export type DayBadgeTone = 'done' | 'neutral' | 'quiet' | 'crit';
+
+/** One legend entry: a day-state and its screen word. */
+export interface DetailLegendItem {
+  state: DayState;
+  word: string;
+}
+
 /** The 최근 3주 heatmap (§6.5 Heatmap): 7 columns by 3 rows, today bottom-right. */
 export interface DetailHeatmap {
   /** The weekday row on top — the weekdays of the first 7 cells. */
   weekdays: string[];
   /** `TUNING.heatmapDays` cells, ascending, ending today. */
   cells: DetailHeatCell[];
+  /** The six day-states under the grid, in the §6.0 order. */
+  legend: DetailLegendItem[];
 }
 
 /** The design card's rows (§6.5 Design card), already worded. */
 export interface DesignCard {
   /** The 언제·어디서 value, or "아직 안 정했어요. 이것부터 정해 보세요". */
   cue: string;
-  /** Is 언제·어디서 empty? The screen draws the line in `crit` ink then. */
-  cueEmpty: boolean;
+  /** `critInk` when 언제·어디서 is empty (`ReDetailRed`), else `text`. */
+  cueInk: DetailInk;
   /** "하루 10쪽", or `null` on a yes/no habit. */
   floor: string | null;
   /** "하루 30쪽", or `null` on a yes/no habit or with no target that counts. */
   target: string | null;
   /** "📖 지능", or `null` when `statId` names no configured stat. */
   stat: string | null;
-  /** The 이유 behind "이유 보기", or `null` when none was written. */
-  identity: string | null;
+  /** The 이유 behind "이유 보기", or "아직 안 적었어요." when none was written. */
+  identity: string;
+  /** `muted` for the empty line, else `text`. */
+  identityInk: DetailInk;
 }
 
 /** The design edit sheet's current hypothesis (§6.5, AC 8). */
@@ -273,6 +293,8 @@ export interface JournalDay {
   title: string;
   /** "½ 조금 했어요" — the state's mark glyph and word (§6.0). */
   badge: string;
+  /** The badge chip's tone: `done` tint for done/over/partial, `inset` for skip, … */
+  tone: DayBadgeTone;
   /** The day's rows, in the domain total order (§7.3). */
   rows: JournalRow[];
   /** May a row be appended to this date at all? (§6.3 range, `isBackfillableDate`.) */
@@ -294,8 +316,8 @@ export interface DetailDeleteEffect extends DeleteOutcome {
 export interface DetailMenuItem {
   key: 'reflect' | 'pause' | 'archive' | 'resume' | 'unarchive';
   label: string;
-  /** `crit` draws the word in `crit` ink (🗄 보관하기 on `ReDetailEstablished`). */
-  tone: 'plain' | 'crit';
+  /** `critInk` for 🗄 보관하기 (`ReDetailEstablished`), else `text`. */
+  ink: DetailInk;
 }
 
 /** The record sheet for one date (§6.2), opened from a cell or a journal day. */
@@ -359,6 +381,8 @@ export interface HabitDetailView {
   hero: DetailHero | null;
   /** 연속, 최고 연속, 성공률, and 조금이라도 한 날 only when it is larger than 연속. */
   pills: DetailPill[];
+  /** Pills per row: 2 when the fourth pill shows (`ReDetailForming`), else 3. */
+  pillColumns: 2 | 3;
   heatmap: DetailHeatmap;
   designCard: DesignCard | null;
   /** The edit sheet's starting values. */
@@ -418,6 +442,16 @@ export interface HabitDetailView {
   reload(): void;
 }
 
+/** A day-state chip's tone, by state (`.st` in `design/_tokens.redesign.css`). */
+const BADGE_TONE: Record<DayState, DayBadgeTone> = {
+  done: 'done',
+  over: 'done',
+  partial: 'done',
+  skip: 'neutral',
+  missed: 'crit',
+  pending: 'quiet',
+};
+
 /** The journal days shown before 더 보기 (§6.5 Journal). */
 const JOURNAL_RECENT_DAYS = 3;
 
@@ -436,6 +470,7 @@ function journalDay(habit: Habit, day: ClassifiedDay, today: string): JournalDay
     state: day.state,
     title: journalDayTitle(day.date, isToday),
     badge: dayStateBadge(day.state),
+    tone: BADGE_TONE[day.state],
     rows: day.entries.map((entry) => {
       // On today there is nothing to have backfilled, and a row logged by hand at
       // 12:00 sharp would otherwise be labelled — and frozen — as one.
@@ -576,19 +611,19 @@ function pillsOf(streak: number, longest: number, rate: number | null, engagemen
 }
 
 function menuOf(habit: Habit): DetailMenuItem[] {
-  const reflect: DetailMenuItem = { key: 'reflect', label: DASHBOARD_COPY.reflect, tone: 'plain' };
+  const reflect: DetailMenuItem = { key: 'reflect', label: DASHBOARD_COPY.reflect, ink: 'text' };
   // A stopped habit gets the single way back, named for how the stop reads — the same
   // `resumeHabit` either way (#19).
   if (habit.lifecycle === 'paused') {
-    return [reflect, { key: 'resume', label: LIFECYCLE_LABELS.resume, tone: 'plain' }];
+    return [reflect, { key: 'resume', label: LIFECYCLE_LABELS.resume, ink: 'text' }];
   }
   if (habit.lifecycle === 'archived') {
-    return [reflect, { key: 'unarchive', label: LIFECYCLE_LABELS.unarchive, tone: 'plain' }];
+    return [reflect, { key: 'unarchive', label: LIFECYCLE_LABELS.unarchive, ink: 'text' }];
   }
   return [
     reflect,
-    { key: 'pause', label: DETAIL_COPY.menuPause, tone: 'plain' },
-    { key: 'archive', label: DETAIL_COPY.menuArchive, tone: 'crit' },
+    { key: 'pause', label: DETAIL_COPY.menuPause, ink: 'text' },
+    { key: 'archive', label: DETAIL_COPY.menuArchive, ink: 'critInk' },
   ];
 }
 
@@ -712,9 +747,14 @@ export function useHabitDetail(
   const heatWindow = windowEndingAt(today, TUNING.heatmapDays);
   const heatmap: DetailHeatmap =
     habit == null
-      ? { weekdays: [], cells: [] }
+      ? { weekdays: [], cells: [], legend: [] }
       : {
           weekdays: heatWindow.slice(0, 7).map((date) => WEEKDAY_LABELS[weekdayOf(date)]),
+          // `DAY_STATE_WORDS`' key order is the §6.0 table's order.
+          legend: (Object.keys(DAY_STATE_WORDS) as DayState[]).map((state) => ({
+            state,
+            word: DAY_STATE_WORDS[state],
+          })),
           cells: heatCells(habit, entries, heatWindow[0], heatWindow[heatWindow.length - 1], today).map(
             (cell) => ({
               date: cell.date,
@@ -931,6 +971,15 @@ export function useHabitDetail(
   }
 
   const light = habit == null ? null : deriveStatusLight(habit, entries, today);
+  const pills =
+    habit == null
+      ? []
+      : pillsOf(
+          streak,
+          longest,
+          successRate(entries, habit, today, TUNING.windows.floorRate),
+          engagementStreak(entries, habit, today),
+        );
   const target = habit == null ? undefined : effectiveTarget(habit);
 
   return {
@@ -954,26 +1003,20 @@ export function useHabitDetail(
                   : null,
           },
     hero: habit == null ? null : heroOf(habit, entries, today, streak, longest),
-    pills:
-      habit == null
-        ? []
-        : pillsOf(
-            streak,
-            longest,
-            successRate(entries, habit, today, TUNING.windows.floorRate),
-            engagementStreak(entries, habit, today),
-          ),
+    pills,
+    pillColumns: pills.length > 3 ? 2 : 3,
     heatmap,
     designCard:
       habit == null
         ? null
         : {
             cue: habit.cue ?? DETAIL_COPY.cueEmpty,
-            cueEmpty: habit.cue == null || habit.cue.length === 0,
+            cueInk: habit.cue == null || habit.cue.length === 0 ? 'critInk' : 'text',
             floor: habit.kind === 'count' ? dailyAmountLabel(habit.floor, habit.floorUnit) : null,
             target: target == null ? null : dailyAmountLabel(target, habit.floorUnit),
             stat: stat == null ? null : statLabel(stat),
-            identity: habit.identity ?? null,
+            identity: habit.identity ?? DETAIL_COPY.identityEmpty,
+            identityInk: habit.identity == null ? 'muted' : 'text',
           },
     design,
     journal,

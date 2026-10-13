@@ -226,6 +226,8 @@ describe('useHabitDetail — the pills (§6.5 Numbers)', () => {
         help: TOOLTIPS.engagementStreak,
       });
       expect(pill(result.current, 'streak')?.value).toBe('0');
+      // Four pills sit two by two (`ReDetailForming`).
+      expect(result.current.pillColumns).toBe(2);
     });
 
     it('is hidden when it equals 연속', async () => {
@@ -234,6 +236,7 @@ describe('useHabitDetail — the pills (§6.5 Numbers)', () => {
 
       expect(pill(result.current, 'streak')?.value).toBe('3');
       expect(pill(result.current, 'engagementStreak')).toBeUndefined();
+      expect(result.current.pillColumns).toBe(3);
     });
 
     it('is hidden on a yes/no habit, whose engagement run is its streak', async () => {
@@ -257,6 +260,7 @@ describe('useHabitDetail — the journal is a date walk (D7)', () => {
     const empty = dayOf(result.current, addDays(TODAY, -2));
     expect(empty.state).toBe('missed');
     expect(empty.badge).toBe('! 기록 없음');
+    expect(empty.tone).toBe('crit');
     expect(empty.rows).toEqual([]);
     expect(empty.backfillable).toBe(true);
   });
@@ -293,10 +297,12 @@ describe('useHabitDetail — the journal is a date walk (D7)', () => {
       isToday: true,
       title: '3월 29일 (오늘)',
       badge: '아직이에요',
+      tone: 'quiet',
     });
     expect(dayOf(result.current, addDays(TODAY, -1))).toMatchObject({
       title: '3월 28일',
       badge: '✓ 했어요',
+      tone: 'done',
     });
     expect(dayOf(result.current, addDays(TODAY, -2)).badge).toBe('½ 조금 했어요');
     expect(result.current.journal.filter((day) => day.isToday)).toHaveLength(1);
@@ -332,6 +338,8 @@ describe('useHabitDetail — the journal is a date walk (D7)', () => {
 
     expect(skipped.state).toBe('skip');
     expect(skipped.badge).toBe('− 못 했어요');
+    // `inset`, apart from the `surface2` of 아직이에요 (`.st.skip`, `.st.pending`).
+    expect(skipped.tone).toBe('neutral');
     expect(skipped.rows[0].summary).toBe('못 했어요 · 예외');
   });
 
@@ -610,6 +618,19 @@ describe('useHabitDetail — the 최근 3주 heatmap (§6.5 Heatmap)', () => {
 
     // TODAY is a Sunday, so the grid starts on a Monday and ends under 일.
     expect(result.current.heatmap.weekdays).toEqual(['월', '화', '수', '목', '금', '토', '일']);
+  });
+
+  it('lists the six day-states under the grid, in the §6.0 order', async () => {
+    const result = await detail(await seed(habit()));
+
+    expect(result.current.heatmap.legend.map((item) => item.word)).toEqual([
+      '했어요',
+      '목표까지 했어요',
+      '조금 했어요',
+      '못 했어요',
+      '기록 없음',
+      '아직이에요',
+    ]);
   });
 
   it('gives each cell its state, and an accessible name of date and state word', async () => {
@@ -1038,11 +1059,12 @@ describe('useHabitDetail — the design card (§6.5 Design card)', () => {
 
     expect(result.current.designCard).toEqual({
       cue: '출근 전, 문틀 바에서',
-      cueEmpty: false,
+      cueInk: 'text',
       floor: '하루 5reps',
       target: '하루 8reps',
       stat: '💪 힘',
       identity: '몸 쓰는 사람',
+      identityInk: 'text',
     });
   });
 
@@ -1051,8 +1073,9 @@ describe('useHabitDetail — the design card (§6.5 Design card)', () => {
 
     expect(result.current.designCard).toMatchObject({
       cue: DETAIL_COPY.cueEmpty,
-      cueEmpty: true,
-      identity: null,
+      cueInk: 'critInk',
+      identity: DETAIL_COPY.identityEmpty,
+      identityInk: 'muted',
     });
   });
 
@@ -1132,9 +1155,9 @@ describe('useHabitDetail — the ⋯ menu and its confirm sheets (§6.5 ⋯ menu
     const result = await detail(await seed(habit(), stable()));
 
     expect(result.current.menu).toEqual([
-      { key: 'reflect', label: '회고하기', tone: 'plain' },
-      { key: 'pause', label: '⏸ 잠깐 쉬기', tone: 'plain' },
-      { key: 'archive', label: '🗄 보관하기', tone: 'crit' },
+      { key: 'reflect', label: '회고하기', ink: 'text' },
+      { key: 'pause', label: '⏸ 잠깐 쉬기', ink: 'text' },
+      { key: 'archive', label: '🗄 보관하기', ink: 'critInk' },
     ]);
   });
 

@@ -16,7 +16,6 @@ import {
   Sheet,
   SkipSheet,
   StatusLight,
-  type ChipTone,
 } from '@/components/re';
 import { DesignSheet } from '@/components/detail/DesignSheet';
 import { HeroCard } from '@/components/detail/HeroCard';
@@ -35,10 +34,10 @@ import {
 import {
   useHabitDetail,
   type DesignCard,
+  type DetailInk,
   type DetailMenuItem,
   type JournalDay,
 } from '@/hooks/useHabitDetail';
-import type { DayState } from '@/models';
 import { RADIUS, TAP_TARGET, TYPE } from '@/theme/redesignTokens';
 import { useTheme } from '@/theme/ThemeProvider';
 
@@ -55,16 +54,6 @@ import { useTheme } from '@/theme/ThemeProvider';
  *
  * Kept here: whether the ⋯ menu and the 이유 are open — view toggles with no rule.
  */
-
-/** The day-state chip's colour, by state (`.st` in `design/_tokens.redesign.css`). */
-const BADGE_TONE: Record<DayState, ChipTone> = {
-  done: 'done',
-  over: 'done',
-  partial: 'done',
-  skip: 'neutral',
-  missed: 'crit',
-  pending: 'quiet',
-};
 
 export default function HabitDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -155,7 +144,7 @@ export default function HabitDetail() {
 
         <View style={styles.pills}>
           {view.pills.map((pill) => (
-            <View key={pill.key} style={view.pills.length === 4 ? styles.half : styles.third}>
+            <View key={pill.key} style={view.pillColumns === 2 ? styles.half : styles.third}>
               <Pill label={pill.label} value={pill.value} unit={pill.unit} help={pill.help} />
             </View>
           ))}
@@ -268,7 +257,7 @@ function DesignCardView({ card, onEdit }: { card: DesignCard; onEdit: () => void
         <Text style={[TYPE.title, styles.grow, { color: redesign.text }]}>{DETAIL_COPY.designTitle}</Text>
         <Button label={DETAIL_COPY.edit} variant="soft" onPress={onEdit} />
       </View>
-      <DesignRow label={SCREEN_WORDS.cue} value={card.cue} crit={card.cueEmpty} />
+      <DesignRow label={SCREEN_WORDS.cue} value={card.cue} ink={card.cueInk} />
       {card.floor != null && <DesignRow label={SCREEN_WORDS.floor} value={card.floor} help={TOOLTIPS.floor} />}
       {card.target != null && <DesignRow label={DETAIL_COPY.target} value={card.target} help={TOOLTIPS.target} />}
       {card.stat != null && <DesignRow label={SCREEN_WORDS.stat} value={card.stat} last />}
@@ -279,9 +268,7 @@ function DesignCardView({ card, onEdit }: { card: DesignCard; onEdit: () => void
         onPress={() => setIdentityOpen((open) => !open)}
       />
       {identityOpen && (
-        <Text style={[TYPE.body, styles.identity, { color: card.identity == null ? redesign.muted : redesign.text }]}>
-          {card.identity ?? DETAIL_COPY.identityEmpty}
-        </Text>
+        <Text style={[TYPE.body, styles.identity, { color: redesign[card.identityInk] }]}>{card.identity}</Text>
       )}
     </Card>
   );
@@ -292,13 +279,13 @@ function DesignRow({
   label,
   value,
   help,
-  crit = false,
+  ink = 'text',
   last = false,
 }: {
   label: string;
   value: string;
   help?: string;
-  crit?: boolean;
+  ink?: DetailInk;
   last?: boolean;
 }) {
   const { redesign } = useTheme();
@@ -308,7 +295,7 @@ function DesignRow({
         <Text style={[TYPE.label, { color: redesign.muted }]}>{label}</Text>
         {help != null && <HelpTip text={help} />}
       </View>
-      <Text style={[TYPE.bodyStrong, styles.grow, { color: crit ? redesign.critInk : redesign.text }]}>{value}</Text>
+      <Text style={[TYPE.bodyStrong, styles.grow, { color: redesign[ink] }]}>{value}</Text>
     </View>
   );
 }
@@ -339,7 +326,7 @@ function JournalDayRow({
         style={({ pressed }) => [styles.jhead, pressed && { opacity: 0.6 }]}
       >
         <Text style={[TYPE.bodyStrong, { color: redesign.text }]}>{day.title}</Text>
-        <Chip label={day.badge} tone={BADGE_TONE[day.state]} />
+        <Chip label={day.badge} tone={day.tone} />
       </Pressable>
       {day.rows.map((row) => (
         <Pressable

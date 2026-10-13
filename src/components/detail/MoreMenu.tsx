@@ -44,7 +44,7 @@ export function MoreMenu({
             accessibilityRole="menuitem"
             style={({ pressed }) => [styles.item, pressed && { backgroundColor: redesign.surface2 }]}
           >
-            <Text style={[TYPE.body, styles.text, { color: item.tone === 'crit' ? redesign.critInk : redesign.text }]}>
+            <Text style={[TYPE.body, styles.text, { color: redesign[item.ink] }]}>
               {item.label}
             </Text>
           </Pressable>
