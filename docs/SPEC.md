@@ -1432,16 +1432,21 @@ All tests must pass with `npm test` (Expo / Jest preset). The loop proof
 
 Perform on web (`npx expo start --web`) then on a native simulator.
 
-> **The walkthrough needs three days to pass — this cannot be done in one sitting
-> through the UI alone.** Every rule below reads only days on or after the habit's
-> `createdAt`; the app blocks recording an earlier day. On a habit created today,
-> today is the only day in scope, and one day can hold at most one miss, while the
-> Forming 🔴 needs `TUNING.statusLight.interventionConsecMiss` (2) consecutive misses.
-> So steps 1–2 run on day D and steps 3–10 run on day D+3. Either come back three
-> days later, or move the device clock forward exactly three days before step 3 (on
-> web and the iOS Simulator, the host machine's clock). Entries recorded under a
-> moved clock stay dated in the future, so use a throwaway account. Never edit the
-> repository directly.
+> **The walkthrough needs three days to pass.** It cannot be done in one sitting
+> through the UI alone.
+>
+> - Every rule below reads only days on or after the habit's `createdAt`.
+> - The app blocks recording a day before `createdAt`.
+> - On a habit created today, today is the only day in scope.
+> - One day holds at most one miss.
+> - The Forming 🔴 needs `TUNING.statusLight.interventionConsecMiss` (2) consecutive
+>   misses.
+> - So steps 1–2 run on day D, and steps 3–10 run on day D+3.
+> - Either come back three days later, or move the device clock forward exactly three
+>   days. On web and the iOS Simulator, that is the host machine's clock.
+> - Entries recorded under a moved clock stay dated in the future. Use a throwaway
+>   account.
+> - Never edit the repository directly.
 
 **Day D**
 
@@ -1456,6 +1461,9 @@ Perform on web (`npx expo start --web`) then on a native simulator.
    reclassifies live and stays `done`.
 
 **Day D+3** (two unrecorded days, D+1 and D+2, now sit between)
+
+If the device clock was moved forward, reload the app first, so that `today`
+refreshes.
 
 3. **See the failure signal.** On the Dashboard, D ✓, D+1 and D+2 show `!` (`missed`),
    and today is pending. The light is 🔴 "▲ 손봐야 해요" and the row shows "회고하기".
@@ -1502,9 +1510,10 @@ hidden). Log it via its done action for 5 straight days → the stat XP jumps by
 5-day milestone bonus and the level bar advances (proving XP → level). Log a miss,
 rebuild to 5 again → the re-achievement bonus is the decayed (×0.5) amount. The
 feed shows "✓ 했어요" (not "1회"); a healthy yes/no habit shows no stagnation
-flag. Like steps 3–10, this needs real days on or after `createdAt`: come back over
-11 days, or create the habit, move the clock forward 10 days, and record days 0–4 and
-6–9 as done from the Habit Detail 최근 3주 cells (leave day 5 empty), then log today.
+flag. Like steps 3–10, this needs real days on or after `createdAt`. One option is
+to come back over 11 days. The other is to move the clock forward 10 days after
+creating the habit, then reload the app. Record days 0–4 and 6–9 as done from the
+Habit Detail 최근 3주 cells. Leave day 5 empty. Then log today (day 10).
 
 ### 7.3 Recording subsystem — acceptance criteria
 
