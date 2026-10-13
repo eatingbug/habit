@@ -201,6 +201,37 @@ describe('diagnosis flags and their evidence (§6.4, AC 2–5)', () => {
     expect(result.current.lead?.chart).not.toBeNull();
   });
 
+  it('gives the decline chart its geometry and every word around it (#147)', async () => {
+    const established = habit({ lifecycle: 'established' });
+    const entries = [9, 8, 7, 6].map((total, i) => activity(addDays('2026-03-25', -7 * (3 - i)), total));
+    const { result } = await render(await seed(established, entries));
+
+    // Floor 5 and target 8 are 35 and 56 a week; the target sets the scale.
+    const chart = result.current.lead!.chart!;
+    expect(chart).toMatchObject({
+      floorLine: 62.5,
+      targetLine: 100,
+      span: '최근 12주',
+      best: '최고 9',
+      floorLabel: '최소 35',
+      targetLabel: '목표 56',
+      startLabel: '11주 전',
+      endLabel: '이번 주',
+      bestWeekLabel: '최고 주',
+      summary: '주마다 한 양, 최근 12주. 최고 9',
+    });
+    expect(chart.bars.map((bar) => bar.total).slice(-4)).toEqual([9, 8, 7, 6]);
+    expect(chart.bars.filter((bar) => bar.best).map((bar) => bar.weeksAgo)).toEqual([3]);
+  });
+
+  it('draws no target line and no target label for a habit without a target (#147)', async () => {
+    const entries = daysEndingAt(TODAY, 41).map((date) => activity(date, 5));
+    const { result } = await render(await seed(habit({ target: undefined }), entries));
+
+    const load = [result.current.lead, ...result.current.folded].find((card) => card?.key === 'load');
+    expect(load?.chart).toMatchObject({ targetLine: null, targetLabel: null, floorLabel: '최소 35' });
+  });
+
   it('has no decline card on a habit whose light is not the decline arm', async () => {
     const { result } = await render(await seed(habit(), healthy()));
 

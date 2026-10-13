@@ -1,10 +1,11 @@
 import { StyleSheet, Text, View } from 'react-native';
 
-import { GrowthPanel } from '@/components/GrowthPanel';
 import { Chip } from '@/components/re';
 import type { DiagnosisCard } from '@/hooks/useReflection';
 import { RADIUS, TYPE } from '@/theme/redesignTokens';
 import { useTheme } from '@/theme/ThemeProvider';
+
+import { WeeklyChartView } from './WeeklyChartView';
 
 /**
  * `.flag` (`ReReflection`, SPEC §6.7) — the badge, the message and the evidence. The
@@ -13,8 +14,8 @@ import { useTheme } from '@/theme/ThemeProvider';
  * severity in colour (`card.tone`), and the badge's ▲ or ◆ carries it in shape. Both
  * come from `useReflection`; this component only renders them.
  *
- * The weekly chart under a `load` or decline card is still the old `GrowthPanel`. Its
- * redesign is #147.
+ * A `load` or decline card carries the weekly chart under its evidence
+ * (`ReReflectionChart`, #147).
  */
 export function DiagnosisCardView({ card }: { card: DiagnosisCard }) {
   const { redesign } = useTheme();
@@ -36,7 +37,7 @@ export function DiagnosisCardView({ card }: { card: DiagnosisCard }) {
       <Text style={[TYPE.body, styles.evidence, { color: redesign.muted, backgroundColor: redesign.inset }]}>
         {card.evidence}
       </Text>
-      {card.chart != null && <GrowthPanel chart={card.chart} primary={false} />}
+      {card.chart != null && <WeeklyChartView chart={card.chart} />}
     </View>
   );
 }

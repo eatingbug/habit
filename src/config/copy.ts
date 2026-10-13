@@ -286,6 +286,46 @@ export function declineEvidence(totals: number[], level: 'target' | 'floor', val
   return `지난 ${totals.length}주 합계 ${totals.join(' → ')} · 마지막 주가 ${name} ${value} 이하`;
 }
 
+/**
+ * The weekly chart under a Rule 3 or decline card (`ReReflectionChart`, #147). The
+ * figures are `growthChart`'s; the words follow the board.
+ */
+export const REFLECTION_CHART_WORDS = {
+  thisWeek: '이번 주',
+  /** The ⭐'s accessible name. */
+  bestWeek: '최고 주',
+} as const;
+
+/** "최근 12주" — the chart's head. */
+export function chartSpanLabel(weeks: number): string {
+  return `최근 ${weeks}주`;
+}
+
+/** "최고 64" — the best week's total. */
+export function chartBestLabel(best: number): string {
+  return `최고 ${best}`;
+}
+
+/** "최소 35" — the weekly floor line. */
+export function chartFloorLabel(weeklyFloor: number): string {
+  return `최소 ${weeklyFloor}`;
+}
+
+/** "목표 70" — the weekly target line. */
+export function chartTargetLabel(weeklyTarget: number): string {
+  return `목표 ${weeklyTarget}`;
+}
+
+/** "11주 전" — the oldest bar's week. */
+export function chartWeeksAgoLabel(weeks: number): string {
+  return `${weeks}주 전`;
+}
+
+/** The chart's one accessible name: the bars are a shape, not 12 readouts. */
+export function chartSummary(weeks: number, best: number): string {
+  return `주마다 한 양, ${chartSpanLabel(weeks)}. ${chartBestLabel(best)}`;
+}
+
 /** The design field a text action writes, placeholder included (`Reflection.body.html:50`). */
 export const REFLECTION_CUE_PLACEHOLDER = '예: “자기 전 양치 후, 침대 옆에서”';
 
