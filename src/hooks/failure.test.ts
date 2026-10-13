@@ -238,8 +238,8 @@ describe('쓰기 실패 — 삼켜지지 않는다 (#51)', () => {
   });
 
   /**
-   * 생애주기 전환. 설계 편집기와 달리 잠깐 쉬기·보관하기 버튼은 `run()` 을 그대로 부르는
-   * 자리라 `app/habit/[id].tsx` 에 받을 `catch` 가 없다.
+   * 생애주기 전환. 설계 편집 시트와 달리 확인 시트의 버튼은 `confirmFromSheet()` 를 그대로
+   * 부르는 자리라 `app/habit/[id].tsx` 에 받을 `catch` 가 없다.
    */
   it('보관하기가 실패하면 실패가 보이고 습관은 그대로 살아 있다', async () => {
     const repository = await flakyWith();
@@ -249,9 +249,9 @@ describe('쓰기 실패 — 삼켜지지 않는다 (#51)', () => {
     });
     await waitFor(() => expect(result.current.habit).not.toBeNull());
 
-    const archive = result.current.lifecycleActions.find((action) => action.kind === 'archive');
+    await act(() => result.current.pickMenu('archive'));
     repository.failing = true;
-    await act(() => archive?.run() ?? Promise.resolve());
+    await act(() => result.current.confirmFromSheet());
 
     expect(result.current.failure?.message).toBe(SAVE_FAILED_NOTE);
     expect(result.current.habit?.lifecycle).toBe('forming');

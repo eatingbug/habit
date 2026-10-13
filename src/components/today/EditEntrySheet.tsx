@@ -149,6 +149,9 @@ export function EditEntrySheet({ sheet, onClose, edited, onSave, onDelete }: Edi
                 habitName: effect.habit.name,
                 emptiesDay: effect.emptiesDay,
                 carriesMiss: effect.carriesMiss,
+                dayLabel: sheet.dayLabel,
+                streakBefore: effect.showsStreak ? effect.streakBefore : undefined,
+                streakAfter: effect.showsStreak ? effect.streakAfter : undefined,
                 stateAfterLabel: effect.stateAfter == null ? undefined : DAY_STATE_WORDS[effect.stateAfter],
               }).join(' ')}
             />

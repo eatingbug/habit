@@ -1,6 +1,7 @@
 import { act, renderHook, waitFor } from '@testing-library/react-native';
 import { createElement, type ComponentProps, type ReactNode } from 'react';
 
+import { DETAIL_COPY, LIFECYCLE_NOTE, TOOLTIPS } from '@/config/copy';
 import { TUNING } from '@/config/tuning';
 import { RepositoryProvider } from '@/context/RepositoryContext';
 import { LocalRepository, MemoryKV, type HabitRepository } from '@/data';
@@ -128,186 +129,123 @@ describe('useHabitDetail — loading', () => {
 
     expect(result.current.habit).toBeNull();
     expect(result.current.journal).toEqual([]);
-    expect(result.current.panelOrder).toEqual([]);
-    expect(result.current.chart).toBeNull();
+    expect(result.current.hero).toBeNull();
+    expect(result.current.pills).toEqual([]);
+    expect(result.current.menu).toEqual([]);
   });
 });
 
-describe('useHabitDetail — the stat pills (D1)', () => {
+/** The pill with this key, or `undefined` when it is not shown. */
+function pill(view: HabitDetailView, key: string) {
+  return view.pills.find((p) => p.key === key);
+}
+
+describe('useHabitDetail — the pills (§6.5 Numbers)', () => {
+  it('always shows 연속, 최고 연속 and 성공률, in that order, each with its tooltip', async () => {
+    const result = await detail(await seed(habit()));
+
+    expect(result.current.pills.map((p) => [p.label, p.help])).toEqual([
+      ['연속', TOOLTIPS.streak],
+      ['최고 연속', TOOLTIPS.bestStreak],
+      ['성공률', TOOLTIPS.successRate],
+    ]);
+  });
+
   it('counts the streak back from today, across the whole history', async () => {
     const entries = [activity(addDays(TODAY, -2), 6), activity(addDays(TODAY, -1), 6)];
     const result = await detail(await seed(habit(), entries));
 
     // Today is `pending` and transparent (ADR-0001), so the run is the two days before.
-    expect(result.current.pills.streak).toBe(2);
+    expect(pill(result.current, 'streak')).toMatchObject({ value: '2', unit: '일' });
   });
 
-  it('shows 성공률, the user-facing rate — a missed day lowers it', async () => {
-    // Born six days ago, so the 28-day window holds exactly the days below: five
-    // floor-met, one `missed`, and today, which is `pending` and out of both sides.
+  it('shows 성공률 as a whole percent — a missed day lowers it', async () => {
+    // Born six days ago: five floor-met days, one `missed`, and today `pending`.
     const born = habit({ createdAt: `${addDays(TODAY, -6)}T00:00:00.000Z` });
     const entries = [1, 2, 3, 4, 5].map((back) => activity(addDays(TODAY, -back), 6));
     const result = await detail(await seed(born, entries));
 
-    expect(result.current.pills.successRate).toBeCloseTo(5 / 6);
+    expect(pill(result.current, 'successRate')).toMatchObject({ value: '83', unit: '%' });
   });
 
-  it('is null below the §4.4 min-sample guard, so the pill can say — instead of 0%', async () => {
+  it('says — with no unit below the §4.4 min-sample guard, instead of 0%', async () => {
     const result = await detail(await seed(habit({ createdAt: `${TODAY}T00:00:00.000Z` })));
 
-    expect(result.current.pills.successRate).toBeNull();
+    expect(pill(result.current, 'successRate')).toMatchObject({ value: '—', unit: undefined });
   });
 
-  /**
-   * 빠짐없이 (#18 AC 2) — `design/parts/HabitDetail.body.html:11`. The pill's whole
-   * reason to exist is that it is **not** 연속, so the fixture is a run of honest
-   * sub-floor days: `partial` breaks the floor streak and extends this one (§4.3 C3).
-   */
-  describe('빠짐없이', () => {
-    /** Five consecutive days at 2 against a floor of 5 — every one of them `partial`. */
-    const partialRun = [1, 2, 3, 4, 5].map((back) => activity(addDays(TODAY, -back), 2));
-
-    it('counts the days shown up, which a run of partial days keeps apart from 연속', async () => {
-      const result = await detail(await seed(habit(), partialRun));
-
-      expect(result.current.pills.engagementStreak).toBe(5);
-      // Not one of those days met the floor, so the two pills show different numbers.
-      expect(result.current.pills.streak).toBe(0);
-    });
-
-    it('comes second, right after 연속, while the habit is forming (AC 2)', async () => {
-      const result = await detail(await seed(habit({ lifecycle: 'forming' }), partialRun));
-
-      expect(result.current.pills.showEngagement).toBe(true);
-      expect(result.current.pills.engagementLeads).toBe(true);
-    });
-
-    it('stays on an established habit but gives up the second slot', async () => {
-      const result = await detail(await seed(habit({ lifecycle: 'established' }), partialRun));
-
-      expect(result.current.pills.showEngagement).toBe(true);
-      expect(result.current.pills.engagementLeads).toBe(false);
-    });
-
-    /**
-     * A binary habit has no `partial` to count — floor 1 and every activity row
-     * `actual: 1` — so 빠짐없이 would be 연속 under a second label. `YesNo.body.html:12`
-     * puts 최고 연속 there instead (#41).
-     */
-    it('is withheld from a binary habit, whose engagement run is just its streak', async () => {
-      const entries = [1, 2, 3].map((back) =>
-        activity(addDays(TODAY, -back), 1, '09:00:00', { habitId: 'b1' }),
-      );
-      const result = await detail(await seed(binary(), entries), 'b1');
-
-      expect(result.current.pills.showEngagement).toBe(false);
-      expect(result.current.pills.engagementLeads).toBe(false);
-      // The two figures it would have shown, proven identical rather than assumed.
-      expect(result.current.pills.engagementStreak).toBe(result.current.pills.streak);
-      expect(result.current.pills.streak).toBe(3);
-    });
-  });
-
-  /**
-   * 최고 연속 (#41) — `design/parts/YesNo.body.html:12`, the binary habit's counterpart
-   * to 빠짐없이. `docs/SPEC.md` §6.3's pill list (`:964–965`) does not name it; the
-   * canvas is this screen's layout authority.
-   */
   describe('최고 연속', () => {
-    /** Binary rows on the given days back from today. */
     function meditated(...backs: number[]): HabitEntry[] {
-      return backs.map((back) =>
-        activity(addDays(TODAY, -back), 1, '09:00:00', { habitId: 'b1' }),
-      );
+      return backs.map((back) => activity(addDays(TODAY, -back), 1, '09:00:00', { habitId: 'b1' }));
     }
 
     it('shows the longest run in the whole history, which the current streak may trail', async () => {
       // Three done days, a two-day gap that misses, then two more done days.
       const result = await detail(await seed(binary(), meditated(7, 6, 5, 2, 1)), 'b1');
 
-      expect(result.current.pills.longestStreak).toBe(3);
-      expect(result.current.pills.streak).toBe(2);
+      expect(pill(result.current, 'longestStreak')?.value).toBe('3');
+      expect(pill(result.current, 'streak')?.value).toBe('2');
     });
 
-    it('is 0 for a habit with no entries', async () => {
-      const result = await detail(await seed(binary()), 'b1');
-
-      expect(result.current.pills.showLongestStreak).toBe(true);
-      expect(result.current.pills.longestStreak).toBe(0);
-    });
-
-    it('takes the second slot, which 빠짐없이 can never also be holding', async () => {
-      const result = await detail(await seed(binary(), meditated(2, 1)), 'b1');
-
-      expect(result.current.pills.showLongestStreak).toBe(true);
-      // The only other candidate for that slot leads on a **count** habit, so the two
-      // are mutually exclusive by kind rather than by the order the screen writes.
-      expect(result.current.pills.engagementLeads).toBe(false);
-    });
-
-    it('stays on an established binary habit — the gate is the kind, not the lifecycle', async () => {
-      const subject = binary({ lifecycle: 'established' });
-      const result = await detail(await seed(subject, meditated(1)), 'b1');
-
-      expect(result.current.pills.showLongestStreak).toBe(true);
-    });
-
-    it('is withheld from a count habit, whose second slot is 빠짐없이 (#18)', async () => {
+    it('shows for a count habit too (§6.5: both habit kinds)', async () => {
       const result = await detail(await seed(habit(), [activity(addDays(TODAY, -1), 6)]));
 
-      expect(result.current.pills.showLongestStreak).toBe(false);
+      expect(pill(result.current, 'longestStreak')?.value).toBe('1');
     });
 
     it('rises when a backfill joins two past runs (ADR-0001 — derived, never stored)', async () => {
-      // Days −5…−3 done, −2 missed, −1 done: two runs, the longer one is three.
       const result = await detail(await seed(binary(), meditated(5, 4, 3, 1)), 'b1');
-      expect(result.current.pills.longestStreak).toBe(3);
+      expect(pill(result.current, 'longestStreak')?.value).toBe('3');
 
-      act(() => result.current.openBackfill(addDays(TODAY, -2)));
+      act(() => result.current.openRecord(addDays(TODAY, -2)));
       await act(async () => {
-        await result.current.fillDay(1);
+        await result.current.recordFromSheet(1, '');
       });
 
-      expect(result.current.pills.longestStreak).toBe(5);
+      expect(pill(result.current, 'longestStreak')?.value).toBe('5');
     });
   });
 
-  /**
-   * 주간 XP (#17) — the ISO week `mondayOf` defines, which is the week the growth
-   * chart's rightmost bar covers, so the pill and the bar can never disagree.
-   */
-  describe('주간 XP', () => {
-    it('is 0 in a week with nothing in it, however much the habit has earned before', async () => {
-      const result = await detail(await seed(habit(), [activity(addDays(THIS_MONDAY, -2), 6)]));
+  describe('조금이라도 한 날, the fourth pill', () => {
+    /** Five consecutive days at 2 against a floor of 5 — every one of them `partial`. */
+    const partialRun = [1, 2, 3, 4, 5].map((back) => activity(addDays(TODAY, -back), 2));
 
-      expect(result.current.pills.weeklyXP).toBe(0);
+    it('shows, last, only when it is larger than 연속', async () => {
+      const result = await detail(await seed(habit(), partialRun));
+
+      expect(result.current.pills.map((p) => p.key)).toEqual([
+        'streak',
+        'longestStreak',
+        'successRate',
+        'engagementStreak',
+      ]);
+      expect(pill(result.current, 'engagementStreak')).toMatchObject({
+        label: '조금이라도 한 날',
+        value: '5',
+        unit: '일',
+        help: TOOLTIPS.engagementStreak,
+      });
+      expect(pill(result.current, 'streak')?.value).toBe('0');
+      // Four pills sit two by two (`ReDetailForming`).
+      expect(result.current.pillColumns).toBe(2);
     });
 
-    it("counts this week's floor-met day", async () => {
-      const result = await detail(await seed(habit(), [activity(THIS_MONDAY, 5)]));
+    it('is hidden when it equals 연속', async () => {
+      const entries = [1, 2, 3].map((back) => activity(addDays(TODAY, -back), 6));
+      const result = await detail(await seed(habit(), entries));
 
-      expect(result.current.pills.weeklyXP).toBe(TUNING.xpPerFloorCompletion);
+      expect(pill(result.current, 'streak')?.value).toBe('3');
+      expect(pill(result.current, 'engagementStreak')).toBeUndefined();
+      expect(result.current.pillColumns).toBe(3);
     });
 
-    it('leaves last week out — it is this week the pill names', async () => {
-      const result = await detail(
-        await seed(habit(), [
-          activity(addDays(THIS_MONDAY, -3), 5),
-          activity(addDays(THIS_MONDAY, -1), 5),
-          activity(THIS_MONDAY, 5),
-        ]),
+    it('is hidden on a yes/no habit, whose engagement run is its streak', async () => {
+      const entries = [1, 2].map((back) =>
+        activity(addDays(TODAY, -back), 1, '09:00:00', { habitId: 'b1' }),
       );
+      const result = await detail(await seed(binary(), entries), 'b1');
 
-      expect(result.current.pills.weeklyXP).toBe(TUNING.xpPerFloorCompletion);
-    });
-
-    it('is the whole delta the week added, intensity and target bonus included', async () => {
-      const result = await detail(await seed(habit(), [activity(THIS_MONDAY, 8)]));
-
-      // floor 5, target 8: the base, three units of intensity, and the target bonus.
-      expect(result.current.pills.weeklyXP).toBe(
-        TUNING.xpPerFloorCompletion + 3 * TUNING.xpPerAboveFloorUnit + TUNING.xpBonusTargetExceed,
-      );
+      expect(result.current.pills).toHaveLength(3);
     });
   });
 });
@@ -321,8 +259,9 @@ describe('useHabitDetail — the journal is a date walk (D7)', () => {
 
     const empty = dayOf(result.current, addDays(TODAY, -2));
     expect(empty.state).toBe('missed');
+    expect(empty.badge).toBe('! 기록 없음');
+    expect(empty.tone).toBe('crit');
     expect(empty.rows).toEqual([]);
-    expect(empty.recoverable).toBe(true);
     expect(empty.backfillable).toBe(true);
   });
 
@@ -334,74 +273,74 @@ describe('useHabitDetail — the journal is a date walk (D7)', () => {
     expect(dates).not.toContain(addDays(CREATED, -1));
   });
 
-  it('reaches a day older than the chart, and that row is editable there', async () => {
-    // §6.3's backfill range is `createdAt`부터 오늘까지, and a day's own journal line is
-    // the only gesture that reaches an arbitrary date — the ribbon is read-only (a cell
-    // is far under `TAP_TARGET`) and the button names one date. So a journal clipped to
-    // the chart's twelve weeks would leave an older gap unreachable.
+  it('reaches a day older than the heatmap, and that row is editable there', async () => {
     const old = addDays(TODAY, -100);
     const born = habit({ createdAt: `${addDays(old, -1)}T00:00:00.000Z` });
     const row = activity(old, 6);
     const result = await detail(await seed(born, [row]));
 
     expect(dayOf(result.current, old).rows).toHaveLength(1);
-    // The chart is unmoved: `TUNING.growthChartWeeks` is its constant, not the walk's.
-    expect(result.current.chart?.bars).toHaveLength(TUNING.growthChartWeeks);
 
+    act(() => result.current.openEntry(row.id));
     await act(async () => {
-      await result.current.editEntry({ ...row, actual: 2 });
+      await result.current.saveEntryFromSheet({ kind: 'activity', amount: '2', note: '', time: null });
     });
     expect(dayOf(result.current, old).state).toBe('partial');
-
-    await act(async () => {
-      await result.current.removeEntry(row.id);
-    });
-    expect(dayOf(result.current, old).state).toBe('missed');
+    expect(result.current.sheet).toBeNull();
   });
 
-  it('marks today, and only today, as today', async () => {
-    // The delete confirm names the day it changes, and `3월 29일` for today is false.
-    const result = await detail(await seed(habit()));
+  it('heads each day with its date, today marked, and its state mark and word (§6.0)', async () => {
+    const entries = [activity(addDays(TODAY, -1), 6), activity(addDays(TODAY, -2), 3)];
+    const result = await detail(await seed(habit(), entries));
 
-    expect(dayOf(result.current, TODAY).isToday).toBe(true);
+    expect(dayOf(result.current, TODAY)).toMatchObject({
+      isToday: true,
+      title: '3월 29일 (오늘)',
+      badge: '아직이에요',
+      tone: 'quiet',
+    });
+    expect(dayOf(result.current, addDays(TODAY, -1))).toMatchObject({
+      title: '3월 28일',
+      badge: '✓ 했어요',
+      tone: 'done',
+    });
+    expect(dayOf(result.current, addDays(TODAY, -2)).badge).toBe('½ 조금 했어요');
     expect(result.current.journal.filter((day) => day.isToday)).toHaveLength(1);
   });
 
-  it('keeps a day’s rows together and reports the summed chip amount', async () => {
+  it('keeps a day’s rows together, in the domain order, each with its amount and note', async () => {
     const entries = [
-      activity(addDays(TODAY, -1), 3, '18:30:00'),
+      activity(addDays(TODAY, -1), 3, '18:30:00', { note: '출근길에 조금' }),
       activity(addDays(TODAY, -1), 2, '07:10:00'),
     ];
     const result = await detail(await seed(habit(), entries));
     const day = dayOf(result.current, addDays(TODAY, -1));
 
     // The domain total order, not the repository's insertion order (§7.3).
-    expect(day.rows.map((row) => row.entry.actual)).toEqual([2, 3]);
+    expect(day.rows.map((row) => [row.summary, row.entry.note])).toEqual([
+      ['+2reps', undefined],
+      ['+3reps', '출근길에 조금'],
+    ]);
+    expect(day.rows[0].time).toMatch(/^\d\d:\d\d$/);
     expect(day.state).toBe('done');
-    expect(day.sum).toBe(5);
-    expect(day.chipAmount).toBe(5);
-    expect(day.recoverable).toBe(false);
   });
 
-  it('says no amount on a binary habit — it has none to report', async () => {
+  it('says 했어요 with no amount on a binary habit', async () => {
     const done = { ...activity(addDays(TODAY, -1), 1), habitId: 'b1' };
     const result = await detail(await seed(binary(), [done]), 'b1');
 
-    expect(dayOf(result.current, addDays(TODAY, -1)).chipAmount).toBeUndefined();
+    expect(dayOf(result.current, addDays(TODAY, -1)).rows[0].summary).toBe('✓ 했어요');
   });
 
-  it('carries the day’s effective skip reason, and calls a partial no miss', async () => {
-    const entries = [skip(addDays(TODAY, -1), 'floor'), activity(addDays(TODAY, -2), 3)];
-    const result = await detail(await seed(habit(), entries));
-
+  it('names a skip row’s reason', async () => {
+    const result = await detail(await seed(habit(), [skip(addDays(TODAY, -1), 'exception')]));
     const skipped = dayOf(result.current, addDays(TODAY, -1));
-    expect(skipped.state).toBe('skip');
-    expect(skipped.skipReason).toBe('floor');
 
-    const partial = dayOf(result.current, addDays(TODAY, -2));
-    expect(partial.state).toBe('partial');
-    // A `partial` is not a miss (CONTEXT glossary), so it is offered no repair line.
-    expect(partial.recoverable).toBe(false);
+    expect(skipped.state).toBe('skip');
+    expect(skipped.badge).toBe('− 못 했어요');
+    // `inset`, apart from the `surface2` of 아직이에요 (`.st.skip`, `.st.pending`).
+    expect(skipped.tone).toBe('neutral');
+    expect(skipped.rows[0].summary).toBe('못 했어요 · 예외');
   });
 
   it('freezes the time of a noon-pinned row and leaves an ordinary one editable (D11)', async () => {
@@ -412,9 +351,6 @@ describe('useHabitDetail — the journal is a date walk (D7)', () => {
     ];
     const result = await detail(await seed(habit(), entries));
     const rows = dayOf(result.current, past).rows;
-    // By id, not by position: local noon sorts before or after 07:00Z depending on the
-    // device timezone, and the two rows are told apart by the hook's own reading of
-    // each — so dropping the call in `journalDay` fails here.
     const rowOf = (id: string) => {
       const row = rows.find((each) => each.entry.id === id);
       if (row == null) throw new Error(`no journal row for ${id}`);
@@ -427,21 +363,63 @@ describe('useHabitDetail — the journal is a date walk (D7)', () => {
     expect(rowOf(pinned.id).backfilled).toBe(true);
     expect(rowOf(pinned.id).timeEditable).toBe(false);
   });
+
+  describe('최근 3일 and 더 보기 (§6.5 Journal)', () => {
+    it('shows the last 3 days, and 더 보기 for the rest', async () => {
+      const result = await detail(await seed(habit()));
+
+      expect(result.current.journalShown.map((day) => day.date)).toEqual([
+        TODAY,
+        addDays(TODAY, -1),
+        addDays(TODAY, -2),
+      ]);
+      expect(result.current.journalMoreLabel).toBe('더 보기');
+    });
+
+    it('opens every day on 더 보기, and then offers it no more', async () => {
+      const result = await detail(await seed(habit()));
+
+      act(() => result.current.showMoreJournal());
+
+      expect(result.current.journalShown).toHaveLength(result.current.journal.length);
+      expect(result.current.journalShown.length).toBeGreaterThan(3);
+      expect(result.current.journalMoreLabel).toBeNull();
+    });
+
+    it('offers no 더 보기 when the habit has 3 days or fewer', async () => {
+      const result = await detail(
+        await seed(habit({ createdAt: `${addDays(TODAY, -2)}T00:00:00.000Z` })),
+      );
+
+      expect(result.current.journalShown).toHaveLength(3);
+      expect(result.current.journalMoreLabel).toBeNull();
+    });
+  });
 });
+
+/** An established count habit — the one whose hero is the weekly chart. */
+function established(over: Partial<Habit> = {}): Habit {
+  return habit({ lifecycle: 'established', ...over });
+}
+
+/** The weekly hero's geometry, or `null` when the hero is not the chart. */
+function chartOf(view: HabitDetailView) {
+  return view.hero?.kind === 'weekly' ? view.hero.chart : null;
+}
 
 describe('useHabitDetail — the growth chart’s geometry (D5)', () => {
   it('draws one bar per configured week, oldest first', async () => {
-    const result = await detail(await seed(habit()));
+    const result = await detail(await seed(established()));
 
-    expect(result.current.chart?.bars).toHaveLength(TUNING.growthChartWeeks);
-    expect(result.current.chart?.bars[TUNING.growthChartWeeks - 1].weeksAgo).toBe(0);
-    expect(result.current.chart?.bars[0].weeksAgo).toBe(TUNING.growthChartWeeks - 1);
+    expect(chartOf(result.current)?.bars).toHaveLength(TUNING.growthChartWeeks);
+    expect(chartOf(result.current)?.bars[TUNING.growthChartWeeks - 1].weeksAgo).toBe(0);
+    expect(chartOf(result.current)?.bars[0].weeksAgo).toBe(TUNING.growthChartWeeks - 1);
   });
 
   it('scales the bars and both lines against one maximum, so no line escapes', async () => {
     // 60 this week clears both the weekly floor (5×7) and the weekly target (8×7).
-    const result = await detail(await seed(habit(), [activity(addDays(THIS_MONDAY, 1), 60)]));
-    const chart = result.current.chart;
+    const result = await detail(await seed(established(), [activity(addDays(THIS_MONDAY, 1), 60)]));
+    const chart = chartOf(result.current);
 
     expect(chart?.weeklyFloor).toBe(35);
     expect(chart?.weeklyTarget).toBe(56);
@@ -451,8 +429,8 @@ describe('useHabitDetail — the growth chart’s geometry (D5)', () => {
   });
 
   it('keeps the reference lines inside the chart when every bar is below them', async () => {
-    const result = await detail(await seed(habit(), [activity(addDays(THIS_MONDAY, 1), 10)]));
-    const chart = result.current.chart;
+    const result = await detail(await seed(established(), [activity(addDays(THIS_MONDAY, 1), 10)]));
+    const chart = chartOf(result.current);
 
     // The scale is the target line, the tallest thing drawn.
     expect(chart?.targetLine).toBe(100);
@@ -461,13 +439,13 @@ describe('useHabitDetail — the growth chart’s geometry (D5)', () => {
   });
 
   it('draws no target line for a habit whose target says nothing (§4.1)', async () => {
-    const noTarget = await detail(await seed(habit({ target: undefined })));
-    expect(noTarget.current.chart?.targetLine).toBeNull();
-    expect(noTarget.current.chart?.weeklyTarget).toBeNull();
+    const noTarget = await detail(await seed(established({ target: undefined })));
+    expect(chartOf(noTarget.current)?.targetLine).toBeNull();
+    expect(chartOf(noTarget.current)?.weeklyTarget).toBeNull();
 
     // `target <= floor` is read as no target at all — the same defensive read.
-    const flat = await detail(await seed(habit({ target: 5 })));
-    expect(flat.current.chart?.targetLine).toBeNull();
+    const flat = await detail(await seed(established({ target: 5 })));
+    expect(chartOf(flat.current)?.targetLine).toBeNull();
   });
 
   it('stars the best week, and the most recent of a tie', async () => {
@@ -475,12 +453,12 @@ describe('useHabitDetail — the growth chart’s geometry (D5)', () => {
       activity(addDays(THIS_MONDAY, -6), 10), // last week
       activity(addDays(THIS_MONDAY, 1), 10), // this week
     ];
-    const result = await detail(await seed(habit(), entries));
-    const starred = result.current.chart?.bars.filter((bar) => bar.best);
+    const result = await detail(await seed(established(), entries));
+    const starred = chartOf(result.current)?.bars.filter((bar) => bar.best);
 
     expect(starred).toHaveLength(1);
     expect(starred?.[0].weeksAgo).toBe(0);
-    expect(result.current.chart?.best).toBe(10);
+    expect(chartOf(result.current)?.best).toBe(10);
   });
 
   it('reports this week’s running total beside the best week', async () => {
@@ -489,259 +467,337 @@ describe('useHabitDetail — the growth chart’s geometry (D5)', () => {
       activity(THIS_MONDAY, 4),
       activity(addDays(THIS_MONDAY, 1), 3),
     ];
-    const result = await detail(await seed(habit(), entries));
+    const result = await detail(await seed(established(), entries));
 
     // The week `today` falls in, still running — the canvas's `최고 62 · 이번 주 37`.
-    expect(result.current.chart?.thisWeek).toBe(7);
-    expect(result.current.chart?.best).toBe(20);
+    expect(chartOf(result.current)?.thisWeek).toBe(7);
+    expect(chartOf(result.current)?.best).toBe(20);
   });
 
   it('stars nothing when nothing was ever recorded', async () => {
-    const result = await detail(await seed(habit()));
+    const result = await detail(await seed(established()));
 
-    expect(result.current.chart?.bars.some((bar) => bar.best)).toBe(false);
-    expect(result.current.chart?.best).toBe(0);
+    expect(chartOf(result.current)?.bars.some((bar) => bar.best)).toBe(false);
+    expect(chartOf(result.current)?.best).toBe(0);
   });
 
-  it('draws no chart at all for a binary habit — it has no amount per week', async () => {
-    const result = await detail(await seed(binary()), 'b1');
+  it('draws no chart while the habit is forming — the ring leads instead', async () => {
+    const result = await detail(await seed(habit()));
 
-    expect(result.current.chart).toBeNull();
-    expect(result.current.panelOrder).not.toContain('chart');
+    expect(chartOf(result.current)).toBeNull();
   });
 });
 
-describe('useHabitDetail — the Forming expectation (D4)', () => {
-  it('counts repetitions, not the calendar', async () => {
-    const entries = [
-      activity(addDays(TODAY, -1), 6),
-      activity(addDays(TODAY, -2), 2), // `partial` still counts as showing up (§4.3 C3)
-      activity(addDays(TODAY, -10), 6),
-    ];
-    const result = await detail(await seed(habit(), entries));
+describe('useHabitDetail — the hero card (§6.5)', () => {
+  describe('forming: the 자리 잡는 중 ring', () => {
+    it('counts repetitions, not the calendar, against the usual 66 days', async () => {
+      const entries = [
+        activity(addDays(TODAY, -1), 6),
+        activity(addDays(TODAY, -2), 2), // `partial` still counts as showing up (§4.3 C3)
+        activity(addDays(TODAY, -10), 6),
+      ];
+      const result = await detail(await seed(habit(), entries));
 
-    expect(result.current.forming?.days).toBe(3);
-    expect(result.current.forming?.expectedDays).toBe(TUNING.formingExpectationDays);
-    expect(result.current.forming?.ratio).toBeCloseTo(3 / TUNING.formingExpectationDays);
+      expect(result.current.hero).toMatchObject({
+        kind: 'forming',
+        daysLabel: '3일',
+        expectedLabel: '보통 66일',
+      });
+      const hero = result.current.hero;
+      expect(hero?.kind === 'forming' && hero.ratio).toBeCloseTo(3 / TUNING.formingExpectationDays);
+    });
+
+    it('clamps the ring at full past day 66, and still says the raw count', async () => {
+      const days = TUNING.formingExpectationDays + 4;
+      const entries = Array.from({ length: days }, (_, i) => activity(addDays(TODAY, -(i + 1)), 6));
+      const result = await detail(
+        await seed(habit({ createdAt: `${addDays(TODAY, -(days + 1))}T00:00:00.000Z` }), entries),
+      );
+
+      expect(result.current.hero).toMatchObject({ kind: 'forming', ratio: 1, daysLabel: `${days}일` });
+    });
+
+    it('says how much more today raises the streak (the board’s 오늘 4쪽 더 하면 3일)', async () => {
+      const entries = [
+        activity(addDays(TODAY, -2), 6),
+        activity(addDays(TODAY, -1), 6),
+        activity(TODAY, 2),
+      ];
+      const result = await detail(await seed(habit(), entries));
+
+      expect(result.current.hero).toMatchObject({ streak: 2, nextStep: '오늘 3reps 더 하면 3일' });
+    });
+
+    it('names the floor when nothing is logged today yet', async () => {
+      const result = await detail(await seed(habit(), [activity(addDays(TODAY, -1), 6)]));
+
+      expect(result.current.hero).toMatchObject({ streak: 1, nextStep: '오늘 5reps 하면 2일' });
+    });
+
+    it('says the day is done once today’s floor is met', async () => {
+      const result = await detail(await seed(habit(), [activity(TODAY, 6)]));
+
+      expect(result.current.hero).toMatchObject({ streak: 1, nextStep: '오늘 몫을 채웠어요' });
+    });
+
+    it('says 다시 시작하면 돼요 when a run broke (the ReDetailRed board)', async () => {
+      const entries = [1, 3, 4].map((back) =>
+        activity(addDays(TODAY, -back - 1), 1, '09:00:00', { habitId: 'b1' }),
+      );
+      const result = await detail(await seed(binary(), entries), 'b1');
+
+      expect(result.current.hero).toMatchObject({ streak: 0, nextStep: '다시 시작하면 돼요' });
+    });
+
+    it('asks a yes/no habit only to do it today', async () => {
+      const entries = [activity(addDays(TODAY, -1), 1, '09:00:00', { habitId: 'b1' })];
+      const result = await detail(await seed(binary(), entries), 'b1');
+
+      expect(result.current.hero).toMatchObject({ streak: 1, nextStep: '오늘 하면 2일' });
+    });
   });
 
-  it('clamps the ratio at 1 past day 66, and still reports the raw count', async () => {
-    const days = TUNING.formingExpectationDays + 4;
-    const entries = Array.from({ length: days }, (_, i) => activity(addDays(TODAY, -(i + 1)), 6));
-    const result = await detail(
-      await seed(habit({ createdAt: `${addDays(TODAY, -(days + 1))}T00:00:00.000Z` }), entries),
-    );
+  describe('established: 주마다 한 양', () => {
+    it('draws the weekly bars with their labels (C4)', async () => {
+      const entries = [activity(addDays(THIS_MONDAY, -6), 20), activity(THIS_MONDAY, 7)];
+      const result = await detail(await seed(established(), entries));
 
-    expect(result.current.forming?.days).toBe(days);
-    expect(result.current.forming?.ratio).toBe(1);
-  });
+      expect(result.current.hero).toMatchObject({
+        kind: 'weekly',
+        totalLabel: '이번 주 7reps',
+        floorLabel: '최소 35',
+        targetLabel: '목표 56',
+        startLabel: `${TUNING.growthChartWeeks - 1}주 전`,
+        endLabel: '이번 주',
+      });
+    });
 
-  it('is absent once the habit is established', async () => {
-    const result = await detail(await seed(habit({ lifecycle: 'established' })));
+    it('has no target label when the habit has no target that counts', async () => {
+      const result = await detail(await seed(established({ target: undefined })));
 
-    expect(result.current.forming).toBeNull();
-    expect(result.current.panelOrder).not.toContain('forming');
+      expect(result.current.hero).toMatchObject({ kind: 'weekly', targetLabel: null });
+    });
+
+    it('keeps the bars on a paused habit that was established', async () => {
+      const paused = established({
+        lifecycle: 'paused',
+        pauses: [{ from: addDays(TODAY, -3), resumeTo: 'established' }],
+      });
+      const result = await detail(await seed(paused));
+
+      expect(result.current.hero?.kind).toBe('weekly');
+    });
+
+    it('shows a yes/no habit its streak and next step alone — it has no amount per week', async () => {
+      const result = await detail(await seed(binary({ lifecycle: 'established' })), 'b1');
+
+      expect(result.current.hero).toMatchObject({ kind: 'streak', streak: 0, nextStep: '오늘 하면 1일' });
+    });
   });
 });
 
-describe('useHabitDetail — the panel order (D6)', () => {
-  it('puts the pills first while forming, with the chart below them', async () => {
+/** The open record sheet, or a failure when another sheet (or none) is open. */
+function recordSheet(view: HabitDetailView) {
+  if (view.sheet?.kind !== 'record') throw new Error(`no record sheet: ${view.sheet?.kind}`);
+  return view.sheet;
+}
+
+describe('useHabitDetail — the 최근 3주 heatmap (§6.5 Heatmap)', () => {
+  it('draws the last 21 days, three weeks, ending on today', async () => {
+    const result = await detail(await seed(habit({ createdAt: `${TODAY}T00:00:00.000Z` })));
+    const { cells } = result.current.heatmap;
+
+    expect(cells).toHaveLength(21);
+    expect(cells[0].date).toBe(addDays(TODAY, -20));
+    // The 21st cell is the bottom-right one of a 7 by 3 grid.
+    expect(cells[20].date).toBe(TODAY);
+  });
+
+  it('heads the 7 columns with the weekdays of the first row, so today sits under its own', async () => {
     const result = await detail(await seed(habit()));
 
-    expect(result.current.panelOrder).toEqual([
-      'pills',
-      'heatmap',
-      'forming',
-      'chart',
-      'design',
-      'journal',
+    // TODAY is a Sunday, so the grid starts on a Monday and ends under 일.
+    expect(result.current.heatmap.weekdays).toEqual(['월', '화', '수', '목', '금', '토', '일']);
+  });
+
+  it('lists the six day-states under the grid, in the §6.0 order', async () => {
+    const result = await detail(await seed(habit()));
+
+    expect(result.current.heatmap.legend.map((item) => item.word)).toEqual([
+      '했어요',
+      '목표까지 했어요',
+      '조금 했어요',
+      '못 했어요',
+      '기록 없음',
+      '아직이에요',
     ]);
   });
 
-  it('lifts the growth chart above the pills once established', async () => {
-    const result = await detail(await seed(habit({ lifecycle: 'established' })));
+  it('gives each cell its state, and an accessible name of date and state word', async () => {
+    const result = await detail(await seed(habit(), [activity(addDays(TODAY, -1), 6)]));
+    const { cells } = result.current.heatmap;
 
-    expect(result.current.panelOrder).toEqual(['chart', 'pills', 'heatmap', 'design', 'journal']);
+    expect(cells[19]).toMatchObject({ state: 'done', label: '3월 28일 했어요', tappable: true });
+    expect(cells[18]).toMatchObject({ state: 'missed', label: '3월 27일 기록 없음' });
+    expect(cells[20]).toMatchObject({ state: 'pending', tappable: true });
   });
 
-  it('has no chart to lift for an established binary habit', async () => {
-    const result = await detail(await seed(binary({ lifecycle: 'established' })), 'b1');
+  it('leaves a day before the habit was born blank and not pressable', async () => {
+    const born = habit({ createdAt: `${addDays(TODAY, -2)}T00:00:00.000Z` });
+    const result = await detail(await seed(born));
+    const { cells } = result.current.heatmap;
 
-    expect(result.current.panelOrder).toEqual(['pills', 'heatmap', 'design', 'journal']);
+    expect(cells[17]).toMatchObject({ state: undefined, label: '3월 26일', tappable: false });
+    expect(cells[18].tappable).toBe(true);
   });
 });
 
-describe('useHabitDetail — backfill (D10, D14)', () => {
-  it('ends the heatmap ribbon on today', async () => {
-    const result = await detail(await seed(habit({ createdAt: `${TODAY}T00:00:00.000Z` })));
-    const cells = result.current.heatmap;
+describe('useHabitDetail — the record sheet for a date (D10, §6.5)', () => {
+  it('opens on a past date with that date in its head, a noon time and the skip link', async () => {
+    const past = addDays(TODAY, -5);
+    const result = await detail(await seed(habit()));
 
-    expect(cells).toHaveLength(TUNING.heatmapDays);
-    expect(cells[cells.length - 1].date).toBe(TODAY);
-  });
+    act(() => result.current.openRecord(past));
 
-  it('points 지난 날 기록 추가 at the most recent gap, and it is fillable', async () => {
-    // Two gaps: TODAY-6 and TODAY-2. Every other past day in the window is floor-met,
-    // so the button must name the newer of the two.
-    const filled = [1, 3, 4, 5, 7, 8].map((back) => activity(addDays(TODAY, -back), 6));
-    const born = habit({ createdAt: `${addDays(TODAY, -8)}T00:00:00.000Z` });
-    const result = await detail(await seed(born, filled));
-
-    expect(result.current.nextBackfillDate).toBe(addDays(TODAY, -2));
-    expect(dayOf(result.current, addDays(TODAY, -6)).state).toBe('missed');
-    expect(dayOf(result.current, addDays(TODAY, -2)).backfillable).toBe(true);
-  });
-
-  it('names no date when the window holds no gap at all', async () => {
-    // Born today: the only day in scope is today, which is `pending`, never `missed`.
-    const result = await detail(await seed(habit({ createdAt: `${TODAY}T00:00:00.000Z` })));
-
-    expect(result.current.journal.every((day) => day.state !== 'missed')).toBe(true);
-    expect(result.current.nextBackfillDate).toBeNull();
-  });
-
-  it('drops the button’s date once that gap is filled', async () => {
-    const gap = addDays(TODAY, -2);
-    const born = habit({ createdAt: `${gap}T00:00:00.000Z` });
-    const result = await detail(await seed(born, [activity(addDays(TODAY, -1), 6)]));
-
-    expect(result.current.nextBackfillDate).toBe(gap);
-
-    act(() => result.current.openBackfill(gap));
-    await act(async () => {
-      await result.current.fillDay(5);
+    expect(recordSheet(result.current)).toMatchObject({
+      date: past,
+      eyebrow: '💪 턱걸이',
+      title: '3월 24일 화요일',
+      sumLabel: null,
+      isCount: true,
+      unit: 'reps',
+      timeLabel: '3월 24일 12:00',
+      skipLabel: '3월 24일 못 했어요 · 왜?',
     });
-
-    expect(result.current.nextBackfillDate).toBeNull();
+    expect(recordSheet(result.current).resultLine(5)).toBe('이걸로 3월 24일 몫을 채워요 ✓');
   });
 
-  it('withholds the skip chips on a date an activity row already covers (§4.1)', async () => {
+  it('calls yesterday 어제 and today 오늘, stamped now', async () => {
+    const result = await detail(await seed(habit()));
+
+    act(() => result.current.openRecord(addDays(TODAY, -1)));
+    expect(recordSheet(result.current).timeLabel).toBe('어제 12:00');
+
+    act(() => result.current.openRecord(TODAY));
+    expect(recordSheet(result.current).timeLabel).toMatch(/^지금 \d\d:\d\d$/);
+    expect(recordSheet(result.current).skipLabel).toBe('오늘 못 했어요 · 왜?');
+    // Only today's head shows the running sum, as on Today and the Dashboard.
+    expect(recordSheet(result.current).sumLabel).toBe('지금 0reps');
+  });
+
+  it('changes nothing until 기록하기 — closing the sheet writes no row (#109)', async () => {
+    const past = addDays(TODAY, -5);
+    const result = await detail(await seed(habit()));
+
+    act(() => result.current.openRecord(past));
+    act(() => result.current.closeSheet());
+
+    expect(result.current.sheet).toBeNull();
+    expect(dayOf(result.current, past).state).toBe('missed');
+    expect(dayOf(result.current, past).rows).toEqual([]);
+  });
+
+  it('withholds the skip link on a date an activity row already covers (§4.1)', async () => {
     const covered = addDays(TODAY, -4);
-    const empty = addDays(TODAY, -5);
     const result = await detail(await seed(habit(), [activity(covered, 6)]));
 
-    // No composer, no date to answer about.
-    expect(result.current.composerAffordances).toBeNull();
-
-    // Activity overrides skip, so a skip row written on `covered` would change no
-    // state, no miss and no diagnosis — the composer must not offer the reason chips.
-    act(() => result.current.openBackfill(covered));
-    expect(result.current.composerAffordances?.skippable).toBe(false);
-    expect(result.current.composerAffordances?.hasActivityToday).toBe(true);
-
-    act(() => result.current.openBackfill(empty));
-    expect(result.current.composerAffordances?.skippable).toBe(true);
+    act(() => result.current.openRecord(covered));
+    expect(recordSheet(result.current).skipLabel).toBeNull();
   });
 
-  it('prefills the composer with the floor, then with the date\'s last amount (§6.2 B2)', async () => {
+  it('prefills the floor, then the date\'s last amount (§6.2 B2)', async () => {
     const past = addDays(TODAY, -5);
-    // Seeded newest-first on purpose: the prefill is the day's **last** amount in the
-    // domain's order (`sortDayRows`), never the repository's array order.
     const result = await detail(
       await seed(habit(), [activity(past, 3, '18:00:00'), activity(past, 7, '07:00:00')]),
     );
 
-    // No composer, nothing prefilled.
-    expect(result.current.composerAffordances).toBeNull();
+    act(() => result.current.openRecord(addDays(TODAY, -6)));
+    expect(recordSheet(result.current).defaultAmount).toBe(5);
 
-    const empty = addDays(TODAY, -6);
-    act(() => result.current.openBackfill(empty));
-    expect(result.current.composerAffordances?.defaultAmount).toBe(5);
-
-    act(() => result.current.openBackfill(past));
-    expect(result.current.composerAffordances?.defaultAmount).toBe(3);
+    act(() => result.current.openRecord(past));
+    expect(recordSheet(result.current).defaultAmount).toBe(3);
   });
 
-  it('prefills a binary composer with 1, which is the only amount it has (§3.3)', async () => {
+  it('gives a binary habit no stepper', async () => {
     const result = await detail(await seed(binary()), 'b1');
 
-    act(() => result.current.openBackfill(addDays(TODAY, -3)));
-    expect(result.current.composerAffordances?.defaultAmount).toBe(1);
+    act(() => result.current.openRecord(addDays(TODAY, -3)));
+    expect(recordSheet(result.current)).toMatchObject({ isCount: false, sumLabel: null });
   });
 
   it('ignores a request to open a date the §6.3 range forbids', async () => {
     const result = await detail(await seed(habit()));
 
-    act(() => result.current.openBackfill(addDays(TODAY, 1)));
-    expect(result.current.backfillDate).toBeNull();
+    act(() => result.current.openRecord(addDays(TODAY, 1)));
+    expect(result.current.sheet).toBeNull();
 
-    act(() => result.current.openBackfill(addDays(CREATED, -1)));
-    expect(result.current.backfillDate).toBeNull();
+    act(() => result.current.openRecord(addDays(CREATED, -1)));
+    expect(result.current.sheet).toBeNull();
   });
 
-  it('fills a past day at the floor, noon-pinned, and the day recovers (ADR-0001)', async () => {
+  it('fills a past day, noon-pinned, closes, and the day recovers (ADR-0001)', async () => {
     const past = addDays(TODAY, -5);
     const result = await detail(await seed(habit()));
 
-    expect(dayOf(result.current, past).state).toBe('missed');
-
-    act(() => result.current.openBackfill(past));
+    act(() => result.current.openRecord(past));
     await act(async () => {
-      await result.current.fillDay(5);
+      await result.current.recordFromSheet(5, '저녁에 읽음');
     });
 
+    expect(result.current.sheet).toBeNull();
     const day = dayOf(result.current, past);
     expect(day.state).toBe('done');
     expect(day.rows).toHaveLength(1);
-    expect(day.rows[0].entry.actual).toBe(5);
+    expect(day.rows[0].entry).toMatchObject({ actual: 5, note: '저녁에 읽음' });
     expect(day.rows[0].backfilled).toBe(true);
-    expect(day.rows[0].timeEditable).toBe(false);
+    expect(result.current.toast?.entryId).toBe(day.rows[0].entry.id);
   });
 
   it('appends rather than overwriting, with strictly increasing stamps (§6.3)', async () => {
     const past = addDays(TODAY, -5);
     const result = await detail(await seed(habit()));
 
-    act(() => result.current.openBackfill(past));
-    await act(async () => {
-      await result.current.fillDay(3);
-    });
-    await act(async () => {
-      await result.current.fillDay(4);
-    });
+    for (const amount of [3, 4]) {
+      act(() => result.current.openRecord(past));
+      await act(async () => {
+        await result.current.recordFromSheet(amount, '');
+      });
+    }
 
     const rows = dayOf(result.current, past).rows;
     expect(rows.map((row) => row.entry.actual)).toEqual([3, 4]);
     expect(rows[0].entry.timestamp < rows[1].entry.timestamp).toBe(true);
-    expect(dayOf(result.current, past).sum).toBe(7);
   });
 
-  it('writes a reason onto a past day, which turns an unattributable miss into one', async () => {
+  it('moves to the skip reason sheet, whose chip writes a reason onto the past day', async () => {
     const past = addDays(TODAY, -5);
     const result = await detail(await seed(habit()));
 
-    act(() => result.current.openBackfill(past));
-    await act(async () => {
-      await result.current.skipDay('cue', { note: '깜빡' });
+    act(() => result.current.openRecord(past));
+    act(() => result.current.openSkip(past));
+    expect(result.current.sheet).toMatchObject({
+      kind: 'skip',
+      eyebrow: '💪 턱걸이',
+      title: '3월 24일 못 했어요 · 왜?',
     });
 
+    await act(async () => {
+      await result.current.skipFromSheet('cue', '깜빡');
+    });
+
+    expect(result.current.sheet).toBeNull();
     const day = dayOf(result.current, past);
     expect(day.state).toBe('skip');
-    expect(day.skipReason).toBe('cue');
-    expect(day.rows[0].entry.note).toBe('깜빡');
-  });
-
-  it('carries the note typed beside a fill amount onto the past day (#77)', async () => {
-    const past = addDays(TODAY, -5);
-    const result = await detail(await seed(habit()));
-
-    act(() => result.current.openBackfill(past));
-    await act(async () => {
-      await result.current.fillDay(3, { note: '저녁에 읽음' });
-    });
-
-    const day = dayOf(result.current, past);
-    expect(day.rows[0].entry.actual).toBe(3);
-    expect(day.rows[0].entry.note).toBe('저녁에 읽음');
+    expect(day.rows[0].entry).toMatchObject({ skipReason: 'cue', note: '깜빡' });
   });
 
   it('marks a binary fill done with a single row of 1', async () => {
     const past = addDays(TODAY, -5);
     const result = await detail(await seed(binary()), 'b1');
 
-    act(() => result.current.openBackfill(past));
+    act(() => result.current.openRecord(past));
     await act(async () => {
-      await result.current.fillDay(1);
+      await result.current.recordFromSheet(1, '');
     });
 
     const day = dayOf(result.current, past);
@@ -750,14 +806,102 @@ describe('useHabitDetail — backfill (D10, D14)', () => {
   });
 });
 
-describe('useHabitDetail — editing and deleting one row (#13)', () => {
-  it('rewrites the row it is given, and the day reclassifies', async () => {
+/** The open past-day picker, or a failure when another sheet (or none) is open. */
+function pastDays(view: HabitDetailView) {
+  if (view.sheet?.kind !== 'pastDays') throw new Error(`no past-day picker: ${view.sheet?.kind}`);
+  return view.sheet;
+}
+
+describe('useHabitDetail — 지난 날 기록 추가, the date picker (§6.5 Heatmap)', () => {
+  it('always offers the button once the habit is loaded', async () => {
+    const young = await detail(await seed(habit({ createdAt: `${TODAY}T00:00:00.000Z` })));
+    expect(young.current.backfillLabel).toBe('+ 지난 날 기록 추가');
+
+    const none = await detail(await seed(habit()), 'nobody');
+    expect(none.current.backfillLabel).toBeNull();
+  });
+
+  it('lists the days older than the heatmap, newest first, down to the habit’s birth', async () => {
+    // Born 40 days ago: the heatmap holds today−20 … today, the picker today−21 … birth.
+    const result = await detail(await seed(habit(), [activity(addDays(TODAY, -21), 6)]));
+
+    act(() => result.current.openPastDays());
+    const dates = pastDays(result.current).days.map((day) => day.date);
+
+    expect(dates[0]).toBe(addDays(TODAY, -21));
+    expect(dates[dates.length - 1]).toBe(CREATED);
+    expect(dates).toHaveLength(20);
+    expect(dates).not.toContain(addDays(TODAY, -20));
+    expect(dates).not.toContain(addDays(CREATED, -1));
+  });
+
+  it('words each day as the journal does, with its state', async () => {
+    const result = await detail(await seed(habit(), [activity(addDays(TODAY, -21), 6)]));
+
+    act(() => result.current.openPastDays());
+
+    expect(pastDays(result.current)).toMatchObject({
+      eyebrow: '💪 턱걸이',
+      title: '지난 날 고르기',
+      empty: null,
+    });
+    expect(pastDays(result.current).days[0]).toMatchObject({
+      title: '3월 8일',
+      badge: '✓ 했어요',
+      tone: 'done',
+    });
+    expect(pastDays(result.current).days[1].badge).toBe('! 기록 없음');
+  });
+
+  it('says there is no older day yet for a habit younger than the heatmap', async () => {
+    const result = await detail(
+      await seed(habit({ createdAt: `${addDays(TODAY, -10)}T00:00:00.000Z` })),
+    );
+
+    act(() => result.current.openPastDays());
+
+    expect(pastDays(result.current).days).toEqual([]);
+    expect(pastDays(result.current).empty).toBe('3주보다 오래된 날이 아직 없어요.');
+  });
+
+  it('opens the record sheet for the picked date, and only 기록하기 writes', async () => {
+    const old = addDays(TODAY, -30);
+    const result = await detail(await seed(habit()));
+
+    act(() => result.current.openPastDays());
+    act(() => result.current.openRecord(old));
+    expect(recordSheet(result.current).date).toBe(old);
+
+    await act(async () => {
+      await result.current.recordFromSheet(5, '');
+    });
+    expect(dayOf(result.current, old).state).toBe('done');
+  });
+});
+
+describe('useHabitDetail — the edit sheet for one row (#13)', () => {
+  it('opens a journal row with its date in the head and its own time', async () => {
+    const past = addDays(TODAY, -2);
+    const row = activity(past, 6, '07:10:00');
+    const result = await detail(await seed(habit(), [row]));
+
+    act(() => result.current.openEntry(row.id));
+
+    expect(result.current.sheet).toMatchObject({
+      kind: 'editEntry',
+      timeEditable: true,
+      item: { entry: row, title: '3월 27일 금요일' },
+    });
+  });
+
+  it('rewrites the row, and the day reclassifies', async () => {
     const past = addDays(TODAY, -2);
     const row = activity(past, 6);
     const result = await detail(await seed(habit(), [row]));
 
+    act(() => result.current.openEntry(row.id));
     await act(async () => {
-      await result.current.editEntry({ ...row, actual: 2 });
+      await result.current.saveEntryFromSheet({ kind: 'activity', amount: '2', note: '', time: null });
     });
 
     const day = dayOf(result.current, past);
@@ -765,16 +909,25 @@ describe('useHabitDetail — editing and deleting one row (#13)', () => {
     expect(day.state).toBe('partial');
   });
 
-  it('deletes the row it is given', async () => {
-    const past = addDays(TODAY, -2);
-    const row = activity(past, 6);
-    const result = await detail(await seed(habit(), [row]));
+  it('deletes the row, and names the past day and the streak in the confirm', async () => {
+    const entries = [1, 2, 3].map((back) => activity(addDays(TODAY, -back), 6));
+    const result = await detail(await seed(habit(), entries));
+    const middle = entries[1];
 
-    await act(async () => {
-      await result.current.removeEntry(row.id);
+    act(() => result.current.openEntry(middle.id));
+    // The edit sheet words its confirm from these: the row's own day, and the run.
+    expect(result.current.sheet).toMatchObject({
+      kind: 'editEntry',
+      dayLabel: '3월 27일',
+      deleteEffect: { emptiesDay: true, stateAfter: 'missed', showsStreak: true, streakBefore: 3, streakAfter: 1 },
     });
 
-    expect(dayOf(result.current, past).state).toBe('missed');
+    await act(async () => {
+      await result.current.removeEntryFromSheet();
+    });
+
+    expect(result.current.sheet).toBeNull();
+    expect(dayOf(result.current, addDays(TODAY, -2)).state).toBe('missed');
   });
 });
 
@@ -943,114 +1096,241 @@ describe('useHabitDetail — the design box (D13, AC 8)', () => {
     expect(dayOf(result.current, past).state).toBe('partial');
   });
 });
+describe('useHabitDetail — the design card (§6.5 Design card)', () => {
+  it('words each row: 언제·어디서, 하루 최소량, 하루 목표 and the 능력치', async () => {
+    const result = await detail(await seed(habit({ cue: '출근 전, 문틀 바에서', identity: '몸 쓰는 사람' })));
 
-describe('useHabitDetail — 정지·보관·재개 컨트롤 (#19)', () => {
-  /** The action the screen would press, by its key. */
-  function action(view: HabitDetailView, kind: string) {
-    const found = view.lifecycleActions.find((a) => a.kind === kind);
-    if (found == null) throw new Error(`no lifecycle action for ${kind}`);
-    return found;
-  }
-
-  it('활성 습관은 잠깐 쉬기와 보관하기 둘을 낸다', async () => {
-    const result = await detail(await seed(habit()));
-
-    expect(result.current.lifecycleActions.map((a) => a.kind)).toEqual(['pause', 'archive']);
-    expect(result.current.lifecycleActions.map((a) => a.label)).toEqual(['잠깐 쉬기', '보관하기']);
+    expect(result.current.designCard).toEqual({
+      cue: '출근 전, 문틀 바에서',
+      cueInk: 'text',
+      floor: '하루 5reps',
+      target: '하루 8reps',
+      stat: '💪 힘',
+      identity: '몸 쓰는 사람',
+      identityInk: 'text',
+    });
   });
 
-  it('습관을 아직 불러오지 못했으면 아무 컨트롤도 내지 않는다', async () => {
-    const result = await detail(await seed(habit()), 'nobody');
-
-    expect(result.current.lifecycleActions).toEqual([]);
-  });
-
-  it('잠깐 쉬기가 오늘부터 열린 구간을 저장하고, 화면은 다시 시작 하나만 받는다', async () => {
+  it('keeps 이것부터 정해 보세요 on screen when 언제·어디서 is empty', async () => {
     const result = await detail(await seed(habit()));
 
-    await act(async () => {
-      await action(result.current, 'pause').run();
+    expect(result.current.designCard).toMatchObject({
+      cue: DETAIL_COPY.cueEmpty,
+      cueInk: 'critInk',
+      identity: DETAIL_COPY.identityEmpty,
+      identityInk: 'muted',
+    });
+  });
+
+  it('hides the 목표 row when the habit has no target that counts (§4.1)', async () => {
+    const result = await detail(await seed(habit({ target: 5 })));
+
+    expect(result.current.designCard?.target).toBeNull();
+  });
+
+  it('hides the 최소량 and 목표 rows on a yes/no habit', async () => {
+    const result = await detail(await seed(binary()), 'b1');
+
+    expect(result.current.designCard).toMatchObject({ floor: null, target: null });
+  });
+
+  it('opens the edit sheet on 수정, and a stored edit closes it', async () => {
+    const result = await detail(await seed(habit()));
+
+    act(() => result.current.openDesign());
+    expect(result.current.sheet).toMatchObject({
+      kind: 'design',
+      eyebrow: '💪 턱걸이',
+      title: DETAIL_COPY.designTitle,
     });
 
-    expect(result.current.habit?.lifecycle).toBe('paused');
-    expect(result.current.habit?.pauses).toEqual([{ from: TODAY, resumeTo: 'forming' }]);
-    expect(result.current.lifecycleActions.map((a) => a.label)).toEqual(['다시 시작']);
+    await act(async () => {
+      expect(await result.current.saveDesign({ cue: '아침 커피 후' })).toBeNull();
+    });
+    expect(result.current.sheet).toBeNull();
+    expect(result.current.designCard?.cue).toBe('아침 커피 후');
   });
 
-  // #19: *"보관된 습관은 대시보드에서 숨지만 기록이 보존되고 되돌릴 수 있다"* — the
-  // 기록 보존 and 되돌릴 수 있다 halves, at the seam that actually writes them.
-  it('보관하기는 다시 꺼내기를 내고, 되돌리면 기록이 그대로 남는다', async () => {
+  it('keeps the edit sheet open when the edit is refused', async () => {
+    const result = await detail(await seed(habit()));
+
+    act(() => result.current.openDesign());
+    await act(async () => {
+      await result.current.saveDesign({ floor: 0 });
+    });
+
+    expect(result.current.sheet?.kind).toBe('design');
+  });
+});
+
+describe('useHabitDetail — the head (§6.5 Head)', () => {
+  it('shows the icon, the name and the status light with its tooltip', async () => {
+    const result = await detail(await seed(habit()));
+
+    expect(result.current.head).toMatchObject({
+      icon: '💪',
+      name: '턱걸이',
+      lightHelp: TOOLTIPS.statusLight,
+      stoppedNote: null,
+    });
+    expect(['stable', 'caution', 'intervention', 'personal_best']).toContain(result.current.head?.light);
+  });
+
+  it('gives a 손봐야 해요 habit the 회고하기 button, and others none', async () => {
+    // Two missed days in a row: never-miss-twice turns the light 🔴 (§4.6).
+    const red = await detail(await seed(habit()));
+    expect(red.current.head?.light).toBe('intervention');
+    expect(red.current.head?.reflectLabel).toBe('회고하기');
+
+    const entries = Array.from({ length: 40 }, (_, i) => activity(addDays(TODAY, -(i + 1)), 6));
+    const fine = await detail(await seed(habit(), entries));
+    expect(fine.current.head?.light).not.toBe('intervention');
+    expect(fine.current.head?.reflectLabel).toBeNull();
+  });
+});
+
+describe('useHabitDetail — the ⋯ menu and its confirm sheets (§6.5 ⋯ menu)', () => {
+  function stable() {
+    return Array.from({ length: 40 }, (_, i) => activity(addDays(TODAY, -(i + 1)), 6));
+  }
+
+  it('offers 회고하기, 잠깐 쉬기 and 보관하기 on an active habit', async () => {
+    const result = await detail(await seed(habit(), stable()));
+
+    expect(result.current.menu).toEqual([
+      { key: 'reflect', label: '회고하기', ink: 'text' },
+      { key: 'pause', label: '⏸ 잠깐 쉬기', ink: 'text' },
+      { key: 'archive', label: '🗄 보관하기', ink: 'critInk' },
+    ]);
+  });
+
+  it('keeps 회고하기 first in every state — 괜찮아요, 손봐야 해요, paused, archived', async () => {
+    const paused = habit({ lifecycle: 'paused', pauses: [{ from: TODAY, resumeTo: 'forming' }] });
+    const archived = habit({ lifecycle: 'archived', pauses: [{ from: TODAY, resumeTo: 'forming' }] });
+    for (const [subject, entries] of [
+      [habit(), stable()],
+      [habit(), []],
+      [paused, []],
+      [archived, []],
+    ] as const) {
+      const result = await detail(await seed(subject, [...entries]));
+      expect(result.current.menu[0]).toMatchObject({ key: 'reflect', label: '회고하기' });
+    }
+  });
+
+  it('pauses only through the confirm sheet', async () => {
+    const result = await detail(await seed(habit()));
+
+    await act(() => result.current.pickMenu('pause'));
+
+    expect(result.current.habit?.lifecycle).toBe('forming');
+    expect(result.current.sheet).toEqual({
+      kind: 'confirm',
+      action: 'pause',
+      eyebrow: '💪 턱걸이',
+      title: '잠깐 쉴까요?',
+      body: LIFECYCLE_NOTE,
+      confirmLabel: '잠깐 쉬기',
+      keepLabel: '그대로 둘게요',
+    });
+
+    await act(async () => {
+      await result.current.confirmFromSheet();
+    });
+
+    expect(result.current.sheet).toBeNull();
+    expect(result.current.habit?.lifecycle).toBe('paused');
+    expect(result.current.habit?.pauses).toEqual([{ from: TODAY, resumeTo: 'forming' }]);
+    expect(result.current.head?.stoppedNote).toBe(DETAIL_COPY.paused);
+  });
+
+  it('archives only through its confirm sheet', async () => {
     const past = addDays(TODAY, -3);
     const result = await detail(await seed(habit(), [activity(past, 6)]));
 
+    await act(() => result.current.pickMenu('archive'));
+    expect(result.current.sheet).toMatchObject({
+      kind: 'confirm',
+      title: '보관할까요?',
+      body: LIFECYCLE_NOTE,
+      confirmLabel: '보관하기',
+      keepLabel: '그대로 둘게요',
+    });
+
     await act(async () => {
-      await action(result.current, 'archive').run();
+      await result.current.confirmFromSheet();
     });
 
     expect(result.current.habit?.lifecycle).toBe('archived');
-    expect(result.current.lifecycleActions.map((a) => a.label)).toEqual(['다시 꺼내기']);
-
-    await act(async () => {
-      await action(result.current, 'unarchive').run();
-    });
-
-    expect(result.current.habit?.lifecycle).toBe('forming');
+    expect(result.current.head?.stoppedNote).toBe(DETAIL_COPY.archived);
     // 보관 전에 남긴 날은 한 줄도 사라지지 않았다.
     expect(dayOf(result.current, past).state).toBe('done');
   });
 
-  /**
-   * The round trip at the hook seam: each action writes through `upsertHabit` and the
-   * reload re-reads it, so the next render's figures come off the stored habit. The
-   * pause a user can actually take from this screen always starts **today** — `run()`
-   * has no other date — so a same-day pause/resume is the shortest whole trip.
-   *
-   * 정지 구간이 연속을 끊지 않는다는 것 자체는 도메인이 이미 핀했다
-   * (`src/domain/streak.test.ts:105`, `:112`, `:117`, `:122`).
-   */
+  it('changes nothing on 그대로 둘게요', async () => {
+    const result = await detail(await seed(habit()));
+
+    for (const key of ['pause', 'archive'] as const) {
+      await act(() => result.current.pickMenu(key));
+      act(() => result.current.closeSheet());
+    }
+
+    expect(result.current.sheet).toBeNull();
+    expect(result.current.habit?.lifecycle).toBe('forming');
+    expect(result.current.habit?.pauses).toBeUndefined();
+  });
+
+  it('offers a paused habit 다시 시작 in place of 잠깐 쉬기, which resumes at once', async () => {
+    const result = await detail(await seed(habit({ lifecycle: 'established' })));
+
+    await act(() => result.current.pickMenu('pause'));
+    await act(async () => {
+      await result.current.confirmFromSheet();
+    });
+    expect(result.current.menu.map((item) => item.label)).toEqual(['회고하기', '다시 시작']);
+
+    await act(async () => {
+      await result.current.pickMenu('resume');
+    });
+
+    // A pause remembers what to resume to: an established habit comes back established.
+    expect(result.current.habit?.lifecycle).toBe('established');
+    expect(result.current.head?.stoppedNote).toBeNull();
+  });
+
+  it('offers an archived habit 다시 꺼내기', async () => {
+    const archived = habit({ lifecycle: 'archived', pauses: [{ from: TODAY, resumeTo: 'forming' }] });
+    const result = await detail(await seed(archived));
+
+    expect(result.current.menu.map((item) => item.label)).toEqual(['회고하기', '다시 꺼내기']);
+
+    await act(async () => {
+      await result.current.pickMenu('unarchive');
+    });
+
+    expect(result.current.habit?.lifecycle).toBe('forming');
+  });
+
   it('재개일은 다시 활성이라 그 날을 채우면 연속이 선다 (반열림 [from, to))', async () => {
     const start = addDays(TODAY, -24);
     const entries = [0, 1, 2].map((n) => activity(addDays(start, n), 6));
     const result = await detail(await seed(habit({ createdAt: `${start}T00:00:00.000Z` }), entries));
 
-    // 사흘 뒤부터 오늘까지 기록이 없으므로 지금은 끊겨 있다.
-    expect(result.current.pills.streak).toBe(0);
+    expect(pill(result.current, 'streak')?.value).toBe('0');
 
+    await act(() => result.current.pickMenu('pause'));
     await act(async () => {
-      await action(result.current, 'pause').run();
+      await result.current.confirmFromSheet();
     });
     await act(async () => {
-      await action(result.current, 'resume').run();
+      await result.current.pickMenu('resume');
     });
+    act(() => result.current.openRecord(TODAY));
     await act(async () => {
-      await result.current.fillDay(5);
+      await result.current.recordFromSheet(5, '');
     });
 
     expect(result.current.habit?.pauses).toEqual([{ from: TODAY, to: TODAY, resumeTo: 'forming' }]);
-    // 재개일은 다시 활성이고, 오늘을 채우면 연속이 오늘부터 다시 선다.
-    expect(result.current.pills.streak).toBe(1);
-  });
-
-  /**
-   * The fourth reader of `lifecycle` on this screen, and the one interaction between
-   * #19 and #18: 빠짐없이 leads only while a habit is `forming`
-   * (`src/hooks/useHabitDetail.ts:76`). Because a pause remembers what to resume to,
-   * an established habit comes back established — and the pill stays out of the second
-   * slot, exactly as if the habit had never rested.
-   */
-  it('established 습관은 쉬었다 돌아와도 강등되지 않아 빠짐없이 pill이 앞으로 오지 않는다', async () => {
-    const result = await detail(await seed(habit({ lifecycle: 'established' })));
-
-    expect(result.current.pills.engagementLeads).toBe(false);
-
-    await act(async () => {
-      await action(result.current, 'pause').run();
-    });
-    await act(async () => {
-      await action(result.current, 'resume').run();
-    });
-
-    expect(result.current.habit?.lifecycle).toBe('established');
-    expect(result.current.pills.engagementLeads).toBe(false);
+    expect(pill(result.current, 'streak')?.value).toBe('1');
   });
 });

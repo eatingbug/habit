@@ -41,6 +41,7 @@ import type { FreeLog, Habit, HabitEntry, LogType, SkipReason } from '@/models';
 
 import { useFailure, type Failure } from './failure';
 import {
+  draftedEntry,
   labelOf,
   recordFromSheet as writeRecord,
   recordSheetView,
@@ -197,6 +198,11 @@ export interface EditEntrySheetView {
   timeEditable: boolean;
   /** What deleting this row costs, or `null` when 삭제 is immediate (D2). */
   deleteEffect: DeleteEffect | null;
+  /**
+   * How the delete confirm names the row's day. Absent: 오늘, the only day Today edits.
+   * Habit Detail's journal passes 어제 or "3월 27일" for a past row.
+   */
+  dayLabel?: string;
 }
 
 /** The time fields of a sheet: `null` while not opened, which keeps the default stamp. */
@@ -323,6 +329,11 @@ export function feedItemId(item: TodayFeedItem): string {
  */
 export interface DeleteEffect extends DeleteOutcome {
   habit: Habit;
+  /**
+   * Quote the streak figures in the confirm? Only Habit Detail sets it, for a past day
+   * whose run changes; Today's days are today, where nothing breaks (ADR-0001).
+   */
+  showsStreak?: boolean;
 }
 
 /**
@@ -1039,32 +1050,11 @@ export function useToday({
   }
 
   /**
-   * The open edit sheet's row as the draft would store it, or `null` when the draft
-   * cannot be stored: no reason on a skip, no positive amount on a count activity, or a
-   * time that is not a time of day. §3.3's discriminator moves both fields together, and
-   * the stamp is the original unless the time fields read another clock (B3, #127
-   * decision: an edit keeps its time).
+   * The open edit sheet's row as the draft would store it (`draftedEntry`), or `null`.
    */
   function editedEntry(draft: EntryDraft): HabitEntry | null {
     if (sheet?.kind !== 'editEntry') return null;
-    const { entry, habit } = sheet.item;
-    const amount = Number(draft.amount);
-    const isCount = habit.kind === 'count';
-    if (draft.kind === 'skip' && draft.reason == null) return null;
-    if (draft.kind === 'activity' && isCount && !(draft.amount.trim().length > 0 && amount > 0)) return null;
-    const timestamp =
-      draft.time == null
-        ? entry.timestamp
-        : restampedAtLocalTime(entry.timestamp, entry.date, draft.time.hour, draft.time.minute);
-    if (timestamp == null) return null;
-    const note = draft.note.trim();
-    return {
-      ...entry,
-      timestamp,
-      actual: draft.kind === 'skip' ? 0 : isCount ? amount : 1,
-      skipReason: draft.kind === 'skip' ? draft.reason : undefined,
-      note: note.length > 0 ? note : undefined,
-    };
+    return draftedEntry(sheet.item.entry, sheet.item.habit, draft);
   }
 
   /** 저장 on the edit sheet: rewrite that one row, keyed on its id, then close. */
