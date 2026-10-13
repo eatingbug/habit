@@ -1370,6 +1370,10 @@ Rules (#90, #93, #111, #112):
 
 - A `?` sits beside each number or symbol that is hard to read alone. One `?` per item.
 - A tooltip opens on hover or tap.
+  - Mouse: a hover opens it. The pointer leaving the `?` closes it.
+  - Mouse: a click on the `?` pins it. The next click anywhere closes it.
+  - Mouse: a wheel closes an open tooltip, so the next wheel scrolls.
+  - Touch: a tap on the `?` opens it, and a second tap closes it. A tap outside closes it.
 - A tooltip is 해요체 and two sentences at most.
 - Result guidance right before or after an action stays out of tooltips. It stays as one sentence in the sheet or modal.
 - Tooltip colors and touch areas follow §6.0.
