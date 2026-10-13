@@ -133,6 +133,19 @@ describe('useHabitDetail — loading', () => {
     expect(result.current.pills).toEqual([]);
     expect(result.current.menu).toEqual([]);
   });
+
+  it('keeps one `reload` across re-renders, so a focus effect keyed on it runs once', async () => {
+    const { result, rerender } = renderHook(
+      () => useHabitDetail('h1', { today: TODAY, now: stepClock() }),
+      { wrapper: wrapperFor(await seed(habit())) },
+    );
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    const first = result.current.reload;
+
+    rerender({});
+
+    expect(result.current.reload).toBe(first);
+  });
 });
 
 /** The pill with this key, or `undefined` when it is not shown. */

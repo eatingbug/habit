@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 import {
   dailyAmountLabel,
@@ -708,9 +708,8 @@ export function useHabitDetail(
    */
   const [version, setVersion] = useState(0);
 
-  function reload() {
-    setVersion((current) => current + 1);
-  }
+  // Stable, so the screen can hand it to `useFocusEffect`.
+  const reload = useCallback(() => setVersion((current) => current + 1), []);
 
   useEffect(() => {
     let cancelled = false;
