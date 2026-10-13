@@ -1,6 +1,23 @@
 import { ScrollViewStyleReset } from 'expo-router/html';
 import type { PropsWithChildren } from 'react';
 
+import { PALETTES } from '@/theme/redesignTokens';
+import { PREFERENCE_KEY } from '@/theme/ThemeProvider';
+
+/**
+ * Paints the page background in the theme `ThemeProvider` will pick, before JS loads.
+ * The static HTML is rendered light, so without this a dark device shows a light frame
+ * first (#150). It reads the stored choice, and falls back to the OS scheme.
+ */
+const FIRST_PAINT_THEME = `(function () {
+  var stored = null;
+  try { stored = localStorage.getItem(${JSON.stringify(PREFERENCE_KEY)}); } catch (e) {}
+  var dark = stored === 'dark' || (stored !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches);
+  var style = document.documentElement.style;
+  style.backgroundColor = dark ? ${JSON.stringify(PALETTES.dark.bg)} : ${JSON.stringify(PALETTES.light.bg)};
+  style.colorScheme = dark ? 'dark' : 'light';
+})();`;
+
 /**
  * 정적 export 의 HTML 껍데기. expo 기본 껍데기를 통째로 대체하므로 charset·viewport·
  * `ScrollViewStyleReset` 을 여기서 다시 준다 — 빠뜨리면 standalone 창이 데스크톱 폭으로 뜬다.
@@ -18,6 +35,7 @@ export default function Root({ children }: PropsWithChildren) {
         <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
         <link rel="manifest" href="/manifest.webmanifest" />
         <ScrollViewStyleReset />
+        <script dangerouslySetInnerHTML={{ __html: FIRST_PAINT_THEME }} />
         <script
           dangerouslySetInnerHTML={{
             __html:
