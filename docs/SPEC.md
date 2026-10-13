@@ -1422,7 +1422,7 @@ File: `src/domain/**/*.test.ts`
 | `statusLight.test.ts` | Forming 🔴 at consecutive-miss threshold; **Established 🔴 on decline ONLY with latest week ≤ target (decline floor-guard); decline from a peak (all > target) → not 🔴**; 🟡 on one flag; **lifecycle-aware `personal_best` (Established = intensity best; Forming = consistency/streak best)**; `weeklyActualTotals` shape; stable on healthy |
 | `backfillPrompt.test.ts` | ADR-0002: prompt fires at the consecutive-`missed` threshold and at the 14-day rate threshold, and not below either; it lists only `missed` dates on/after `createdAt`; filling a listed date reclassifies it and re-runs the streak (never a new day-state row); marking not-done writes a skip with the chosen reason; **no diagnosis flag is ever emitted for `missed` days themselves** |
 | `lifecycle.test.ts` | Forming→Established at threshold; **demotion uses the partial-excluded rate incl. `missed` (`missed`→partial never demotes)**; Paused only on explicit action |
-| `heatLevel.test.ts` | binary done → full cell (4); non-exception skip → miss (filled); **`missed` → miss (outline), visually distinct from both `skip` and `pending`**; exception / `pending` → neutral; **partial → distinct sub-floor shade**; count above-floor ramp regression |
+| `heatLevel.test.ts` | `heatCells` emits one cell per date in the range, ascending; **an out-of-scope day (inside a `PauseInterval`) is a cell with no `state` (ADR-0003)**; every classified day carries the same `state` as `dayStates`; a range of `TUNING.heatmapDays` gives that many cells |
 
 All tests must pass with `npm test` (Expo / Jest preset). The loop proof
 (`src/__tests__/loop.test.ts`) additionally covers a binary habit end-to-end
