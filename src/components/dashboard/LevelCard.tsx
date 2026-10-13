@@ -15,31 +15,44 @@ export function LevelCard({ level, onPress }: { level: LevelCardView; onPress: (
   const { redesign } = useTheme();
 
   return (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityLabel={`${level.title} ${level.nextLine}`}
-      style={({ pressed }) => [styles.card, { backgroundColor: redesign.accent }, pressed && { opacity: 0.9 }]}
-    >
-      <View style={styles.spread}>
-        <View style={styles.head}>
-          <Text style={[TYPE.headline, styles.white]}>{level.title}</Text>
+    <View style={styles.card}>
+      <Pressable
+        onPress={onPress}
+        accessibilityRole="button"
+        accessibilityLabel={`${level.title} ${level.nextLine}`}
+        style={({ pressed }) => [
+          StyleSheet.absoluteFill,
+          styles.face,
+          { backgroundColor: redesign.accent },
+          pressed && { opacity: 0.9 },
+        ]}
+      />
+      <View style={styles.spread} pointerEvents="box-none">
+        <View style={styles.head} pointerEvents="box-none">
+          <Text pointerEvents="none" style={[TYPE.headline, styles.white]}>{level.title}</Text>
           <HelpTip text={TOOLTIPS.characterLevel} tone="onFill" />
         </View>
-        <ChevronRight size={24} strokeWidth={2} color="#fff" />
+        <View pointerEvents="none">
+          <ChevronRight size={24} strokeWidth={2} color="#fff" />
+        </View>
       </View>
-      {level.statLine != null && <Text style={[TYPE.bodyStrong, styles.white]}>{level.statLine}</Text>}
-      <View style={styles.track}>
-        <View style={[styles.fill, { width: level.barWidth }]} />
+      <View style={styles.body} pointerEvents="none">
+        {level.statLine != null && <Text style={[TYPE.bodyStrong, styles.white]}>{level.statLine}</Text>}
+        <View style={styles.track}>
+          <View style={[styles.fill, { width: level.barWidth }]} />
+        </View>
+        <Text style={[TYPE.label, styles.white]}>{level.nextLine}</Text>
       </View>
-      <Text style={[TYPE.label, styles.white]}>{level.nextLine}</Text>
-    </Pressable>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   // `.level` — `padding:16px 18px; gap:8px; --r-lg`.
-  card: { borderRadius: RADIUS.lg, paddingVertical: 16, paddingHorizontal: 18, gap: 8 },
+  card: { paddingVertical: 16, paddingHorizontal: 18, gap: 8 },
+  // The card's tap target sits behind its content, so the `?` is not nested inside it.
+  face: { borderRadius: RADIUS.lg },
+  body: { gap: 8 },
   spread: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
   head: { flexDirection: 'row', alignItems: 'center', gap: 2 },
   white: { color: '#fff' },
