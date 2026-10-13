@@ -337,7 +337,7 @@ describe('useJournal — empty', () => {
 });
 
 describe('useJournal — where a tap goes', () => {
-  it('a free log goes to Today, a note to its habit’s Habit Detail', async () => {
+  it('a free log goes to Today on its date, a note to its habit’s Habit Detail on its date', async () => {
     const repository = await seed({
       entries: [activity(PULL, YESTERDAY, 3, '07:10', '그립을 바꿔 봐야겠다.')],
       logs: [freeLog(YESTERDAY, 'idea', '점심 먹고 10분 걸었다.', '14:05')],
@@ -346,8 +346,8 @@ describe('useJournal — where a tap goes', () => {
     const result = await journal(repository);
 
     expect(result.current.groups[0].items.map((item) => [item.kind, item.href])).toEqual([
-      ['free', '/today'],
-      ['note', '/habit/pull'],
+      ['free', { pathname: '/today', params: { date: YESTERDAY } }],
+      ['note', { pathname: '/habit/[id]', params: { id: 'pull', date: YESTERDAY } }],
     ]);
   });
 });

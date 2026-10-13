@@ -45,7 +45,7 @@ export interface JournalFreeItem {
   text: string | null;
   /** The row's accessible name: its words in reading order. */
   accessibilityLabel: string;
-  /** Where a tap goes: Today (§6.4). */
+  /** Where a tap goes: Today for the log's date (§6.4). */
   href: Href;
 }
 
@@ -64,7 +64,7 @@ export interface JournalNoteItem {
   time: string;
   text: string;
   accessibilityLabel: string;
-  /** Where a tap goes: the habit's Habit Detail (§6.4). */
+  /** Where a tap goes: the habit's Habit Detail at the note's date (§6.4). */
   href: Href;
 }
 
@@ -220,7 +220,7 @@ export function useJournal({ today = localToday() }: { today?: string } = {}): J
                 accessibilityLabel: [labelOf(habit), stateChip?.label, time, text]
                   .filter((word) => word != null)
                   .join(' '),
-                href: `/habit/${habit.id}`,
+                href: { pathname: '/habit/[id]', params: { id: habit.id, date: entry.date } },
               },
             };
           });
@@ -242,7 +242,7 @@ export function useJournal({ today = localToday() }: { today?: string } = {}): J
             time,
             text,
             accessibilityLabel: [label, time, text].filter((word) => word != null).join(' '),
-            href: '/today',
+            href: { pathname: '/today', params: { date: log.date } },
           },
         };
       });
