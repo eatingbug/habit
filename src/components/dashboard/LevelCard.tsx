@@ -1,4 +1,5 @@
 import { ChevronRight } from 'lucide-react-native';
+import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { HelpTip } from '@/components/re';
@@ -21,20 +22,18 @@ const VISUAL_ONLY = {
  */
 export function LevelCard({ level, onPress }: { level: LevelCardView; onPress: () => void }) {
   const { redesign } = useTheme();
+  const [pressed, setPressed] = useState(false);
 
   return (
-    <View style={styles.card}>
+    <View style={[styles.card, pressed && { opacity: 0.9 }]}>
       {/* The card's tap target sits behind its content, so the `?` is not nested inside it. */}
       <Pressable
         onPress={onPress}
+        onPressIn={() => setPressed(true)}
+        onPressOut={() => setPressed(false)}
         accessibilityRole="button"
         accessibilityLabel={`${level.title} ${level.nextLine}`}
-        style={({ pressed }) => [
-          StyleSheet.absoluteFill,
-          styles.face,
-          { backgroundColor: redesign.accent },
-          pressed && { opacity: 0.9 },
-        ]}
+        style={[StyleSheet.absoluteFill, styles.face, { backgroundColor: redesign.accent }]}
       />
       <View style={styles.spread} pointerEvents="box-none">
         <View style={styles.head} pointerEvents="box-none">
