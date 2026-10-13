@@ -395,6 +395,54 @@ describe('useHabitDetail — the journal is a date walk (D7)', () => {
       expect(result.current.journalMoreLabel).toBeNull();
     });
   });
+
+  describe('opened at a date, from 글 모음 (§6.4)', () => {
+    async function detailAt(repository: HabitRepository, date?: string) {
+      const { result } = renderHook(
+        () => useHabitDetail('h1', { today: TODAY, now: stepClock(), date }),
+        { wrapper: wrapperFor(repository) },
+      );
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      return result;
+    }
+
+    it('with no date, focuses no day', async () => {
+      const result = await detailAt(await seed(habit()));
+
+      expect(result.current.journalFocus).toBeNull();
+      expect(result.current.journalShown).toHaveLength(3);
+    });
+
+    it('focuses a recent date inside the last 3 days', async () => {
+      const result = await detailAt(await seed(habit()), addDays(TODAY, -1));
+
+      expect(result.current.journalFocus).toBe(addDays(TODAY, -1));
+      expect(result.current.journalShown).toHaveLength(3);
+    });
+
+    it('shows the days down to an older date, and focuses it', async () => {
+      const date = addDays(TODAY, -5);
+      const result = await detailAt(await seed(habit(), [activity(date, 6)]), date);
+
+      expect(result.current.journalFocus).toBe(date);
+      expect(result.current.journalShown.map((day) => day.date)).toEqual([
+        TODAY,
+        addDays(TODAY, -1),
+        addDays(TODAY, -2),
+        addDays(TODAY, -3),
+        addDays(TODAY, -4),
+        date,
+      ]);
+      expect(result.current.journalMoreLabel).toBe('더 보기');
+    });
+
+    it('focuses no day on a date outside the journal', async () => {
+      const result = await detailAt(await seed(habit()), addDays(CREATED, -1));
+
+      expect(result.current.journalFocus).toBeNull();
+      expect(result.current.journalShown).toHaveLength(3);
+    });
+  });
 });
 
 /** An established count habit — the one whose hero is the weekly chart. */

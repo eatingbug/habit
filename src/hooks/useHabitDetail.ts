@@ -400,8 +400,13 @@ export interface HabitDetailView {
   design: DesignBox | null;
   /** The habit's **whole life**, one line per date, newest first. */
   journal: JournalDay[];
-  /** The days on screen: the last 3, or all after 더 보기 (§6.5 Journal). */
+  /**
+   * The days on screen: the last 3, or all after 더 보기 (§6.5 Journal). Opened at a
+   * date further back (§6.4), every day down to that date.
+   */
   journalShown: JournalDay[];
+  /** The date the screen was opened at (§6.4), when it is a journal day. Else `null`. */
+  journalFocus: string | null;
   /** "더 보기" while days are hidden, else `null`. */
   journalMoreLabel: string | null;
   showMoreJournal(): void;
@@ -687,7 +692,8 @@ export function useHabitDetail(
   {
     today = localToday(),
     now = () => new Date(),
-  }: { today?: string; now?: () => Date } = {},
+    date,
+  }: { today?: string; now?: () => Date; date?: string } = {},
 ): HabitDetailView {
   const repository = useRepository();
   const { failure, report, clear, attempt } = useFailure();
@@ -747,7 +753,10 @@ export function useHabitDetail(
           .map((day) => journalDay(habit, day, today))
           // Newest first — the board reads downward from the most recent day.
           .reverse();
-  const journalShown = journalOpen ? journal : journal.slice(0, JOURNAL_RECENT_DAYS);
+  const focusIndex = date == null ? -1 : journal.findIndex((day) => day.date === date);
+  const journalShown = journalOpen
+    ? journal
+    : journal.slice(0, Math.max(JOURNAL_RECENT_DAYS, focusIndex + 1));
 
   const streak = habit == null ? 0 : computeStreak(entries, habit, today);
   const longest = habit == null ? 0 : longestStreak(entries, habit);
@@ -1030,6 +1039,7 @@ export function useHabitDetail(
     design,
     journal,
     journalShown,
+    journalFocus: focusIndex < 0 ? null : journal[focusIndex].date,
     journalMoreLabel: journalShown.length < journal.length ? DETAIL_COPY.more : null,
     showMoreJournal: () => setJournalOpen(true),
     backfillLabel: habit == null ? null : DETAIL_COPY.backfill,

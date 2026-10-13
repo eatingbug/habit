@@ -56,13 +56,27 @@ import { useTheme } from '@/theme/ThemeProvider';
  */
 
 export default function HabitDetail() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  // `date`: opened from 글 모음 (§6.4), the date a note was written on.
+  const { id, date } = useLocalSearchParams<{ id: string; date?: string }>();
   const { redesign } = useTheme();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const view = useHabitDetail(id);
+  const view = useHabitDetail(id, { date });
   const { reload } = view;
   const [menuOpen, setMenuOpen] = useState(false);
+  /**
+   * Opened at a date (§6.4): scroll once to that journal day. Its `y` is inside the
+   * journal card, so the card's own `y` is added; the two layouts land in either order.
+   */
+  const scroll = useRef<ScrollView>(null);
+  const focusAt = useRef<{ journal?: number; day?: number; done?: boolean }>({});
+  function scrollToFocus(at: { journal?: number; day?: number }) {
+    const next = { ...focusAt.current, ...at };
+    focusAt.current = next;
+    if (next.done || next.journal == null || next.day == null) return;
+    next.done = true;
+    scroll.current?.scrollTo({ y: next.journal + next.day, animated: false });
+  }
 
   // Opened straight from the URL (a reload), there is nothing to go back to.
   const back = () => (router.canGoBack() ? router.back() : router.replace('/'));
@@ -115,7 +129,7 @@ export default function HabitDetail() {
 
   return (
     <View style={[styles.fill, { backgroundColor: redesign.bg }]}>
-      <ScrollView style={styles.fill} contentContainerStyle={[styles.page, pageTop]}>
+      <ScrollView ref={scroll} style={styles.fill} contentContainerStyle={[styles.page, pageTop]}>
         {topBar}
         <View style={styles.row}>
           <View style={[styles.icon, { backgroundColor: redesign.accentTint }]}>
@@ -154,24 +168,28 @@ export default function HabitDetail() {
 
         {view.designCard != null && <DesignCardView card={view.designCard} onEdit={view.openDesign} />}
 
-        <Card>
-          <Text style={[TYPE.title, { color: redesign.text }]}>{DETAIL_COPY.journal}</Text>
-          {view.journalShown.map((day, index) => (
-            <JournalDayRow
-              key={day.date}
-              day={day}
-              last={index === view.journalShown.length - 1}
-              onOpenDay={() => view.openRecord(day.date)}
-              onOpenRow={view.openEntry}
-            />
-          ))}
-          {view.journalMoreLabel != null && (
-            <Button label={view.journalMoreLabel} variant="soft" block onPress={view.showMoreJournal} style={styles.more} />
-          )}
-          {view.backfillLabel != null && (
-            <Button label={view.backfillLabel} variant="dash" block onPress={view.openPastDays} style={styles.more} />
-          )}
-        </Card>
+        <View onLayout={(event) => scrollToFocus({ journal: event.nativeEvent.layout.y })}>
+          <Card>
+            <Text style={[TYPE.title, { color: redesign.text }]}>{DETAIL_COPY.journal}</Text>
+            {view.journalShown.map((day, index) => (
+              <JournalDayRow
+                key={day.date}
+                day={day}
+                last={index === view.journalShown.length - 1}
+                focused={day.date === view.journalFocus}
+                onFocusedLayout={(y) => scrollToFocus({ day: y })}
+                onOpenDay={() => view.openRecord(day.date)}
+                onOpenRow={view.openEntry}
+              />
+            ))}
+            {view.journalMoreLabel != null && (
+              <Button label={view.journalMoreLabel} variant="soft" block onPress={view.showMoreJournal} style={styles.more} />
+            )}
+            {view.backfillLabel != null && (
+              <Button label={view.backfillLabel} variant="dash" block onPress={view.openPastDays} style={styles.more} />
+            )}
+          </Card>
+        </View>
       </ScrollView>
 
       <LogOverlay
@@ -317,17 +335,29 @@ function DesignRow({
 function JournalDayRow({
   day,
   last,
+  focused,
+  onFocusedLayout,
   onOpenDay,
   onOpenRow,
 }: {
   day: JournalDay;
   last: boolean;
+  /** The day the screen was opened at (§6.4): tinted, and its layout reported. */
+  focused: boolean;
+  onFocusedLayout: (y: number) => void;
   onOpenDay: () => void;
   onOpenRow: (entryId: string) => void;
 }) {
   const { redesign } = useTheme();
   return (
-    <View style={[styles.jday, !last && { borderBottomWidth: 1, borderBottomColor: redesign.border }]}>
+    <View
+      onLayout={focused ? (event) => onFocusedLayout(event.nativeEvent.layout.y) : undefined}
+      style={[
+        styles.jday,
+        !last && { borderBottomWidth: 1, borderBottomColor: redesign.border },
+        focused && [styles.focused, { backgroundColor: redesign.accentTint }],
+      ]}
+    >
       <Pressable
         onPress={onOpenDay}
         disabled={!day.backfillable}
@@ -377,6 +407,8 @@ const styles = StyleSheet.create({
   dkey: { width: 112, flexDirection: 'row', alignItems: 'center' },
   identity: { marginTop: 8 },
   jday: { paddingVertical: 12 },
+  // The tint runs to the card's edge: `Card` pads 16.
+  focused: { marginHorizontal: -16, paddingHorizontal: 16 },
   jhead: {
     minHeight: TAP_TARGET,
     flexDirection: 'row',
