@@ -6,15 +6,17 @@ import {
   recordSumLabel,
   skipSheetTitle,
 } from '@/config/copy';
-import { localClock } from '@/lib/device';
-import type { Habit, SkipReason } from '@/models';
+import { localClock, restampedAtLocalTime } from '@/lib/device';
+import type { Habit, HabitEntry, SkipReason } from '@/models';
 
 import type { LogAffordances, QuickLog } from './useQuickLog';
+import type { EntryDraft } from './useToday';
 
 /**
  * The record and skip reason sheets' views and writes, shared by every hook that opens
- * them — Today and the Dashboard (SPEC §6.2 "One log form", §6.3 B1). One builder, so
- * the two sheets cannot drift into two wordings of the same day.
+ * them — Today, the Dashboard and Habit Detail (SPEC §6.2 "One log form", §6.3 B1).
+ * One builder, so the sheets cannot drift into two wordings of the same day. The edit
+ * sheet's row assembly (`draftedEntry`) is shared here too.
  */
 
 /** "📖 독서" — a habit's icon and name, as sheets and rows head with it. */
@@ -134,4 +136,31 @@ export function skipFromSheet(
   date: string | undefined,
 ): Promise<void> {
   return quick.logSkip(sheet.habit, reason, { note, date });
+}
+
+/**
+ * An edit sheet's row as the draft would store it, or `null` when the draft cannot be
+ * stored: no reason on a skip, no positive amount on a count activity, or a time that
+ * is not a time of day. §3.3's discriminator moves both fields together, and the stamp
+ * is the original unless the time fields read another clock (B3, #127 decision: an
+ * edit keeps its time). Shared by Today's and Habit Detail's edit sheets.
+ */
+export function draftedEntry(entry: HabitEntry, habit: Habit, draft: EntryDraft): HabitEntry | null {
+  const amount = Number(draft.amount);
+  const isCount = habit.kind === 'count';
+  if (draft.kind === 'skip' && draft.reason == null) return null;
+  if (draft.kind === 'activity' && isCount && !(draft.amount.trim().length > 0 && amount > 0)) return null;
+  const timestamp =
+    draft.time == null
+      ? entry.timestamp
+      : restampedAtLocalTime(entry.timestamp, entry.date, draft.time.hour, draft.time.minute);
+  if (timestamp == null) return null;
+  const note = draft.note.trim();
+  return {
+    ...entry,
+    timestamp,
+    actual: draft.kind === 'skip' ? 0 : isCount ? amount : 1,
+    skipReason: draft.kind === 'skip' ? draft.reason : undefined,
+    note: note.length > 0 ? note : undefined,
+  };
 }

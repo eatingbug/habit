@@ -41,6 +41,7 @@ import type { FreeLog, Habit, HabitEntry, LogType, SkipReason } from '@/models';
 
 import { useFailure, type Failure } from './failure';
 import {
+  draftedEntry,
   labelOf,
   recordFromSheet as writeRecord,
   recordSheetView,
@@ -298,33 +299,6 @@ export type TodayFeedItem = TodayHabitFeedItem | TodayFreeFeedItem;
  */
 export function feedItemId(item: TodayFeedItem): string {
   return item.kind === 'free' ? item.log.id : item.entry.id;
-}
-
-/**
- * An edit sheet's row as the draft would store it, or `null` when the draft cannot be
- * stored: no reason on a skip, no positive amount on a count activity, or a time that
- * is not a time of day. §3.3's discriminator moves both fields together, and the stamp
- * is the original unless the time fields read another clock (B3, #127 decision: an
- * edit keeps its time). Shared by Today's and Habit Detail's edit sheets.
- */
-export function draftedEntry(entry: HabitEntry, habit: Habit, draft: EntryDraft): HabitEntry | null {
-  const amount = Number(draft.amount);
-  const isCount = habit.kind === 'count';
-  if (draft.kind === 'skip' && draft.reason == null) return null;
-  if (draft.kind === 'activity' && isCount && !(draft.amount.trim().length > 0 && amount > 0)) return null;
-  const timestamp =
-    draft.time == null
-      ? entry.timestamp
-      : restampedAtLocalTime(entry.timestamp, entry.date, draft.time.hour, draft.time.minute);
-  if (timestamp == null) return null;
-  const note = draft.note.trim();
-  return {
-    ...entry,
-    timestamp,
-    actual: draft.kind === 'skip' ? 0 : isCount ? amount : 1,
-    skipReason: draft.kind === 'skip' ? draft.reason : undefined,
-    note: note.length > 0 ? note : undefined,
-  };
 }
 
 /**

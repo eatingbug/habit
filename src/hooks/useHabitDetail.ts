@@ -51,6 +51,7 @@ import type { Palette } from '@/theme/redesignTokens';
 import { useFailure, type Failure } from './failure';
 import { logAffordances, useQuickLog, type QuickLogToast, type StreakCelebration } from './useQuickLog';
 import {
+  draftedEntry,
   labelOf,
   recordFromSheet as writeRecord,
   recordSheetView,
@@ -59,7 +60,7 @@ import {
   type RecordSheetView,
   type SkipSheetView,
 } from './recordSheet';
-import { draftedEntry, type EditEntrySheetView, type EntryDraft } from './useToday';
+import type { EditEntrySheetView, EntryDraft } from './useToday';
 
 /**
  * The Habit Detail screen's data path — SPEC §6.5, the `ReDetail*` artboards (#128).
