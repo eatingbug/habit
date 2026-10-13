@@ -75,7 +75,7 @@ export default function Journal() {
             label={JOURNAL_COPY.emptyAction}
             icon={Pencil}
             variant="pri"
-            onPress={() => router.push('/today')}
+            onPress={() => router.push(view.emptyActionHref)}
           />
         </View>
       )}

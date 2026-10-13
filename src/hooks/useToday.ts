@@ -1,3 +1,4 @@
+import type { Href } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 
 import {
@@ -380,6 +381,12 @@ export interface DateControl {
    */
   earliest: string;
 }
+
+/**
+ * Today on today: the Today route with no `date` param. Every entry that names no date
+ * goes here, so a date left by 글 모음 (§6.4) does not stick to the tab.
+ */
+export const TODAY_HREF = { pathname: '/today', params: {} } as const satisfies Href;
 
 export interface TodayView {
   /**

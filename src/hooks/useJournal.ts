@@ -17,6 +17,7 @@ import { localClock, localToday } from '@/lib/device';
 import type { DayState } from '@/models';
 
 import { useFailure, type Failure } from './failure';
+import { TODAY_HREF } from './useToday';
 import { labelOf } from './recordSheet';
 
 /**
@@ -134,6 +135,8 @@ export interface JournalView {
   groups: JournalGroup[];
   /** No free log and no note at all: the empty screen (`JOURNAL_COPY.empty*`). */
   empty: boolean;
+  /** Where the empty screen's 끄적이기 goes: Today on today, with no date. */
+  emptyActionHref: Href;
   /** Rows exist, but none under the selected filter (`JOURNAL_COPY.noMatch`). */
   noMatch: boolean;
   loading: boolean;
@@ -317,6 +320,7 @@ export function useJournal({ today = localToday() }: { today?: string } = {}): J
     select: setSelected,
     groups,
     empty,
+    emptyActionHref: TODAY_HREF,
     noMatch: loaded.rows.length > 0 && shown.length === 0,
     loading,
     failure,

@@ -323,6 +323,12 @@ describe('useJournal — empty', () => {
     expect(result.current.chips).toEqual([]);
   });
 
+  it('sends the empty screen’s 끄적이기 to Today with no date', async () => {
+    const result = await journal(await seed({}));
+
+    expect(result.current.emptyActionHref).toEqual({ pathname: '/today', params: {} });
+  });
+
   it('under a filter with nothing in it, is not empty but has no match', async () => {
     const result = await journal(
       await seed({ entries: [activity(READ, TODAY, 10, '08:00', '술술 읽혔다.')] }),
