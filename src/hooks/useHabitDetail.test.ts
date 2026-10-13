@@ -1060,7 +1060,7 @@ describe('useHabitDetail — the design box (D13, AC 8)', () => {
         floor: '최소량은 1 이상의 숫자로 적어 주세요.',
       });
       expect(await result.current.saveDesign({ target: 5 })).toEqual({
-        target: '목표는 최소량보다 커야 합니다.',
+        target: '목표는 최소량보다 커야 해요.',
       });
       expect(await result.current.saveDesign({ floorUnit: '  ' })).toEqual({
         floorUnit: '단위를 적어 주세요 (예: 회, 쪽, 분).',
