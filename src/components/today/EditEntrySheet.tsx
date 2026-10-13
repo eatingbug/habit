@@ -26,6 +26,11 @@ export interface EditEntrySheetProps {
   onSave: (draft: EntryDraft) => Promise<void>;
   /** 삭제 (after its confirm, if any) — the hook deletes the row and closes the sheet. */
   onDelete: () => Promise<void>;
+  /**
+   * The confirm's lines, when the caller words them itself. Habit Detail passes them
+   * because its rows sit on past days, which the lines must name (`useHabitDetail`).
+   */
+  deleteLines?: string[] | null;
 }
 
 /**
@@ -34,7 +39,7 @@ export interface EditEntrySheetProps {
  * hook builds and checks the row; this holds only what is being typed. 삭제 is
  * immediate unless the sheet carries a `deleteEffect`, which is confirmed first (D2).
  */
-export function EditEntrySheet({ sheet, onClose, edited, onSave, onDelete }: EditEntrySheetProps) {
+export function EditEntrySheet({ sheet, onClose, edited, onSave, onDelete, deleteLines }: EditEntrySheetProps) {
   const { redesign } = useTheme();
   const { entry, habit } = sheet.item;
 
@@ -145,12 +150,15 @@ export function EditEntrySheet({ sheet, onClose, edited, onSave, onDelete }: Edi
         <>
           {effect != null && (
             <Banner
-              title={deleteConfirmLines({
-                habitName: effect.habit.name,
-                emptiesDay: effect.emptiesDay,
-                carriesMiss: effect.carriesMiss,
-                stateAfterLabel: effect.stateAfter == null ? undefined : DAY_STATE_WORDS[effect.stateAfter],
-              }).join(' ')}
+              title={(
+                deleteLines ??
+                deleteConfirmLines({
+                  habitName: effect.habit.name,
+                  emptiesDay: effect.emptiesDay,
+                  carriesMiss: effect.carriesMiss,
+                  stateAfterLabel: effect.stateAfter == null ? undefined : DAY_STATE_WORDS[effect.stateAfter],
+                })
+              ).join(' ')}
             />
           )}
           <Button
