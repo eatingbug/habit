@@ -33,8 +33,11 @@ import { Footnote } from './Typography';
 /** 세션을 확인하는 동안. 빈 화면이 아니어야 한다는 것이 AC 2 다. */
 export function SessionChecking() {
   const { colors } = useTheme();
+  // On web this screen is the whole static HTML, rendered light. It leaves the background
+  // to the page, which `app/+html.tsx` paints in the right theme before JS loads (#150).
+  const backgroundColor = Platform.OS === 'web' ? undefined : colors.surface;
   return (
-    <View style={[styles.screen, { backgroundColor: colors.surface }]}>
+    <View style={[styles.screen, { backgroundColor }]}>
       <Text style={[styles.notice, { color: colors.muted }]}>{SESSION_CHECKING_NOTE}</Text>
     </View>
   );
