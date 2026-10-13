@@ -63,7 +63,7 @@ const BADGE_TONE: Record<DayState, ChipTone> = {
   partial: 'done',
   skip: 'neutral',
   missed: 'crit',
-  pending: 'neutral',
+  pending: 'quiet',
 };
 
 export default function HabitDetail() {

@@ -4,10 +4,20 @@ import { RADIUS, TAP_TARGET, TYPE, type Palette } from '@/theme/redesignTokens';
 import { useTheme } from '@/theme/ThemeProvider';
 
 /**
- * `count` is `.chip.count` (the Today count chip: `surface`, 17px). The others are a
- * colour's `tint` with its `ink` (§6.0: only `ink` goes on a `tint`).
+ * `count` is `.chip.count` (the Today count chip: `surface`, 17px). `neutral` is `inset`
+ * and `quiet` is `surface2`, both with `muted` ink (`.st.skip` and `.st.pending`). The
+ * others are a colour's `tint` with its `ink` (§6.0: only `ink` goes on a `tint`).
  */
-export type ChipTone = 'count' | 'neutral' | 'accent' | 'done' | 'warn' | 'crit' | 'streak' | 'stat';
+export type ChipTone =
+  | 'count'
+  | 'neutral'
+  | 'quiet'
+  | 'accent'
+  | 'done'
+  | 'warn'
+  | 'crit'
+  | 'streak'
+  | 'stat';
 
 export interface ChipProps {
   label: string;
@@ -19,6 +29,8 @@ function toneOf(tone: Exclude<ChipTone, 'count'>, p: Palette): { bg: string; ink
   switch (tone) {
     case 'neutral':
       return { bg: p.inset, ink: p.muted };
+    case 'quiet':
+      return { bg: p.surface2, ink: p.muted };
     case 'accent':
       return { bg: p.accentTint, ink: p.accentInk };
     case 'done':
