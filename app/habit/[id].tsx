@@ -168,14 +168,8 @@ export default function HabitDetail() {
           {view.journalMoreLabel != null && (
             <Button label={view.journalMoreLabel} variant="soft" block onPress={view.showMoreJournal} style={styles.more} />
           )}
-          {view.backfillLabel != null && view.nextBackfillDate != null && (
-            <Button
-              label={view.backfillLabel}
-              variant="dash"
-              block
-              onPress={() => view.openRecord(view.nextBackfillDate!)}
-              style={styles.more}
-            />
+          {view.backfillLabel != null && (
+            <Button label={view.backfillLabel} variant="dash" block onPress={view.openPastDays} style={styles.more} />
           )}
         </Card>
       </ScrollView>
@@ -228,6 +222,23 @@ export default function HabitDetail() {
         />
       )}
       {sheet?.kind === 'design' && <DesignSheet sheet={sheet} onClose={view.closeSheet} onSave={view.saveDesign} />}
+      {sheet?.kind === 'pastDays' && (
+        <Sheet visible onClose={view.closeSheet} eyebrow={sheet.eyebrow} title={sheet.title}>
+          {sheet.empty != null && <Text style={[TYPE.body, { color: redesign.muted }]}>{sheet.empty}</Text>}
+          {sheet.days.map((day) => (
+            <Pressable
+              key={day.date}
+              onPress={() => view.openRecord(day.date)}
+              accessibilityRole="button"
+              accessibilityLabel={`${day.title} ${day.badge}`}
+              style={({ pressed }) => [styles.jhead, pressed && { opacity: 0.6 }]}
+            >
+              <Text style={[TYPE.bodyStrong, { color: redesign.text }]}>{day.title}</Text>
+              <Chip label={day.badge} tone={day.tone} />
+            </Pressable>
+          ))}
+        </Sheet>
+      )}
       {sheet?.kind === 'confirm' && (
         <Sheet visible onClose={view.closeSheet} eyebrow={sheet.eyebrow} title={sheet.title}>
           <Text style={[TYPE.body, { color: redesign.text }]}>{sheet.body}</Text>

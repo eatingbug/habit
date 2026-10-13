@@ -1116,6 +1116,9 @@ export const DETAIL_COPY = {
   /** The journal card. */
   journal: '저널',
   backfill: '+ 지난 날 기록 추가',
+  /** The 지난 날 기록 추가 picker (#128 decision; no artboard draws it). */
+  pastDaysTitle: '지난 날 고르기',
+  pastDaysEmpty: '3주보다 오래된 날이 아직 없어요.',
   /** The ⋯ menu. 다시 시작 and 다시 꺼내기 are `LIFECYCLE_LABELS`'. */
   menuPause: `⏸ ${LIFECYCLE_LABELS.pause}`,
   menuArchive: `🗄 ${LIFECYCLE_LABELS.archive}`,

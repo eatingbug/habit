@@ -35,7 +35,7 @@ import { TUNING } from '@/config/tuning';
 import { useRepository } from '@/context/RepositoryContext';
 import { isBackfillableDate, isBackfilledRow } from '@/domain/backfill';
 import { dayStates, isFloorMet, type ClassifiedDay } from '@/domain/classify';
-import { addDays, dateOf, daysBetween, weekdayOf, windowEndingAt } from '@/domain/dates';
+import { addDays, compareDates, dateOf, daysBetween, weekdayOf, windowEndingAt } from '@/domain/dates';
 import { deleteOutcome, type DeleteOutcome } from '@/domain/deleteEffect';
 import { heatCells } from '@/domain/heatLevel';
 import { archiveHabit, pauseHabit, resumeHabit } from '@/domain/lifecycle';
@@ -330,6 +330,22 @@ export interface DetailSkipSheet extends SkipSheetView {
   date: string;
 }
 
+/**
+ * The 지난 날 기록 추가 picker: the days older than the heatmap, from today−21 back to
+ * the habit's birth, newest first (#128 decision). Picking one opens its record sheet.
+ */
+export interface DetailPastDaysSheet {
+  kind: 'pastDays';
+  /** "💪 턱걸이". */
+  eyebrow: string;
+  /** "지난 날 고르기". */
+  title: string;
+  /** Journal days, so each reads as it does in the journal. Empty for a young habit. */
+  days: JournalDay[];
+  /** "3주보다 오래된 날이 아직 없어요." when `days` is empty, else `null`. */
+  empty: string | null;
+}
+
 /** The 잠깐 쉬기 or 보관하기 confirm sheet (`ReDetailPause`). */
 export interface DetailConfirmSheet {
   kind: 'confirm';
@@ -358,7 +374,8 @@ export type DetailSheet =
   | DetailSkipSheet
   | EditEntrySheetView
   | DetailConfirmSheet
-  | DetailDesignSheet;
+  | DetailDesignSheet
+  | DetailPastDaysSheet;
 
 export interface HabitDetailView {
   loading: boolean;
@@ -388,10 +405,10 @@ export interface HabitDetailView {
   /** "더 보기" while days are hidden, else `null`. */
   journalMoreLabel: string | null;
   showMoreJournal(): void;
-  /** The most recent `missed` day, which `+ 지난 날 기록 추가` fills, or `null`. */
-  nextBackfillDate: string | null;
-  /** "+ 지난 날 기록 추가" when there is a gap to fill, else `null`. */
+  /** "+ 지난 날 기록 추가" once the habit is loaded, else `null`. It opens the picker. */
   backfillLabel: string | null;
+  /** The picker of days older than the heatmap (`DetailPastDaysSheet`). */
+  openPastDays(): void;
   /** The ⋯ menu: 회고하기 first in every state, then the lifecycle items. */
   menu: DetailMenuItem[];
   /**
@@ -662,7 +679,8 @@ type SheetIntent =
   | { kind: 'record' | 'skip'; date: string }
   | { kind: 'entry'; id: string }
   | { kind: 'confirm'; action: 'pause' | 'archive' }
-  | { kind: 'design' };
+  | { kind: 'design' }
+  | { kind: 'pastDays' };
 
 export function useHabitDetail(
   habitId: string,
@@ -730,9 +748,6 @@ export function useHabitDetail(
           // Newest first — the board reads downward from the most recent day.
           .reverse();
   const journalShown = journalOpen ? journal : journal.slice(0, JOURNAL_RECENT_DAYS);
-  // The journal is newest-first and covers the whole history, so the first `missed`
-  // day in it is the most recent one.
-  const nextBackfillDate = journal.find((day) => day.state === 'missed')?.date ?? null;
 
   const streak = habit == null ? 0 : computeStreak(entries, habit, today);
   const longest = habit == null ? 0 : longestStreak(entries, habit);
@@ -847,6 +862,18 @@ export function useHabitDetail(
           confirmLabel: LIFECYCLE_LABELS[open.action],
           keepLabel: TODAY_COPY.keep,
         };
+      case 'pastDays': {
+        // Older than the heatmap's first cell, inside the §6.3 backfill range.
+        const oldest = heatWindow[0];
+        const days = journal.filter((day) => compareDates(day.date, oldest) < 0 && day.backfillable);
+        return {
+          kind: 'pastDays',
+          eyebrow: labelOf(habit),
+          title: DETAIL_COPY.pastDaysTitle,
+          days,
+          empty: days.length === 0 ? DETAIL_COPY.pastDaysEmpty : null,
+        };
+      }
       case 'design':
         return design == null
           ? null
@@ -1005,8 +1032,8 @@ export function useHabitDetail(
     journalShown,
     journalMoreLabel: journalShown.length < journal.length ? DETAIL_COPY.more : null,
     showMoreJournal: () => setJournalOpen(true),
-    nextBackfillDate,
-    backfillLabel: nextBackfillDate == null ? null : DETAIL_COPY.backfill,
+    backfillLabel: habit == null ? null : DETAIL_COPY.backfill,
+    openPastDays: () => setIntent({ kind: 'pastDays' }),
     menu: habit == null ? [] : menuOf(habit),
     pickMenu,
     sheet,

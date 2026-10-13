@@ -697,36 +697,6 @@ describe('useHabitDetail — the record sheet for a date (D10, §6.5)', () => {
     expect(dayOf(result.current, past).rows).toEqual([]);
   });
 
-  it('points 지난 날 기록 추가 at the most recent gap, and it is fillable', async () => {
-    const filled = [1, 3, 4, 5, 7, 8].map((back) => activity(addDays(TODAY, -back), 6));
-    const born = habit({ createdAt: `${addDays(TODAY, -8)}T00:00:00.000Z` });
-    const result = await detail(await seed(born, filled));
-
-    expect(result.current.nextBackfillDate).toBe(addDays(TODAY, -2));
-    expect(result.current.backfillLabel).toBe(DETAIL_COPY.backfill);
-    expect(dayOf(result.current, addDays(TODAY, -2)).backfillable).toBe(true);
-  });
-
-  it('offers no 지난 날 기록 추가 when there is no gap at all', async () => {
-    const result = await detail(await seed(habit({ createdAt: `${TODAY}T00:00:00.000Z` })));
-
-    expect(result.current.nextBackfillDate).toBeNull();
-    expect(result.current.backfillLabel).toBeNull();
-  });
-
-  it('drops the button’s date once that gap is filled', async () => {
-    const gap = addDays(TODAY, -2);
-    const born = habit({ createdAt: `${gap}T00:00:00.000Z` });
-    const result = await detail(await seed(born, [activity(addDays(TODAY, -1), 6)]));
-
-    act(() => result.current.openRecord(gap));
-    await act(async () => {
-      await result.current.recordFromSheet(5, '');
-    });
-
-    expect(result.current.nextBackfillDate).toBeNull();
-  });
-
   it('withholds the skip link on a date an activity row already covers (§4.1)', async () => {
     const covered = addDays(TODAY, -4);
     const result = await detail(await seed(habit(), [activity(covered, 6)]));
@@ -833,6 +803,79 @@ describe('useHabitDetail — the record sheet for a date (D10, §6.5)', () => {
     const day = dayOf(result.current, past);
     expect(day.state).toBe('done');
     expect(day.rows[0].entry.actual).toBe(1);
+  });
+});
+
+/** The open past-day picker, or a failure when another sheet (or none) is open. */
+function pastDays(view: HabitDetailView) {
+  if (view.sheet?.kind !== 'pastDays') throw new Error(`no past-day picker: ${view.sheet?.kind}`);
+  return view.sheet;
+}
+
+describe('useHabitDetail — 지난 날 기록 추가, the date picker (§6.5 Heatmap)', () => {
+  it('always offers the button once the habit is loaded', async () => {
+    const young = await detail(await seed(habit({ createdAt: `${TODAY}T00:00:00.000Z` })));
+    expect(young.current.backfillLabel).toBe('+ 지난 날 기록 추가');
+
+    const none = await detail(await seed(habit()), 'nobody');
+    expect(none.current.backfillLabel).toBeNull();
+  });
+
+  it('lists the days older than the heatmap, newest first, down to the habit’s birth', async () => {
+    // Born 40 days ago: the heatmap holds today−20 … today, the picker today−21 … birth.
+    const result = await detail(await seed(habit(), [activity(addDays(TODAY, -21), 6)]));
+
+    act(() => result.current.openPastDays());
+    const dates = pastDays(result.current).days.map((day) => day.date);
+
+    expect(dates[0]).toBe(addDays(TODAY, -21));
+    expect(dates[dates.length - 1]).toBe(CREATED);
+    expect(dates).toHaveLength(20);
+    expect(dates).not.toContain(addDays(TODAY, -20));
+    expect(dates).not.toContain(addDays(CREATED, -1));
+  });
+
+  it('words each day as the journal does, with its state', async () => {
+    const result = await detail(await seed(habit(), [activity(addDays(TODAY, -21), 6)]));
+
+    act(() => result.current.openPastDays());
+
+    expect(pastDays(result.current)).toMatchObject({
+      eyebrow: '💪 턱걸이',
+      title: '지난 날 고르기',
+      empty: null,
+    });
+    expect(pastDays(result.current).days[0]).toMatchObject({
+      title: '3월 8일',
+      badge: '✓ 했어요',
+      tone: 'done',
+    });
+    expect(pastDays(result.current).days[1].badge).toBe('! 기록 없음');
+  });
+
+  it('says there is no older day yet for a habit younger than the heatmap', async () => {
+    const result = await detail(
+      await seed(habit({ createdAt: `${addDays(TODAY, -10)}T00:00:00.000Z` })),
+    );
+
+    act(() => result.current.openPastDays());
+
+    expect(pastDays(result.current).days).toEqual([]);
+    expect(pastDays(result.current).empty).toBe('3주보다 오래된 날이 아직 없어요.');
+  });
+
+  it('opens the record sheet for the picked date, and only 기록하기 writes', async () => {
+    const old = addDays(TODAY, -30);
+    const result = await detail(await seed(habit()));
+
+    act(() => result.current.openPastDays());
+    act(() => result.current.openRecord(old));
+    expect(recordSheet(result.current).date).toBe(old);
+
+    await act(async () => {
+      await result.current.recordFromSheet(5, '');
+    });
+    expect(dayOf(result.current, old).state).toBe('done');
   });
 });
 
