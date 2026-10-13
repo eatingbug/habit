@@ -4,12 +4,10 @@ import { Platform, StyleSheet, Text, View } from 'react-native';
 import { SESSION_CHECKING_NOTE, SIGN_IN_FAILED_NOTE, signInCopy } from '@/config/copy';
 import { useSession } from '@/context/SessionContext';
 import { signInErrorFromUrl } from '@/lib/signInRedirect';
+import { TYPE } from '@/theme/redesignTokens';
 import { useTheme } from '@/theme/ThemeProvider';
-import { FONT_SIZE, SPACE } from '@/theme/tokens';
 
-import { Banner } from './Banner';
-import { Button } from './Button';
-import { Footnote } from './Typography';
+import { Banner, Button } from './re';
 
 /**
  * 로그인 게이트가 그리는 두 화면. `app/_layout.tsx` 의 `Gate` 만이 이것들을 렌더한다.
@@ -22,8 +20,8 @@ import { Footnote } from './Typography';
  * 게이트가 막는 것은 렌더이지 주소가 아니기 때문이다. `app/` 밖으로 나오면 라우트가 될
  * 방법 자체가 없다.
  *
- * `src/components/index.ts` 의 배럴에는 넣지 않는다: 그 배럴은 `design/_tokens.css` 의
- * 컴포넌트 클래스 하나당 하나씩이라고 자기 docblock 에 적어 뒀고, 이것은 화면이다.
+ * `src/components/re/index.ts` 의 배럴에는 넣지 않는다: 그 배럴은 공통 컴포넌트만 모으고,
+ * 이것은 화면이다.
  *
  * 문구도 "로그인이 가능한 플랫폼인가" 라는 판단도 여기 없다. 둘 다 `src/config/copy.ts`
  * 의 `signInCopy` 에 있고, 그래야 테스트가 닿는다 (`jest.config.js` 의 `testMatch` 는
@@ -32,13 +30,13 @@ import { Footnote } from './Typography';
 
 /** 세션을 확인하는 동안. 빈 화면이 아니어야 한다는 것이 AC 2 다. */
 export function SessionChecking() {
-  const { colors } = useTheme();
+  const { redesign } = useTheme();
   // On web this screen is the whole static HTML, rendered light. It leaves the background
   // to the page, which `app/+html.tsx` paints in the right theme before JS loads (#150).
-  const backgroundColor = Platform.OS === 'web' ? undefined : colors.surface;
+  const backgroundColor = Platform.OS === 'web' ? undefined : redesign.surface;
   return (
     <View style={[styles.screen, { backgroundColor }]}>
-      <Text style={[styles.notice, { color: colors.muted }]}>{SESSION_CHECKING_NOTE}</Text>
+      <Text style={[TYPE.body, styles.center, { color: redesign.muted }]}>{SESSION_CHECKING_NOTE}</Text>
     </View>
   );
 }
@@ -51,17 +49,17 @@ export function SessionChecking() {
  * 화면을 본다. 실제로 그렇게 됐었다.
  */
 export function Misconfigured({ message }: { message: string }) {
-  const { colors } = useTheme();
+  const { redesign } = useTheme();
   return (
-    <View style={[styles.screen, { backgroundColor: colors.surface }]}>
-      <Text style={[styles.title, { color: colors.text }]}>habiquest</Text>
-      <Banner>{message}</Banner>
+    <View style={[styles.screen, { backgroundColor: redesign.surface }]}>
+      <Text style={[TYPE.display, { color: redesign.text }]}>habiquest</Text>
+      <Banner title={message} />
     </View>
   );
 }
 
 export function SignIn() {
-  const { colors } = useTheme();
+  const { redesign } = useTheme();
   const { signIn } = useSession();
   const copy = signInCopy(Platform.OS);
   /**
@@ -93,27 +91,25 @@ export function SignIn() {
   }
 
   return (
-    <View style={[styles.screen, { backgroundColor: colors.surface }]}>
-      <Text style={[styles.title, { color: colors.text }]}>habiquest</Text>
-      <Text style={[styles.lead, { color: colors.text }]}>{copy.lead}</Text>
+    <View style={[styles.screen, { backgroundColor: redesign.surface }]}>
+      <Text style={[TYPE.display, { color: redesign.text }]}>habiquest</Text>
+      <Text style={[TYPE.body, { color: redesign.text }]}>{copy.lead}</Text>
 
-      {error != null && <Banner>{error}</Banner>}
+      {error != null && <Banner title={error} />}
 
       {copy.action != null ? (
         <>
           <Button label={copy.action} variant="pri" block onPress={() => void onPress()} />
-          <Footnote>{copy.note}</Footnote>
+          <Text style={[TYPE.label, styles.center, { color: redesign.muted }]}>{copy.note}</Text>
         </>
       ) : (
-        <Banner variant="neutral">{copy.note}</Banner>
+        <Text style={[TYPE.body, { color: redesign.muted }]}>{copy.note}</Text>
       )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, justifyContent: 'center', padding: SPACE.xxl, gap: SPACE.md },
-  title: { fontSize: FONT_SIZE.xxl, fontWeight: '700' },
-  lead: { fontSize: FONT_SIZE.md },
-  notice: { fontSize: FONT_SIZE.md, textAlign: 'center' },
+  screen: { flex: 1, justifyContent: 'center', padding: 24, gap: 12 },
+  center: { textAlign: 'center' },
 });
