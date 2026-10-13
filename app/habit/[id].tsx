@@ -221,7 +221,6 @@ export default function HabitDetail() {
         <EditEntrySheet
           key={sheet.item.entry.id}
           sheet={sheet}
-          deleteLines={sheet.deleteLines}
           onClose={view.closeSheet}
           edited={view.editedEntry}
           onSave={view.saveEntryFromSheet}

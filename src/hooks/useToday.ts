@@ -198,6 +198,11 @@ export interface EditEntrySheetView {
   timeEditable: boolean;
   /** What deleting this row costs, or `null` when 삭제 is immediate (D2). */
   deleteEffect: DeleteEffect | null;
+  /**
+   * How the delete confirm names the row's day. Absent: 오늘, the only day Today edits.
+   * Habit Detail's journal passes 어제 or "3월 27일" for a past row.
+   */
+  dayLabel?: string;
 }
 
 /** The time fields of a sheet: `null` while not opened, which keeps the default stamp. */
@@ -324,6 +329,11 @@ export function feedItemId(item: TodayFeedItem): string {
  */
 export interface DeleteEffect extends DeleteOutcome {
   habit: Habit;
+  /**
+   * Quote the streak figures in the confirm? Only Habit Detail sets it, for a past day
+   * whose run changes; Today's days are today, where nothing breaks (ADR-0001).
+   */
+  showsStreak?: boolean;
 }
 
 /**

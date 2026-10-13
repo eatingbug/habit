@@ -7,7 +7,6 @@ import {
   dayCellLabel,
   dayStateBadge,
   daysLabel,
-  deleteConfirmLines,
   DAY_STATE_WORDS,
   DETAIL_COPY,
   editTimeLabel,
@@ -331,12 +330,6 @@ export interface DetailSkipSheet extends SkipSheetView {
   date: string;
 }
 
-/** A journal row reopened in Today's edit sheet, with this screen's confirm lines. */
-export interface DetailEditSheet extends EditEntrySheetView {
-  /** The delete confirm's lines, naming the row's own day; `null` when 삭제 is immediate. */
-  deleteLines: string[] | null;
-}
-
 /** The 잠깐 쉬기 or 보관하기 confirm sheet (`ReDetailPause`). */
 export interface DetailConfirmSheet {
   kind: 'confirm';
@@ -363,7 +356,7 @@ export interface DetailDesignSheet {
 export type DetailSheet =
   | DetailRecordSheet
   | DetailSkipSheet
-  | DetailEditSheet
+  | EditEntrySheetView
   | DetailConfirmSheet
   | DetailDesignSheet;
 
@@ -826,7 +819,6 @@ export function useHabitDetail(
         const row = day?.rows.find((r) => r.entry.id === open.id);
         if (day == null || row == null) return null;
         const effect = deletePreview(row.entry.id);
-        const dayWord = dayWordOf(day.date);
         return {
           kind: 'editEntry',
           item: {
@@ -842,18 +834,7 @@ export function useHabitDetail(
           timeLabel: row.backfilled ? TODAY_COPY.backfillTime : editTimeLabel(row.time),
           timeEditable: row.timeEditable,
           deleteEffect: effect,
-          deleteLines:
-            effect == null
-              ? null
-              : deleteConfirmLines({
-                  habitName: habit.name,
-                  emptiesDay: effect.emptiesDay,
-                  carriesMiss: effect.carriesMiss,
-                  dayLabel: dayWord,
-                  streakBefore: effect.showsStreak ? effect.streakBefore : undefined,
-                  streakAfter: effect.showsStreak ? effect.streakAfter : undefined,
-                  stateAfterLabel: effect.stateAfter == null ? undefined : DAY_STATE_WORDS[effect.stateAfter],
-                }),
+          dayLabel: dayWordOf(day.date),
         };
       }
       case 'confirm':

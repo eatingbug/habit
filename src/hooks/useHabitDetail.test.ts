@@ -872,12 +872,12 @@ describe('useHabitDetail — the edit sheet for one row (#13)', () => {
     const middle = entries[1];
 
     act(() => result.current.openEntry(middle.id));
-    const sheet = result.current.sheet;
-    expect(sheet?.kind === 'editEntry' && sheet.deleteLines).toEqual([
-      '이 기록을 지우면 3월 27일 턱걸이에 남는 기록이 없어요.',
-      '연속 날수가 다시 계산돼요 — 3일 → 1일.',
-      '지운 뒤 3월 27일: 기록 없음',
-    ]);
+    // The edit sheet words its confirm from these: the row's own day, and the run.
+    expect(result.current.sheet).toMatchObject({
+      kind: 'editEntry',
+      dayLabel: '3월 27일',
+      deleteEffect: { emptiesDay: true, stateAfter: 'missed', showsStreak: true, streakBefore: 3, streakAfter: 1 },
+    });
 
     await act(async () => {
       await result.current.removeEntryFromSheet();
