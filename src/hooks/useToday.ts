@@ -301,6 +301,33 @@ export function feedItemId(item: TodayFeedItem): string {
 }
 
 /**
+ * An edit sheet's row as the draft would store it, or `null` when the draft cannot be
+ * stored: no reason on a skip, no positive amount on a count activity, or a time that
+ * is not a time of day. §3.3's discriminator moves both fields together, and the stamp
+ * is the original unless the time fields read another clock (B3, #127 decision: an
+ * edit keeps its time). Shared by Today's and Habit Detail's edit sheets.
+ */
+export function draftedEntry(entry: HabitEntry, habit: Habit, draft: EntryDraft): HabitEntry | null {
+  const amount = Number(draft.amount);
+  const isCount = habit.kind === 'count';
+  if (draft.kind === 'skip' && draft.reason == null) return null;
+  if (draft.kind === 'activity' && isCount && !(draft.amount.trim().length > 0 && amount > 0)) return null;
+  const timestamp =
+    draft.time == null
+      ? entry.timestamp
+      : restampedAtLocalTime(entry.timestamp, entry.date, draft.time.hour, draft.time.minute);
+  if (timestamp == null) return null;
+  const note = draft.note.trim();
+  return {
+    ...entry,
+    timestamp,
+    actual: draft.kind === 'skip' ? 0 : isCount ? amount : 1,
+    skipReason: draft.kind === 'skip' ? draft.reason : undefined,
+    note: note.length > 0 ? note : undefined,
+  };
+}
+
+/**
  * Why deleting one row deserves a confirm — the whole basis of the warning, derived so
  * that nothing is left for the JSX to judge. This repo has no component render
  * tests (jest.config.js), so a condition written in a screen is a condition nothing
@@ -1039,32 +1066,11 @@ export function useToday({
   }
 
   /**
-   * The open edit sheet's row as the draft would store it, or `null` when the draft
-   * cannot be stored: no reason on a skip, no positive amount on a count activity, or a
-   * time that is not a time of day. §3.3's discriminator moves both fields together, and
-   * the stamp is the original unless the time fields read another clock (B3, #127
-   * decision: an edit keeps its time).
+   * The open edit sheet's row as the draft would store it (`draftedEntry`), or `null`.
    */
   function editedEntry(draft: EntryDraft): HabitEntry | null {
     if (sheet?.kind !== 'editEntry') return null;
-    const { entry, habit } = sheet.item;
-    const amount = Number(draft.amount);
-    const isCount = habit.kind === 'count';
-    if (draft.kind === 'skip' && draft.reason == null) return null;
-    if (draft.kind === 'activity' && isCount && !(draft.amount.trim().length > 0 && amount > 0)) return null;
-    const timestamp =
-      draft.time == null
-        ? entry.timestamp
-        : restampedAtLocalTime(entry.timestamp, entry.date, draft.time.hour, draft.time.minute);
-    if (timestamp == null) return null;
-    const note = draft.note.trim();
-    return {
-      ...entry,
-      timestamp,
-      actual: draft.kind === 'skip' ? 0 : isCount ? amount : 1,
-      skipReason: draft.kind === 'skip' ? draft.reason : undefined,
-      note: note.length > 0 ? note : undefined,
-    };
+    return draftedEntry(sheet.item.entry, sheet.item.habit, draft);
   }
 
   /** 저장 on the edit sheet: rewrite that one row, keyed on its id, then close. */

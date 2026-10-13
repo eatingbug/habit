@@ -1073,3 +1073,166 @@ export const REFLECTION_COPY = {
   sevenDaysHelp: TOOLTIPS.reflectionSevenDays,
   howItReadsHelp: TOOLTIPS.reflectionHowItReads,
 } as const;
+// ---------------------------------------------------------------------------
+// 습관 상세 (SPEC §6.5, the `ReDetail*` artboards, #128)
+// ---------------------------------------------------------------------------
+
+/**
+ * The redesigned Habit Detail screen's fixed words. The sentences that carry a number,
+ * a date or a name are the functions below, which `useHabitDetail` calls. Shared words
+ * (day-state words, status-light words, tooltips, `SCREEN_WORDS`) are reused, not
+ * repeated here.
+ */
+export const DETAIL_COPY = {
+  /** The back button's and the ⋯ button's accessible names (§6.0 Icons). */
+  back: '뒤로',
+  menu: '더 보기',
+  /** An id that names no stored habit. */
+  notFound: '습관을 찾을 수 없어요.',
+  /** The 🔴 button under the head and the ⋯ menu's first item. */
+  reflect: '회고하기',
+  /** The hero card heads. */
+  forming: '자리 잡는 중',
+  weekly: '주마다 한 양',
+  /** The ⭐ on the best week's bar (accessible name). */
+  bestWeek: '최고 주',
+  thisWeek: '이번 주',
+  /** The hero's next step when the streak broke after a run. */
+  restart: '다시 시작하면 돼요',
+  /** Pill names that `SCREEN_WORDS` does not hold. */
+  bestStreak: '최고 연속',
+  successRate: '성공률',
+  /** Units after a pill or hero number. */
+  days: '일',
+  percent: '%',
+  /** `—` stands for a rate below the min-sample guard (§6.8 성공률 tooltip). */
+  noRate: '—',
+  heatmap: '최근 3주',
+  /** The design card. */
+  designTitle: '지금 이렇게 하기로 했어요',
+  edit: '수정',
+  target: '목표',
+  cueEmpty: '아직 안 정했어요. 이것부터 정해 보세요',
+  identityShow: '이유 보기',
+  identityHide: '이유 접기',
+  identityEmpty: '아직 안 적었어요.',
+  /** The design edit sheet's placeholders, from `ReNewHabit`. */
+  cuePlaceholder: '예: 아침 커피 마신 뒤, 문틀 바에서',
+  identityPlaceholder: '예: 나는 매일 몸을 쓰는 사람이니까',
+  floorPlaceholder: '5',
+  unitPlaceholder: '회',
+  targetPlaceholder: '10',
+  /** The journal card. */
+  journal: '저널',
+  more: '더 보기',
+  backfill: '+ 지난 날 기록 추가',
+  /** The ⋯ menu. 다시 시작 and 다시 꺼내기 are `LIFECYCLE_LABELS`'. */
+  menuPause: `⏸ ${LIFECYCLE_LABELS.pause}`,
+  menuArchive: `🗄 ${LIFECYCLE_LABELS.archive}`,
+  /** The confirm sheets (`ReDetailPause`); the body is `LIFECYCLE_NOTE`. */
+  pauseTitle: '잠깐 쉴까요?',
+  archiveTitle: '보관할까요?',
+  /** The line under the head of a stopped habit, which no artboard draws (#128 decision). */
+  paused: '⏸ 쉬는 중이에요',
+  archived: '🗄 보관한 습관이에요',
+} as const;
+
+/** "34일" — the forming ring's count of days done. */
+export function daysLabel(days: number): string {
+  return `${days}${DETAIL_COPY.days}`;
+}
+
+/** "보통 66일" — the forming ring's expectation (§6.5, Lally). */
+export function expectedDaysLabel(days: number): string {
+  return `보통 ${days}${DETAIL_COPY.days}`;
+}
+
+/**
+ * The hero's next step beside the 연속 number (§6.5): "오늘 4쪽 더 하면 3일". The board
+ * gives two cases, a count habit part-way to its floor and a broken streak ("다시
+ * 시작하면 돼요"). The rest are in the same register (#128 decision):
+ * - today's floor already met: "오늘 몫을 채웠어요";
+ * - a streak of 0 after a run: "다시 시작하면 돼요";
+ * - a count habit with nothing yet today: "오늘 10쪽 하면 1일";
+ * - a yes/no habit: "오늘 하면 3일".
+ */
+export function nextStepLine({
+  floorMet,
+  streak,
+  hadRun,
+  isCount,
+  sum,
+  floor,
+  unit,
+}: {
+  floorMet: boolean;
+  streak: number;
+  /** A streak existed before: the longest streak is above 0. */
+  hadRun: boolean;
+  isCount: boolean;
+  /** Today's summed activity. */
+  sum: number;
+  floor: number;
+  unit: string;
+}): string {
+  if (floorMet) return `${DAY_WORDS.today} 몫을 채웠어요`;
+  if (streak === 0 && hadRun) return DETAIL_COPY.restart;
+  const next = `${streak + 1}${DETAIL_COPY.days}`;
+  if (!isCount) return `${DAY_WORDS.today} 하면 ${next}`;
+  if (sum > 0) return `${DAY_WORDS.today} ${floor - sum}${unit} 더 하면 ${next}`;
+  return `${DAY_WORDS.today} ${floor}${unit} 하면 ${next}`;
+}
+
+/** "이번 주 72회" — the weekly hero's running total. */
+export function weeklyTotalLabel(total: number, unit: string): string {
+  return `${DETAIL_COPY.thisWeek} ${total}${unit}`;
+}
+
+/** "최소 35" — the weekly hero's floor line. */
+export function floorLineLabel(weeklyFloor: number): string {
+  return `최소 ${weeklyFloor}`;
+}
+
+/** "목표 70" — the weekly hero's target line. */
+export function targetLineLabel(weeklyTarget: number): string {
+  return `${DETAIL_COPY.target} ${weeklyTarget}`;
+}
+
+/** "11주 전" — the weekly hero's left axis label: the oldest bar's week. */
+export function weeksAgoLabel(weeks: number): string {
+  return `${weeks}주 전`;
+}
+
+/** "하루 10쪽" — the design card's 최소량 and 목표 values. */
+export function dailyAmountLabel(amount: number, unit: string): string {
+  return `하루 ${amount}${unit}`;
+}
+
+/** "📖 지능" — the design card's 능력치 value. */
+export function statLabel(stat: { icon: string; name: string }): string {
+  return `${stat.icon} ${stat.name}`;
+}
+
+/** "10월 10일 (오늘)" — a journal day's head. */
+export function journalDayTitle(date: string, isToday: boolean): string {
+  return isToday ? `${monthDayLabel(date)} (${DAY_WORDS.today})` : monthDayLabel(date);
+}
+
+/**
+ * One journal row's amount line (`ReDetail*`): "+6쪽" on a count habit, "✓ 했어요" on a
+ * yes/no habit, "못 했어요 · 예외" on a skip row.
+ */
+export function journalRowSummary({
+  isCount,
+  actual,
+  unit,
+  skipReason,
+}: {
+  isCount: boolean;
+  actual: number;
+  unit: string;
+  skipReason?: SkipReason;
+}): string {
+  if (skipReason != null) return `${DAY_STATE_WORDS.skip} · ${SKIP_REASON_LABELS[skipReason]}`;
+  return isCount ? `+${actual}${unit}` : `${DAY_STATE_GLYPHS.done} ${DAY_STATE_WORDS.done}`;
+}
