@@ -7,16 +7,16 @@ import { SessionProvider, useSession } from '@/context/SessionContext';
 import { ThemeProvider, useTheme } from '@/theme/ThemeProvider';
 
 function Shell() {
-  const { name, colors } = useTheme();
+  const { name, redesign } = useTheme();
   return (
     <>
       <StatusBar style={name === 'dark' ? 'light' : 'dark'} />
       <Stack
         screenOptions={{
-          headerStyle: { backgroundColor: colors.surface },
-          headerTintColor: colors.text,
+          headerStyle: { backgroundColor: redesign.surface },
+          headerTintColor: redesign.text,
           headerShadowVisible: false,
-          contentStyle: { backgroundColor: colors.surface },
+          contentStyle: { backgroundColor: redesign.surface },
         }}
       >
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />

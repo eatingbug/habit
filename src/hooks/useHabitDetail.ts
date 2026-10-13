@@ -659,7 +659,7 @@ export function designErrors(floor: number, floorUnit: string, target: number | 
     if (!Number.isFinite(target)) errors.target = '목표는 숫자로 적어 주세요.';
     // §3.2 (strict): a target at or below the floor says nothing.
     else if (errors.floor == null && target <= floor) {
-      errors.target = '목표는 최소량보다 커야 합니다.';
+      errors.target = '목표는 최소량보다 커야 해요.';
     }
   }
   return errors;

@@ -129,7 +129,7 @@ export interface QuickLog {
    * 하고, `app/today.tsx`·`app/habit/[id].tsx`·`app/index.tsx` 의 작성기·편집기·기록 모달이
    * 그것을 받아 카드 안에서 말한다. 여기서 또 잡으면 한 실패에 배너가 둘이 뜬다.
    *
-   * 실행취소만 다른 이유는 `ToastOverlay` 의 호출부가 세 화면 모두 `void undoLast()` 이기
+   * 실행취소만 다른 이유는 `LogOverlay` 의 호출부가 세 화면 모두 `void undoLast()` 이기
    * 때문이다 — 토스트에는 실패를 담을 자리가 없고, 실패하면 사용자는 지웠다고 믿은 기록이
    * 그대로 남은 것을 보게 된다.
    */

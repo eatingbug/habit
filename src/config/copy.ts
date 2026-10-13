@@ -19,7 +19,7 @@ import { TUNING } from './tuning';
  * here, where the three conditionals that *are* the judgment can be asserted.
  *
  * The skip reason labels are needed by a **hook** (`useQuickLog` puts one on the undo
- * toast's detail line) and by a **component** (`SkipReasonChips` renders all four).
+ * toast's detail line) and by a **component** (`SkipSheet` renders all four).
  * Neither can own them: a hook importing a component is a layer inversion, and a hook
  * importing the component that renders the chips would be exactly that. `src/config/`
  * already holds user-facing names for this reason — `TUNING.stats` carries the
@@ -134,8 +134,8 @@ export interface DeleteConfirmFacts {
  * that register, in the same order: what is lost first, then the day's new reading.
  *
  * The miss clause deliberately carries **no day-state label**. `stateLabel('skip')`
- * reads `못 함`, and the two clauses can appear together (a miss-carrying skip with
- * another row surviving): "…'못 함' 기록이 사라져요. 지운 뒤 오늘: 못 함" would use
+ * reads `못 했어요`, and the two clauses can appear together (a miss-carrying skip with
+ * another row surviving): "…'못 했어요' 기록이 사라져요. 지운 뒤 오늘: 못 했어요" would use
  * one term for the 미스 being erased and for the day's surviving state, one sentence
  * apart, which is the mixing `CONTEXT.md`'s glossary forbids. It would also give the
  * label a second source, three lines below a docblock promising the map stays the
