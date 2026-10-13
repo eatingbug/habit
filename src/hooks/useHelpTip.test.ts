@@ -84,6 +84,18 @@ describe('useHelpTip — mouse', () => {
     expect(t.current.mode).toBeNull();
   });
 
+  it('the pointer leaving the window closes a hover but not a pinned tooltip', () => {
+    const t = tip();
+    act(() => t.current.hoverIn(Q));
+    act(() => t.current.layerLeave());
+    expect(t.current.mode).toBeNull();
+
+    act(() => t.current.hoverIn(Q));
+    act(() => t.current.layerPress(ON_Q));
+    act(() => t.current.layerLeave());
+    expect(t.current.mode).toBe('tap');
+  });
+
   it('a click away from the `?` while hovering closes it', () => {
     const t = tip();
     act(() => t.current.hoverIn(Q));

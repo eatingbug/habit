@@ -92,6 +92,7 @@ export function HelpTip({ text, children, tone = 'muted', accessibilityLabel, st
           style={StyleSheet.absoluteFill}
           onPress={(event) => tip.layerPress(clientPoint(event.nativeEvent))}
           onPointerMove={(event) => tip.layerMove(clientPoint(event.nativeEvent))}
+          onPointerLeave={tip.layerLeave}
           accessible={false}
         />
         {anchor != null && (

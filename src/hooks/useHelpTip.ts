@@ -35,6 +35,7 @@ type HelpTipAction =
   | { type: 'layerMove'; point: TipPoint | null }
   | { type: 'layerPress'; point: TipPoint | null }
   | { type: 'layerWheel'; point: TipPoint | null }
+  | { type: 'layerLeave' }
   | { type: 'close' };
 
 const HELP_TIP_CLOSED: HelpTipState = { mode: null, anchor: null, hoverReady: true };
@@ -71,6 +72,8 @@ function helpTipReducer(state: HelpTipState, action: HelpTipAction): HelpTipStat
     }
     case 'layerWheel':
       return state.mode == null ? state : { ...state, mode: null, hoverReady: !inside(state.anchor, action.point) };
+    case 'layerLeave':
+      return state.mode === 'hover' ? { ...state, mode: null, hoverReady: true } : state;
     case 'close':
       return { ...state, mode: null };
   }
@@ -92,6 +95,7 @@ export function useHelpTip() {
       layerMove: (point: TipPoint | null) => dispatch({ type: 'layerMove', point }),
       layerPress: (point: TipPoint | null) => dispatch({ type: 'layerPress', point }),
       layerWheel: (point: TipPoint | null) => dispatch({ type: 'layerWheel', point }),
+      layerLeave: () => dispatch({ type: 'layerLeave' }),
       close: () => dispatch({ type: 'close' }),
     }),
     [],
