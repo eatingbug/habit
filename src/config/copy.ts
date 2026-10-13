@@ -1084,13 +1084,10 @@ export const REFLECTION_COPY = {
  * repeated here.
  */
 export const DETAIL_COPY = {
-  /** The back button's and the ⋯ button's accessible names (§6.0 Icons). */
-  back: '뒤로',
-  menu: '더 보기',
+  /** The ⋯ button's accessible name (§6.0 Icons) and the journal's 더 보기. */
+  more: '더 보기',
   /** An id that names no stored habit. */
   notFound: '습관을 찾을 수 없어요.',
-  /** The 🔴 button under the head and the ⋯ menu's first item. */
-  reflect: '회고하기',
   /** The hero card heads. */
   forming: '자리 잡는 중',
   weekly: '주마다 한 양',
@@ -1111,20 +1108,13 @@ export const DETAIL_COPY = {
   /** The design card. */
   designTitle: '지금 이렇게 하기로 했어요',
   edit: '수정',
-  target: '목표',
+  target: NEW_HABIT_COPY.labels.target,
   cueEmpty: '아직 안 정했어요. 이것부터 정해 보세요',
   identityShow: '이유 보기',
   identityHide: '이유 접기',
   identityEmpty: '아직 안 적었어요.',
-  /** The design edit sheet's placeholders, from `ReNewHabit`. */
-  cuePlaceholder: '예: 아침 커피 마신 뒤, 문틀 바에서',
-  identityPlaceholder: '예: 나는 매일 몸을 쓰는 사람이니까',
-  floorPlaceholder: '5',
-  unitPlaceholder: '회',
-  targetPlaceholder: '10',
   /** The journal card. */
   journal: '저널',
-  more: '더 보기',
   backfill: '+ 지난 날 기록 추가',
   /** The ⋯ menu. 다시 시작 and 다시 꺼내기 are `LIFECYCLE_LABELS`'. */
   menuPause: `⏸ ${LIFECYCLE_LABELS.pause}`,

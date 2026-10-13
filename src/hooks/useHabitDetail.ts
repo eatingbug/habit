@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 
 import {
   dailyAmountLabel,
+  DASHBOARD_COPY,
   DAY_WORDS,
   dayCellLabel,
   dayStateBadge,
@@ -575,7 +576,7 @@ function pillsOf(streak: number, longest: number, rate: number | null, engagemen
 }
 
 function menuOf(habit: Habit): DetailMenuItem[] {
-  const reflect: DetailMenuItem = { key: 'reflect', label: DETAIL_COPY.reflect, tone: 'plain' };
+  const reflect: DetailMenuItem = { key: 'reflect', label: DASHBOARD_COPY.reflect, tone: 'plain' };
   // A stopped habit gets the single way back, named for how the stop reads — the same
   // `resumeHabit` either way (#19).
   if (habit.lifecycle === 'paused') {
@@ -944,7 +945,7 @@ export function useHabitDetail(
             name: habit.name,
             light,
             lightHelp: TOOLTIPS.statusLight,
-            reflectLabel: light === 'intervention' ? DETAIL_COPY.reflect : null,
+            reflectLabel: light === 'intervention' ? DASHBOARD_COPY.reflect : null,
             stoppedNote:
               habit.lifecycle === 'paused'
                 ? DETAIL_COPY.paused

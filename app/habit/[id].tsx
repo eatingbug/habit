@@ -29,6 +29,7 @@ import {
   LOADING_NOTE,
   RETRY_LABEL,
   SCREEN_WORDS,
+  SETTINGS_COPY,
   TOOLTIPS,
 } from '@/config/copy';
 import {
@@ -98,9 +99,9 @@ export default function HabitDetail() {
 
   const topBar = (
     <View style={styles.topBar}>
-      <IconButton icon={ChevronLeft} accessibilityLabel={DETAIL_COPY.back} onPress={back} />
+      <IconButton icon={ChevronLeft} accessibilityLabel={SETTINGS_COPY.back} onPress={back} />
       {habit != null && (
-        <IconButton icon={Ellipsis} accessibilityLabel={DETAIL_COPY.menu} onPress={() => setMenuOpen(true)} />
+        <IconButton icon={Ellipsis} accessibilityLabel={DETAIL_COPY.more} onPress={() => setMenuOpen(true)} />
       )}
     </View>
   );

@@ -2,7 +2,7 @@ import { useState, type ReactNode } from 'react';
 import { Keyboard, StyleSheet, Text, View } from 'react-native';
 
 import { Button, HelpTip, InputField, Sheet } from '@/components/re';
-import { DETAIL_COPY, SAVE_FAILED_NOTE, SCREEN_WORDS, TODAY_COPY, TOOLTIPS } from '@/config/copy';
+import { DETAIL_COPY, NEW_HABIT_COPY, SAVE_FAILED_NOTE, SCREEN_WORDS, TODAY_COPY, TOOLTIPS } from '@/config/copy';
 import type { DesignErrors, DesignPatch, DetailDesignSheet } from '@/hooks/useHabitDetail';
 import { TYPE } from '@/theme/redesignTokens';
 import { useTheme } from '@/theme/ThemeProvider';
@@ -64,7 +64,7 @@ export function DesignSheet({
         <InputField
           value={cue}
           onChangeText={setCue}
-          placeholder={DETAIL_COPY.cuePlaceholder}
+          placeholder={NEW_HABIT_COPY.placeholders.cue}
           accessibilityLabel={SCREEN_WORDS.cue}
         />
       </Field>
@@ -77,12 +77,12 @@ export function DesignSheet({
                 <InputField
                   value={floor}
                   onChangeText={setFloor}
-                  placeholder={DETAIL_COPY.floorPlaceholder}
+                  placeholder={NEW_HABIT_COPY.placeholders.floor}
                   accessibilityLabel={SCREEN_WORDS.floor}
                 />
               </View>
               <View style={styles.grow}>
-                <InputField value={floorUnit} onChangeText={setFloorUnit} placeholder={DETAIL_COPY.unitPlaceholder} />
+                <InputField value={floorUnit} onChangeText={setFloorUnit} placeholder={NEW_HABIT_COPY.placeholders.floorUnit} />
               </View>
             </View>
             {error(errors.floor ?? errors.floorUnit)}
@@ -93,7 +93,7 @@ export function DesignSheet({
                 <InputField
                   value={target}
                   onChangeText={setTarget}
-                  placeholder={DETAIL_COPY.targetPlaceholder}
+                  placeholder={NEW_HABIT_COPY.placeholders.target}
                   accessibilityLabel={DETAIL_COPY.target}
                 />
               </View>
@@ -108,7 +108,7 @@ export function DesignSheet({
         <InputField
           value={identity}
           onChangeText={setIdentity}
-          placeholder={DETAIL_COPY.identityPlaceholder}
+          placeholder={NEW_HABIT_COPY.placeholders.identity}
           accessibilityLabel={SCREEN_WORDS.identity}
         />
       </Field>
