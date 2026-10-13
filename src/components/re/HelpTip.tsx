@@ -1,5 +1,5 @@
 import { CircleQuestionMark } from 'lucide-react-native';
-import { useRef, useState, type ReactNode } from 'react';
+import { useRef, type ReactNode } from 'react';
 import {
   Modal,
   Pressable,
@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 
 import { ICON_LABELS } from '@/config/copy';
+import { useHelpTip, type TipAnchor } from '@/hooks/useHelpTip';
 import { RADIUS, TAP_TARGET } from '@/theme/redesignTokens';
 import { useTheme } from '@/theme/ThemeProvider';
 
@@ -38,37 +39,23 @@ const GUTTER = 16;
 const MAX_WIDTH = 280;
 const ARROW = 6;
 
-interface Anchor {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-}
-
 /**
  * The `?` tooltip (SPEC §6.8). Opens on tap, and on hover where there is a pointer.
  * The bubble is `text` on `surface` and inverts with the theme (§6.0 Visual rules).
  *
  * It is drawn in a transparent `Modal` at the trigger's window position, so no parent's
- * `overflow` or stacking order can clip it. A tap-opened tooltip closes on any tap; a
- * hover-opened one lets the pointer through and closes when the pointer leaves.
+ * `overflow` or stacking order can clip it. That layer takes every pointer event while
+ * the tooltip is open, so it reports them to `useHelpTip`, which decides when to close.
  */
 export function HelpTip({ text, children, tone = 'muted', accessibilityLabel, style }: HelpTipProps) {
   const { redesign } = useTheme();
   const window = useWindowDimensions();
   const trigger = useRef<View>(null);
-  const [anchor, setAnchor] = useState<Anchor | null>(null);
-  const [mode, setMode] = useState<'tap' | 'hover' | null>(null);
+  const tip = useHelpTip();
+  const { anchor } = tip;
 
-  function open(next: 'tap' | 'hover') {
-    trigger.current?.measureInWindow((x, y, width, height) => {
-      setAnchor({ x, y, width, height });
-      setMode(next);
-    });
-  }
-
-  function close() {
-    setMode(null);
+  function measure(then: (anchor: TipAnchor) => void) {
+    trigger.current?.measureInWindow((x, y, width, height) => then({ x, y, width, height }));
   }
 
   const bubbleWidth = Math.min(MAX_WIDTH, window.width - GUTTER * 2);
@@ -79,22 +66,22 @@ export function HelpTip({ text, children, tone = 'muted', accessibilityLabel, st
     <>
       <Pressable
         ref={trigger}
-        onPress={() => (mode === 'tap' ? close() : open('tap'))}
-        onHoverIn={() => mode == null && open('hover')}
-        onHoverOut={() => mode === 'hover' && close()}
+        onPress={() => measure(tip.press)}
+        onHoverIn={() => measure(tip.hoverIn)}
+        onHoverOut={tip.hoverOut}
         accessibilityRole="button"
         accessibilityLabel={accessibilityLabel ?? ICON_LABELS.help}
-        accessibilityState={{ expanded: mode != null }}
+        accessibilityState={{ expanded: tip.mode != null }}
         style={[children == null ? styles.box : styles.wrap, style]}
       >
         {children ?? <HelpIcon tone={tone} />}
       </Pressable>
 
-      <Modal visible={mode != null && anchor != null} transparent animationType="none" onRequestClose={close}>
+      <Modal visible={tip.mode != null && anchor != null} transparent animationType="none" onRequestClose={tip.close}>
         <Pressable
           style={StyleSheet.absoluteFill}
-          onPress={close}
-          pointerEvents={mode === 'tap' ? 'auto' : 'none'}
+          onPress={(event) => tip.layerPress({ x: event.nativeEvent.pageX, y: event.nativeEvent.pageY })}
+          onPointerMove={(event) => tip.layerMove({ x: event.nativeEvent.clientX, y: event.nativeEvent.clientY })}
           accessible={false}
         />
         {anchor != null && (
