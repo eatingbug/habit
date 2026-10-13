@@ -8,6 +8,7 @@ import {
   Banner,
   Button,
   Card,
+  CARD_PADDING,
   Chip,
   HelpTip,
   IconButton,
@@ -404,8 +405,8 @@ const styles = StyleSheet.create({
   dkey: { width: 112, flexDirection: 'row', alignItems: 'center' },
   identity: { marginTop: 8 },
   jday: { paddingVertical: 12 },
-  // The tint runs to the card's edge: `Card` pads 16.
-  focused: { marginHorizontal: -16, paddingHorizontal: 16 },
+  // The tint runs to the card's edge.
+  focused: { marginHorizontal: -CARD_PADDING, paddingHorizontal: CARD_PADDING },
   jhead: {
     minHeight: TAP_TARGET,
     flexDirection: 'row',
