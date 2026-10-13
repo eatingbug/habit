@@ -780,9 +780,7 @@ export function cueLine(cue: string): string {
 
 /** The card's status words, mark first: ✓ 했어요, ★ 목표까지 했어요, − 못 했어요. */
 export function cardBadge(state: DayState): string | null {
-  return state === 'done' || state === 'over' || state === 'skip'
-    ? `${DAY_STATE_GLYPHS[state]} ${DAY_STATE_WORDS[state]}`
-    : null;
+  return state === 'done' || state === 'over' || state === 'skip' ? dayStateBadge(state) : null;
 }
 
 /** "6 / 10쪽", or past the target "30쪽 · 목표 30쪽" (§6.2 Habit card). */
@@ -965,3 +963,40 @@ export const NEW_HABIT_ICONS = [
   '💪', '🏃', '🚶', '🧘', '📖', '✍️', '🧠', '💻',
   '🎸', '🎨', '💧', '🥗', '😴', '🦷', '🧹', '🌱',
 ] as const;
+
+// ---------------------------------------------------------------------------
+// 글 모음 (SPEC §6.4, the `ReJournal` artboard, #132)
+// ---------------------------------------------------------------------------
+
+/**
+ * The 글 모음 tab's fixed words. The lines that carry a date, a kind or a state are the
+ * functions below, which `useJournal` calls.
+ */
+export const JOURNAL_COPY = {
+  title: TAB_LABELS.journal,
+  /** The two filter chips that are not a habit: 전체, then 끄적이기 (free logs). */
+  all: '전체',
+  freeLogs: TODAY_COPY.freeLogButton,
+  /** The empty screen: one emoji, one sentence, one button (§6.0 Icons). */
+  emptyEmoji: '📝',
+  empty: '아직 남긴 글이 없어요.',
+  emptyAction: TODAY_COPY.freeLogButton,
+  /** A filter with nothing under it, while other filters still hold rows. */
+  noMatch: '여기에는 아직 글이 없어요.',
+} as const;
+
+/** A date group's head: "오늘 · 10월 10일" for today, else "10월 9일". */
+export function journalDateLabel(date: string, today: string): string {
+  return date === today ? `${DAY_WORDS.today} · ${monthDayLabel(date)}` : monthDayLabel(date);
+}
+
+/** A free log row's head: "✏️ 끄적이기 · 떠오른 생각". */
+export function journalFreeLogLabel(type: LogType): string {
+  return `✏️ ${TODAY_COPY.freeLogButton} · ${LOG_TYPE_LABELS[type]}`;
+}
+
+/** A day-state as its mark and word: "✓ 했어요", "½ 조금 했어요", "− 못 했어요". */
+export function dayStateBadge(state: DayState): string {
+  const glyph = DAY_STATE_GLYPHS[state];
+  return glyph.length > 0 ? `${glyph} ${DAY_STATE_WORDS[state]}` : DAY_STATE_WORDS[state];
+}
