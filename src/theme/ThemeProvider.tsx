@@ -19,8 +19,11 @@ import { PALETTES, type Palette, type ThemeName } from './tokens';
 /** 'system' follows the OS; the explicit values are the manual override (§6.0). */
 export type ThemePreference = ThemeName | 'system';
 
-/** The device storage key for the choice. It never goes to the server (#123). */
-const PREFERENCE_KEY = 'habiquest.theme';
+/**
+ * The device storage key for the choice. It never goes to the server (#123).
+ * `app/+html.tsx` reads it too, to paint the page background before JS loads.
+ */
+export const PREFERENCE_KEY = 'habiquest.theme';
 
 function isPreference(value: string | null): value is ThemePreference {
   return value === 'system' || value === 'light' || value === 'dark';
@@ -79,7 +82,8 @@ export function ThemeProvider({
   // hydration picks dark while the static HTML was rendered light. React keeps the
   // mismatched server styles, and the page background stays light (#150). The server
   // snapshot (`null`, light) matches that HTML, and React re-renders with the OS scheme
-  // before paint. Native has no hydration, so it behaves as `useColorScheme` does.
+  // right after hydration. The static HTML has painted light by then; `app/+html.tsx`
+  // covers that first paint. Native has no hydration, so it behaves as `useColorScheme` does.
   const osScheme = useSyncExternalStore(subscribeOsScheme, Appearance.getColorScheme, () => null);
   /** A choice made in this session, or one the async read delivered. */
   const [chosen, setChosen] = useState<ThemePreference | null>(null);
@@ -88,7 +92,7 @@ export function ThemeProvider({
   // first paint: a reload shows no frame on the OS theme. `useSyncExternalStore` rather
   // than a `useState` initializer, because the static web export renders on Node with
   // no storage. The server snapshot (`null`) keeps hydration matching that HTML, and
-  // React re-renders with the client snapshot before paint.
+  // React re-renders with the client snapshot right after hydration.
   const storedSync = useSyncExternalStore(
     subscribeNever,
     () => storedPreferenceSync(storage),
