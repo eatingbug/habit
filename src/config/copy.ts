@@ -280,25 +280,28 @@ export function declineMessage(weeks: number): string {
   return `주마다 한 양이 ${weeks}주 연속 줄었어요.`;
 }
 
-/** Cites the totals the light read and the level the guard compared the last one to. */
+/**
+ * Cites the totals the light read and the level the guard compared the last one to.
+ * The level is the **daily** target or floor (`guardLevel`), so the copy says 하루: the
+ * chart under the card draws the weekly lines.
+ */
 export function declineEvidence(totals: number[], level: 'target' | 'floor', value: number): string {
   const name = level === 'target' ? '목표' : '최소량';
-  return `지난 ${totals.length}주 합계 ${totals.join(' → ')} · 마지막 주가 ${name} ${value} 이하`;
+  return `지난 ${totals.length}주 합계 ${totals.join(' → ')} · 마지막 주가 하루 ${name} ${value} 이하`;
 }
 
 /**
  * The weekly chart under a Rule 3 or decline card (`ReReflectionChart`, #147). The
  * figures are `growthChart`'s; the words follow the board.
  */
-export const REFLECTION_CHART_WORDS = {
-  thisWeek: '이번 주',
-  /** The ⭐'s accessible name. */
-  bestWeek: '최고 주',
-} as const;
+export const CHART_THIS_WEEK = '이번 주';
 
-/** "최근 12주" — the chart's head. */
-export function chartSpanLabel(weeks: number): string {
-  return `최근 ${weeks}주`;
+/** The ⭐'s accessible name. */
+export const CHART_BEST_WEEK = '최고 주';
+
+/** "주마다 한 양 · 최근 12주" — the chart's head: the measure, then the span. */
+export function chartHeadLabel(weeks: number): string {
+  return `주마다 한 양 · 최근 ${weeks}주`;
 }
 
 /** "최고 64" — the best week's total. */
@@ -323,7 +326,7 @@ export function chartWeeksAgoLabel(weeks: number): string {
 
 /** The chart's one accessible name: the bars are a shape, not 12 readouts. */
 export function chartSummary(weeks: number, best: number): string {
-  return `주마다 한 양, ${chartSpanLabel(weeks)}. ${chartBestLabel(best)}`;
+  return `${chartHeadLabel(weeks)}. ${chartBestLabel(best)}`;
 }
 
 /** The design field a text action writes, placeholder included (`Reflection.body.html:50`). */

@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
   chartBestLabel,
   chartFloorLabel,
-  chartSpanLabel,
+  chartHeadLabel,
   chartSummary,
   chartTargetLabel,
   chartWeeksAgoLabel,
@@ -20,7 +20,6 @@ import {
   reflectionTitle,
   REFLECTION_ACTION_LABELS,
   REFLECTION_ACTION_REASONS,
-  REFLECTION_CHART_WORDS,
   REFLECTION_COPY,
   REFLECTION_CUE_PLACEHOLDER,
   SAVE_FAILED_NOTE,
@@ -52,7 +51,7 @@ import type {
 } from '@/models';
 
 import { useFailure, type Failure } from './failure';
-import { designErrors, growthChart, type GrowthBar } from './useHabitDetail';
+import { designErrors, growthChart, type GrowthBar, type GrowthChart } from './useHabitDetail';
 import { useQuickLog, type QuickLogToast } from './useQuickLog';
 
 /**
@@ -92,31 +91,33 @@ export interface MirrorNote {
   text: string;
 }
 
+/** A `GrowthBar`, and whether it is the week `today` falls in (drawn in `accent`). */
+export interface WeeklyBar extends GrowthBar {
+  now: boolean;
+}
+
+/** One reference line: its height (0–100) and its name, "최소 35" or "목표 70". */
+export interface ChartLine {
+  at: number;
+  label: string;
+}
+
 /**
- * The weekly chart under a `load` or decline card (`ReReflectionChart`, #147): the
- * geometry of `growthChart` and every word around it. The screen only places them.
+ * The weekly chart under a `load` or decline card (`ReReflectionChart`, #147):
+ * `growthChart`'s figures, each line paired with its name, and the words around it.
+ * The screen only places them.
  */
-export interface WeeklyChart {
-  /** Oldest first, `TUNING.growthChartWeeks` of them. The last is this week. */
-  bars: GrowthBar[];
-  /** The weekly floor line's height, 0–100. */
-  floorLine: number;
-  /** The weekly target line's height, or `null` when the habit has no effective target. */
-  targetLine: number | null;
-  /** "최근 12주". */
-  span: string;
+export interface WeeklyChart extends Omit<GrowthChart, 'bars' | 'floorLine' | 'targetLine'> {
+  bars: WeeklyBar[];
+  floor: ChartLine;
+  /** `null` when the habit has no effective target (`GrowthChart.weeklyTarget`). */
+  target: ChartLine | null;
+  /** "주마다 한 양 · 최근 12주". */
+  head: string;
   /** "최고 64". */
-  best: string;
-  /** "최소 35". */
-  floorLabel: string;
-  /** "목표 70", or `null` with `targetLine`. */
-  targetLabel: string | null;
+  bestLabel: string;
   /** "11주 전" — under the oldest bar. */
   startLabel: string;
-  /** "이번 주" — under the last bar. */
-  endLabel: string;
-  /** The ⭐'s accessible name. */
-  bestWeekLabel: string;
   /** The whole chart's accessible name. */
   summary: string;
 }
@@ -325,19 +326,19 @@ function weeklyChart(habit: Habit, entries: HabitEntry[], today: string): Weekly
   const chart = growthChart(habit, entries, today);
   if (chart == null) return null;
 
-  const weeks = chart.bars.length;
+  const { bars, floorLine, targetLine, ...figures } = chart;
   return {
-    bars: chart.bars,
-    floorLine: chart.floorLine,
-    targetLine: chart.targetLine,
-    span: chartSpanLabel(weeks),
-    best: chartBestLabel(chart.best),
-    floorLabel: chartFloorLabel(chart.weeklyFloor),
-    targetLabel: chart.weeklyTarget == null ? null : chartTargetLabel(chart.weeklyTarget),
-    startLabel: chartWeeksAgoLabel(weeks - 1),
-    endLabel: REFLECTION_CHART_WORDS.thisWeek,
-    bestWeekLabel: REFLECTION_CHART_WORDS.bestWeek,
-    summary: chartSummary(weeks, chart.best),
+    ...figures,
+    bars: bars.map((bar) => ({ ...bar, now: bar.weeksAgo === 0 })),
+    floor: { at: floorLine, label: chartFloorLabel(chart.weeklyFloor) },
+    target:
+      targetLine == null || chart.weeklyTarget == null
+        ? null
+        : { at: targetLine, label: chartTargetLabel(chart.weeklyTarget) },
+    head: chartHeadLabel(bars.length),
+    bestLabel: chartBestLabel(chart.best),
+    startLabel: chartWeeksAgoLabel(bars.length - 1),
+    summary: chartSummary(bars.length, chart.best),
   };
 }
 
