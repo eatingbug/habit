@@ -54,7 +54,7 @@ export default function Today() {
     }, [reload]),
   );
 
-  const { sheet, yesterdayBanner, celebration, toast } = view;
+  const { sheet, yesterdayBanner, celebration, toast, backToToday } = view;
 
   return (
     <View style={[styles.fill, { backgroundColor: redesign.bg }]}>
@@ -65,8 +65,8 @@ export default function Today() {
             {TODAY_COPY.title}
           </Text>
         </View>
-        {view.backToToday != null && (
-          <Button label={view.backToToday} variant="soft" onPress={() => router.setParams({ date: undefined })} />
+        {backToToday != null && (
+          <Button label={backToToday.label} variant="soft" onPress={() => router.navigate(backToToday.href)} />
         )}
         {view.countChip != null && <Chip label={view.countChip} tone="count" />}
 

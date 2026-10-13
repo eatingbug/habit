@@ -299,6 +299,8 @@ export interface JournalDay {
   rows: JournalRow[];
   /** May a row be appended to this date at all? (§6.3 range, `isBackfillableDate`.) */
   backfillable: boolean;
+  /** The date the screen was opened at (§6.4): tinted and scrolled to. */
+  focused: boolean;
 }
 
 /**
@@ -405,8 +407,6 @@ export interface HabitDetailView {
    * date further back (§6.4), every day down to that date.
    */
   journalShown: JournalDay[];
-  /** The date the screen was opened at (§6.4), when it is a journal day. Else `null`. */
-  journalFocus: string | null;
   /** "더 보기" while days are hidden, else `null`. */
   journalMoreLabel: string | null;
   showMoreJournal(): void;
@@ -478,7 +478,7 @@ function effectiveTarget(habit: Habit): number | undefined {
   return habit.target;
 }
 
-function journalDay(habit: Habit, day: ClassifiedDay, today: string): JournalDay {
+function journalDay(habit: Habit, day: ClassifiedDay, today: string, focusDate?: string): JournalDay {
   const isToday = day.date === today;
   return {
     date: day.date,
@@ -505,6 +505,7 @@ function journalDay(habit: Habit, day: ClassifiedDay, today: string): JournalDay
       };
     }),
     backfillable: isBackfillableDate(habit, day.date, today),
+    focused: day.date === focusDate,
   };
 }
 
@@ -749,10 +750,10 @@ export function useHabitDetail(
     habit == null
       ? []
       : dayStates(habit, entries, dateOf(habit.createdAt), today, today)
-          .map((day) => journalDay(habit, day, today))
+          .map((day) => journalDay(habit, day, today, date))
           // Newest first — the board reads downward from the most recent day.
           .reverse();
-  const focusIndex = date == null ? -1 : journal.findIndex((day) => day.date === date);
+  const focusIndex = journal.findIndex((day) => day.focused);
   const journalShown = journalOpen
     ? journal
     : journal.slice(0, Math.max(JOURNAL_RECENT_DAYS, focusIndex + 1));
@@ -1038,7 +1039,6 @@ export function useHabitDetail(
     design,
     journal,
     journalShown,
-    journalFocus: focusIndex < 0 ? null : journal[focusIndex].date,
     journalMoreLabel: journalShown.length < journal.length ? DETAIL_COPY.more : null,
     showMoreJournal: () => setJournalOpen(true),
     backfillLabel: habit == null ? null : DETAIL_COPY.backfill,

@@ -176,7 +176,6 @@ export default function HabitDetail() {
                 key={day.date}
                 day={day}
                 last={index === view.journalShown.length - 1}
-                focused={day.date === view.journalFocus}
                 onFocusedLayout={(y) => scrollToFocus({ day: y })}
                 onOpenDay={() => view.openRecord(day.date)}
                 onOpenRow={view.openEntry}
@@ -335,15 +334,13 @@ function DesignRow({
 function JournalDayRow({
   day,
   last,
-  focused,
   onFocusedLayout,
   onOpenDay,
   onOpenRow,
 }: {
   day: JournalDay;
   last: boolean;
-  /** The day the screen was opened at (§6.4): tinted, and its layout reported. */
-  focused: boolean;
+  /** Where `day.focused` lands, for the one scroll to it (§6.4). */
   onFocusedLayout: (y: number) => void;
   onOpenDay: () => void;
   onOpenRow: (entryId: string) => void;
@@ -351,11 +348,11 @@ function JournalDayRow({
   const { redesign } = useTheme();
   return (
     <View
-      onLayout={focused ? (event) => onFocusedLayout(event.nativeEvent.layout.y) : undefined}
+      onLayout={day.focused ? (event) => onFocusedLayout(event.nativeEvent.layout.y) : undefined}
       style={[
         styles.jday,
         !last && { borderBottomWidth: 1, borderBottomColor: redesign.border },
-        focused && [styles.focused, { backgroundColor: redesign.accentTint }],
+        day.focused && [styles.focused, { backgroundColor: redesign.accentTint }],
       ]}
     >
       <Pressable

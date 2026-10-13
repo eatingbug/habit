@@ -1365,7 +1365,10 @@ describe('useToday', () => {
 
       expect(result.current.date).toBe(addDays(TODAY, -1));
       expect(result.current.dateLabel).toBe('2월 28일 토요일');
-      expect(result.current.backToToday).toBe('오늘로 돌아가기');
+      expect(result.current.backToToday).toEqual({
+        label: '오늘로 돌아가기',
+        href: { pathname: '/today', params: {} },
+      });
       expect(result.current.freeLogAvailable).toBe(false);
     });
 

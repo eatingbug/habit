@@ -419,17 +419,21 @@ describe('useHabitDetail — the journal is a date walk (D7)', () => {
       return result;
     }
 
+    /** The dates of the journal days flagged `focused`. */
+    const focusedDates = (view: HabitDetailView) =>
+      view.journal.filter((day) => day.focused).map((day) => day.date);
+
     it('with no date, focuses no day', async () => {
       const result = await detailAt(await seed(habit()));
 
-      expect(result.current.journalFocus).toBeNull();
+      expect(focusedDates(result.current)).toEqual([]);
       expect(result.current.journalShown).toHaveLength(3);
     });
 
     it('focuses a recent date inside the last 3 days', async () => {
       const result = await detailAt(await seed(habit()), addDays(TODAY, -1));
 
-      expect(result.current.journalFocus).toBe(addDays(TODAY, -1));
+      expect(focusedDates(result.current)).toEqual([addDays(TODAY, -1)]);
       expect(result.current.journalShown).toHaveLength(3);
     });
 
@@ -437,7 +441,7 @@ describe('useHabitDetail — the journal is a date walk (D7)', () => {
       const date = addDays(TODAY, -5);
       const result = await detailAt(await seed(habit(), [activity(date, 6)]), date);
 
-      expect(result.current.journalFocus).toBe(date);
+      expect(focusedDates(result.current)).toEqual([date]);
       expect(result.current.journalShown.map((day) => day.date)).toEqual([
         TODAY,
         addDays(TODAY, -1),
@@ -452,7 +456,7 @@ describe('useHabitDetail — the journal is a date walk (D7)', () => {
     it('focuses no day on a date outside the journal', async () => {
       const result = await detailAt(await seed(habit()), addDays(CREATED, -1));
 
-      expect(result.current.journalFocus).toBeNull();
+      expect(focusedDates(result.current)).toEqual([]);
       expect(result.current.journalShown).toHaveLength(3);
     });
   });
