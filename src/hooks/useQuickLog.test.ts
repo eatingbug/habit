@@ -88,7 +88,7 @@ async function log(
   result: { current: QuickLog },
   target: Habit,
   actual: number,
-  opts?: { note?: string; date?: string },
+  opts?: { note?: string; date?: string; id?: string },
 ): Promise<void> {
   await act(async () => {
     await result.current.logActivity(target, actual, opts);
@@ -99,7 +99,7 @@ async function skip(
   result: { current: QuickLog },
   target: Habit,
   reason: SkipReason,
-  opts?: { note?: string; date?: string },
+  opts?: { note?: string; date?: string; id?: string },
 ): Promise<void> {
   await act(async () => {
     await result.current.logSkip(target, reason, opts);
@@ -1103,5 +1103,93 @@ describe('a per-call date on the appends (#22)', () => {
 
     const rows = await rowsIn(repository);
     expect(rows.map((row) => row.date)).toEqual([TODAY, TODAY]);
+  });
+});
+
+/**
+ * #171: a stored row is the success. Every read after the first stored row fails, so
+ * the effect reads behind the toast cannot complete while the row itself is safe.
+ */
+class ReadsFailAfterWrite extends LocalRepository {
+  private wrote = false;
+
+  async upsertEntry(entry: HabitEntry): Promise<void> {
+    await super.upsertEntry(entry);
+    this.wrote = true;
+  }
+  getEntries(habitId: string, from: string, to: string): Promise<HabitEntry[]> {
+    return this.wrote ? Promise.reject(new Error('network')) : super.getEntries(habitId, from, to);
+  }
+  getHabits(): Promise<Habit[]> {
+    return this.wrote ? Promise.reject(new Error('network')) : super.getHabits();
+  }
+}
+
+describe('a write that is stored but whose effect cannot be read (#171)', () => {
+  it('resolves, names the stored row on a bare toast, and reloads', async () => {
+    const kv = new MemoryKV();
+    const repository = new ReadsFailAfterWrite(kv);
+    await repository.upsertHabit(habit());
+    const { result, reloads } = quickLog(repository);
+
+    await log(result, habit(), 3);
+
+    const rows = await new LocalRepository(kv).getEntries('h1', addDays(TODAY, -5), TODAY);
+    expect(rows).toHaveLength(1);
+    expect(result.current.toast?.entryId).toBe(rows[0].id);
+    expect(result.current.toast?.message).toBe('기록됨');
+    expect(result.current.toast?.detail).toBeUndefined();
+    expect(result.current.celebration).toBeNull();
+    expect(reloads()).toBe(1);
+  });
+});
+
+/** #171: the server stores the row once, then the response is lost. */
+class StoresThenRejectsOnce extends LocalRepository {
+  private lost = false;
+
+  async upsertEntry(entry: HabitEntry): Promise<void> {
+    await super.upsertEntry(entry);
+    if (!this.lost) {
+      this.lost = true;
+      throw new Error('timeout');
+    }
+  }
+}
+
+describe('a retry under the same id after a lost response (#171)', () => {
+  it('keeps one row and still reports what the log earned', async () => {
+    const repository = new StoresThenRejectsOnce(new MemoryKV());
+    await repository.upsertHabit(habit());
+    const { result } = quickLog(repository);
+
+    await act(async () => {
+      await expect(result.current.logActivity(habit(), 3, { id: 'sheet-1' })).rejects.toThrow('timeout');
+    });
+    await log(result, habit(), 3, { id: 'sheet-1' });
+
+    const rows = await rowsIn(repository);
+    expect(rows.map((row) => row.id)).toEqual(['sheet-1']);
+    expect(result.current.toast?.entryId).toBe('sheet-1');
+    expect(result.current.toast?.detail).toBe('+3쪽');
+  });
+
+  it('keeps a backfill retry on its noon pin', async () => {
+    const repository = new StoresThenRejectsOnce(new MemoryKV());
+    await repository.upsertHabit(habit());
+    const { result } = quickLog(repository);
+    const past = addDays(TODAY, -2);
+
+    await act(async () => {
+      await expect(
+        result.current.logSkip(habit(), 'cue', { date: past, id: 'sheet-2' }),
+      ).rejects.toThrow('timeout');
+    });
+    await skip(result, habit(), 'cue', { date: past, id: 'sheet-2' });
+
+    const rows = await rowsIn(repository);
+    expect(rows).toHaveLength(1);
+    const pinned = new Date(rows[0].timestamp);
+    expect([pinned.getHours(), pinned.getMinutes(), pinned.getSeconds()]).toEqual([12, 0, 0]);
   });
 });

@@ -115,7 +115,8 @@ export function skipSheetView(habit: Habit, dayWord: string): SkipSheetView {
 /**
  * 기록하기 on the open record sheet: one activity row with the sheet's note. `date`
  * names the day, or is left out for the hook's own date. Rejects on a failed write, so
- * the sheet stays open and says so.
+ * the sheet stays open and says so. `entryId` is minted once per opening of the sheet,
+ * so a retry overwrites its own row instead of adding a second (#171).
  */
 export function recordFromSheet(
   quick: Pick<QuickLog, 'logActivity'>,
@@ -123,8 +124,9 @@ export function recordFromSheet(
   amount: number,
   note: string | undefined,
   date: string | undefined,
+  entryId: string,
 ): Promise<void> {
-  return quick.logActivity(sheet.habit, amount, { note, date });
+  return quick.logActivity(sheet.habit, amount, { note, date, id: entryId });
 }
 
 /** A reason chip on the open skip sheet: one skip row at once (B5). Same contract. */
@@ -134,8 +136,9 @@ export function skipFromSheet(
   reason: SkipReason,
   note: string | undefined,
   date: string | undefined,
+  entryId: string,
 ): Promise<void> {
-  return quick.logSkip(sheet.habit, reason, { note, date });
+  return quick.logSkip(sheet.habit, reason, { note, date, id: entryId });
 }
 
 /**

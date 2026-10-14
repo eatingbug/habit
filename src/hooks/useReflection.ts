@@ -14,7 +14,6 @@ import {
   declineMessage,
   diagnosisBadge,
   habitIcon,
-  LOAD_FAILED_NOTE,
   moreDiagnosesLabel,
   proposalLine,
   reflectionTitle,
@@ -32,7 +31,7 @@ import {
 import { useRepository } from '@/context/RepositoryContext';
 import { backfillPrompt } from '@/domain/backfillPrompt';
 import { dayStates } from '@/domain/classify';
-import { dateOf, mondayOf, weekdayOf, windowEndingAt } from '@/domain/dates';
+import { mondayOf, weekdayOf, windowEndingAt } from '@/domain/dates';
 import { diagnose } from '@/domain/diagnose';
 import { archiveHabit, pauseHabit } from '@/domain/lifecycle';
 import { offeredActions, suggestAction } from '@/domain/recommend';
@@ -51,6 +50,7 @@ import type {
 } from '@/models';
 
 import { useFailure, type Failure } from './failure';
+import { useHistory } from './history';
 import { designErrors, growthChart, type GrowthBar, type GrowthChart } from './useHabitDetail';
 import { useQuickLog, type QuickLogToast } from './useQuickLog';
 
@@ -423,11 +423,6 @@ function applied(
   }
 }
 
-interface Loaded {
-  habit: Habit | null;
-  entries: HabitEntry[];
-}
-
 export function useReflection(
   habitId: string,
   {
@@ -436,52 +431,33 @@ export function useReflection(
   }: { today?: string; now?: () => Date } = {},
 ): ReflectionView {
   const repository = useRepository();
-  const { failure, report, clear, attempt } = useFailure();
-  const [loaded, setLoaded] = useState<Loaded>({ habit: null, entries: [] });
-  const [loading, setLoading] = useState(true);
+  const { failure, attempt } = useFailure();
+  /**
+   * From birth: the growth chart, the decline arm and every diagnosis window read back
+   * from today, and a clipped range would cite totals the user never had (`readHistory`).
+   */
+  const { habit, entries, loading, failure: loadFailure, reload } = useHistory(habitId, today);
   const [picked, setPicked] = useState<ReflectionAction | null>(null);
   const [committed, setCommitted] = useState(false);
-  const [version, setVersion] = useState(0);
   const [prompting, setPrompting] = useState<boolean | null>(null);
   const [asking, setAsking] = useState<string | null>(null);
   const [answering, setAnswering] = useState(false);
   // The guard itself: two taps in one render share one `answering` value.
   const inFlight = useRef(false);
-  const quick = useQuickLog({ today, now, onChange: () => setVersion((current) => current + 1) });
+  const quick = useQuickLog({ today, now, onChange: reload });
 
+  // Each arriving history: the backfill question is latched by the first load, and an
+  // answer's guard lifts once the history it wrote lands.
   useEffect(() => {
-    let cancelled = false;
-
-    async function load() {
-      const habit = await repository.getHabit(habitId);
-      // From birth: the growth chart, the decline arm and every diagnosis window read
-      // back from today, and a clipped range would cite totals the user never had.
-      const entries =
-        habit == null ? [] : await repository.getEntries(habit.id, dateOf(habit.createdAt), today);
-      if (!cancelled) {
-        setLoaded({ habit, entries });
-        if (habit != null) {
-          setPrompting((latched) => latched ?? backfillPrompt(habit, entries, today).shouldPrompt);
-        }
-        inFlight.current = false;
-        setAnswering(false);
-        clear();
-        setLoading(false);
-      }
+    if (habit != null) {
+      // Once per arriving history, where the load's own callback used to do it (#165).
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setPrompting((latched) => latched ?? backfillPrompt(habit, entries, today).shouldPrompt);
     }
+    inFlight.current = false;
+    setAnswering(false);
+  }, [habit, entries, today]);
 
-    load().catch(() => {
-      if (cancelled) return;
-      setLoading(false);
-      report(LOAD_FAILED_NOTE, () => setVersion((current) => current + 1));
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [repository, habitId, today, version]);
-
-  const { habit, entries } = loaded;
   const flags = habit == null ? [] : diagnose(habit, entries, today);
   const suggested = habit == null ? 'keep' : suggestAction(flags, habit);
   const offered = habit == null ? [] : offeredActions(habit);
@@ -537,7 +513,7 @@ export function useReflection(
   return {
     loading,
     // 실행취소의 실패는 `useQuickLog` 가 들고 있다 — 한 배너 자리를 둘이 나눠 쓴다.
-    failure: failure ?? quick.failure,
+    failure: loadFailure ?? failure ?? quick.failure,
     habit,
     title: habit == null ? '' : reflectionTitle(habit.name),
     words: REFLECTION_COPY,
@@ -583,7 +559,11 @@ export function useReflection(
               };
             }),
           },
-    fill: (date) => answer((subject) => quick.logActivity(subject, subject.floor, { date })),
+    // Minted outside the write: the banner's retry replays it under the same id (#171).
+    fill: (date) => {
+      const id = newId();
+      return answer((subject) => quick.logActivity(subject, subject.floor, { date, id }));
+    },
     askWhy: setAsking,
     asking:
       habit == null || asking == null
@@ -595,7 +575,8 @@ export function useReflection(
           },
     cancelAsk: () => setAsking(null),
     skip: async (date, reason, note) => {
-      await answer((subject) => quick.logSkip(subject, reason, { date, note }));
+      const id = newId();
+      await answer((subject) => quick.logSkip(subject, reason, { date, note, id }));
       // Closed either way: a failure is said once, in the banner, and the date stays
       // listed to be answered again.
       setAsking(null);
