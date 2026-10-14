@@ -62,48 +62,24 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 
 ## 5. Writing Rules
 
-- Applies to: PR titles, commit messages, issues, ADRs, repo docs.
-- Does not apply to: code comments, docblocks, agent chat replies, PR bodies.
+- Applies to: PR titles, commit titles, issues, ADRs, repo docs.
+- Does not apply to: code comments, docblocks, agent chat replies.
 - PR bodies follow the `pr` skill template. Keep the `Closes #N` footer.
+- Squash merge records the PR body on `main`. Commit bodies are free form; keep the `Closes #N` and `Co-Authored-By:` footers.
 - Rationale and before/after examples: `docs/agents/writing.md`.
 
-### Titles (PRs and commits only)
+### Titles (PRs and commits)
 
 - Prefix with one type: `feat` `fix` `docs` `refactor` `test` `ci` `chore`. No scope.
 - Choose `chore` only after ruling out the other six.
-- Noun phrase. No finite-verb sentence.
-- 50 characters max, excluding the `type: ` prefix and the `(#N)` GitHub appends.
-- No `·` or `+` lists. One title, one change.
-- Over the limit, or unwritable without a list: split the PR. Generalize only if it cannot split.
-
-### Bodies (commits only)
-
-- Required, in order: `## 문제` `## 변경` `## 검증`.
-- Optional, and nothing else: `## 트레이드오프` `## 범위 밖`.
-- `## 문제`: bullets labelled `증상`, `원인`, `영향`.
-- `## 변경`: what was done. No reasons.
-- `## 검증`: commands and their output, verbatim. Nothing to verify: `- 동작 변경 없음`.
-- Omit the whole body when the title states the change in full.
-- Keep the footers: `Closes #N`, `Co-Authored-By:`.
+- Noun phrase, 50 characters max, excluding the `type: ` prefix and the `(#N)` GitHub appends.
+- One title, one change. Over the limit: split the PR.
 
 ### Style
 
-- One sentence, one fact.
-- 20 eojeol (어절) per sentence, max.
-- Three noun terms in a row, max. A fixed compound counts as one term.
-- One glossary term per concept. Use the term `CONTEXT.md` defines. No synonyms.
-- No `—` inside a sentence. Write two sentences.
-- No aphorism or maxim as a closing line.
-- No personification, no metaphor.
-- No first person.
-
-### Notation
-
-- Bullets throughout. No prose paragraphs.
-- Markdown allowed: bullets, one level of nesting, tables, code fences, inline code.
-- Markdown banned: bold, italic, blockquote, horizontal rule, nesting past one level.
-- Tables only for a comparison of 3 or more rows and 2 or more columns.
-- Identifiers, file paths and tool names: English original, in backticks.
+- Write two sentences where a `—` would join them.
+- Write without first person, personification or metaphor.
+- Use the term `CONTEXT.md` defines for each concept.
 
 ---
 
