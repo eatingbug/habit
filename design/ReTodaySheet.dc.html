@@ -36,6 +36,7 @@
 :root{
   --accent:#2563EB; --done:#1FA463; --over:#12804B; --crit:#D93A30; --warn:#F5B000; --streak:#D96400;
   --r-sm:12px; --r-md:16px; --r-lg:22px;
+  --space-xs:4px; --space-sm:8px; --space-md:12px; --space-lg:16px; --space-xl:20px;
   --tap:44px;
   --sans:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Noto Sans KR","Malgun Gothic",sans-serif;
 }
@@ -58,7 +59,7 @@ button{font:inherit; color:inherit; background:none; border:0; padding:0; cursor
 
 /* 화면 틀 */
 .screen{position:relative; width:390px; background:var(--bg); display:flex; flex-direction:column; overflow:hidden}
-.page{flex:1; padding:24px 20px 28px; display:flex; flex-direction:column; gap:12px}
+.page{flex:1; padding:24px var(--space-xl) 28px; display:flex; flex-direction:column; gap:var(--space-md)}
 .row{display:flex; align-items:center; gap:10px}
 .spread{display:flex; align-items:center; justify-content:space-between; gap:10px}
 .grow{flex:1; min-width:0}
@@ -110,13 +111,15 @@ button{font:inherit; color:inherit; background:none; border:0; padding:0; cursor
 .day{display:flex; flex-direction:column; align-items:center; gap:2px; min-height:var(--tap); font-size:12px; font-weight:700; color:var(--muted)}
 
 /* 오늘 */
-.habit{display:flex; align-items:center; gap:14px}
-.hico{width:52px; height:52px; border-radius:var(--r-md); background:var(--accent-tint); display:flex; align-items:center; justify-content:center; font-size:28px; flex:none}
+.habit{display:flex; align-items:center; gap:var(--space-md); padding:var(--space-md)}
+.hico{width:40px; height:40px; border-radius:var(--r-md); background:var(--accent-tint); display:flex; align-items:center; justify-content:center; font-size:22px; flex:none}
+.prog{display:flex; align-items:center; gap:var(--space-sm); margin-top:var(--space-xs)}
+.prog .bar{flex:1; margin-top:0}
 .bar{height:10px; border-radius:99px; background:var(--inset); margin-top:6px; overflow:hidden; position:relative}
 .bar i{display:block; height:100%; border-radius:99px; background:var(--accent)}
 .bar.ok i{background:var(--done)}
-.act{width:56px; height:56px; border-radius:50%; background:var(--accent); color:#fff; display:flex; align-items:center; justify-content:center; font-size:26px; font-weight:800; flex:none}
-.act .ic{width:28px; height:28px; stroke-width:2.5}
+.act{width:44px; height:44px; border-radius:50%; background:var(--accent); color:#fff; display:flex; align-items:center; justify-content:center; font-size:22px; font-weight:800; flex:none}
+.act .ic{width:24px; height:24px; stroke-width:2.5}
 .act.ok{background:var(--done)}
 .okb{color:var(--done-ink)}
 .banner{background:var(--warn-tint); color:var(--warn-ink); border-radius:var(--r-lg); padding:14px 16px; display:flex; flex-direction:column; gap:10px}
@@ -153,6 +156,18 @@ button{font:inherit; color:inherit; background:none; border:0; padding:0; cursor
 .lvbar{height:8px; border-radius:9px; background:rgba(255,255,255,.3); overflow:hidden}
 .lvbar i{display:block; height:100%; background:#fff; border-radius:9px}
 .streak{color:var(--streak-ink); font-weight:800; white-space:nowrap}
+
+/* 대시보드 습관 줄 (ADR-0009): 상태등은 모양과 색만, 점 22에 칸마다 터치 영역, ?는 목록 위에 하나 */
+.rows{display:flex; flex-direction:column; gap:var(--space-sm)}
+.week-head{display:flex; align-items:center}
+.hrow{padding:var(--space-sm) var(--space-md) 0}
+.hrow.red{padding-bottom:var(--space-md)}
+.hrow-head{display:flex; align-items:center; gap:var(--space-sm)}
+.hrow .day{justify-content:center}
+.light-shape{font-size:12px; font-weight:700; flex:none}
+.light-shape.stable{color:var(--done-ink)}
+.light-shape.caution{color:var(--warn-ink)}
+.light-shape.intervention{color:var(--crit-ink)}
 .statrow{display:flex; flex-direction:column; gap:6px; padding:12px 0; border-bottom:1px solid var(--border)}
 .statrow:last-child{border:0}
 .sbar{height:10px; border-radius:99px; background:var(--inset); overflow:hidden}
@@ -248,8 +263,7 @@ button{font:inherit; color:inherit; background:none; border:0; padding:0; cursor
       <div class="grow">
         <div class="t-title">독서</div>
         <div class="muted">🕐 자기 전, 침대 옆에서</div>
-        <div class="b" style="margin-top:4px">6 / 10쪽</div>
-        <div class="bar"><i style="width:60%"></i></div>
+        <div class="prog"><span class="b">6 / 10쪽</span><div class="bar"><i style="width:60%"></i></div></div>
       </div>
       <button class="act" aria-label="독서 기록"><svg class="ic"><use href="#i-plus"/></svg></button>
     </div>
@@ -259,8 +273,7 @@ button{font:inherit; color:inherit; background:none; border:0; padding:0; cursor
       <div class="grow">
         <div class="t-title">턱걸이 <span class="t-label okb">✓ 했어요</span></div>
         <div class="muted">🕐 출근 전, 문틀 바에서</div>
-        <div class="b" style="margin-top:4px">5 / 5회</div>
-        <div class="bar ok"><i style="width:100%"></i></div>
+        <div class="prog"><span class="b">5 / 5회</span><div class="bar ok"><i style="width:100%"></i></div></div>
       </div>
       <button class="act ok" aria-label="턱걸이 기록">✓</button>
     </div>
@@ -269,7 +282,7 @@ button{font:inherit; color:inherit; background:none; border:0; padding:0; cursor
       <div class="hico">🧘</div>
       <div class="grow">
         <div class="t-title">명상</div>
-        <div class="b" style="margin-top:4px">아직이에요</div>
+        <div class="prog"><span class="b">아직이에요</span></div>
       </div>
       <button class="act" aria-label="명상 기록"><svg class="ic"><use href="#i-plus"/></svg></button>
     </div>

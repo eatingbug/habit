@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Card, ProgressBar } from '@/components/re';
 import type { TodayHabitRow } from '@/hooks/useToday';
-import { RADIUS, TYPE } from '@/theme/redesignTokens';
+import { RADIUS, SPACE, TYPE } from '@/theme/redesignTokens';
 import { useTheme } from '@/theme/ThemeProvider';
 
 export interface HabitCardProps {
@@ -17,7 +17,8 @@ export interface HabitCardProps {
 /**
  * A Today habit card (SPEC §6.2 Habit card, `ReToday`'s `.card.habit`): the icon on the
  * `accent` tint, the name with its status words, the 언제·어디서 value, the progress line
- * and bar, and the large round button. Every word and the bar's ratio are the hook's.
+ * with its bar on one row, and the round button. Every word and the bar's ratio are the
+ * hook's. Compact by ADR-0008: icon 40, button 44, padding 12.
  */
 export function HabitCard({ row, onPress, accessibilityLabel }: HabitCardProps) {
   const { redesign } = useTheme();
@@ -36,10 +37,16 @@ export function HabitCard({ row, onPress, accessibilityLabel }: HabitCardProps) 
           )}
         </Text>
         {row.cueLine != null && <Text style={[TYPE.body, { color: redesign.muted }]}>{row.cueLine}</Text>}
-        {row.progressLine != null && (
-          <Text style={[TYPE.bodyStrong, styles.progress, { color: redesign.text }]}>{row.progressLine}</Text>
+        {(row.progressLine != null || row.progressRatio != null) && (
+          <View style={styles.progress}>
+            {row.progressLine != null && (
+              <Text style={[TYPE.bodyStrong, styles.progressText, { color: redesign.text }]}>{row.progressLine}</Text>
+            )}
+            {row.progressRatio != null && (
+              <ProgressBar ratio={row.progressRatio} done={row.floorMet} style={styles.bar} />
+            )}
+          </View>
         )}
-        {row.progressRatio != null && <ProgressBar ratio={row.progressRatio} done={row.floorMet} />}
       </View>
       <Pressable
         onPress={onPress}
@@ -56,7 +63,7 @@ export function HabitCard({ row, onPress, accessibilityLabel }: HabitCardProps) 
         {row.floorMet ? (
           <Text style={styles.check}>✓</Text>
         ) : (
-          <Plus size={28} strokeWidth={2.5} color="#fff" />
+          <Plus size={24} strokeWidth={2.5} color="#fff" />
         )}
       </Pressable>
     </Card>
@@ -64,13 +71,16 @@ export function HabitCard({ row, onPress, accessibilityLabel }: HabitCardProps) 
 }
 
 const styles = StyleSheet.create({
-  // `.habit` — `display:flex; align-items:center; gap:14px`.
-  card: { flexDirection: 'row', alignItems: 'center', gap: 14 },
-  icon: { width: 52, height: 52, borderRadius: RADIUS.md, alignItems: 'center', justifyContent: 'center' },
-  iconText: { fontSize: 28, lineHeight: 34 },
+  // `.habit` — `display:flex; align-items:center; gap:var(--space-md); padding:var(--space-md)`.
+  card: { flexDirection: 'row', alignItems: 'center', gap: SPACE.md, padding: SPACE.md },
+  icon: { width: 40, height: 40, borderRadius: RADIUS.md, alignItems: 'center', justifyContent: 'center' },
+  iconText: { fontSize: 22, lineHeight: 28 },
   grow: { flex: 1, minWidth: 0 },
-  progress: { marginTop: 4, fontVariant: ['tabular-nums'] },
-  // `.act` — a 56px circle; ✓ at 26/800.
-  action: { width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center' },
-  check: { color: '#fff', fontSize: 26, fontWeight: '800', lineHeight: 30 },
+  // `.prog` — the progress words and the bar on one row.
+  progress: { flexDirection: 'row', alignItems: 'center', gap: SPACE.sm, marginTop: SPACE.xs },
+  progressText: { fontVariant: ['tabular-nums'] },
+  bar: { flex: 1, marginTop: 0 },
+  // `.act` — a 44px circle; ✓ at 22/800.
+  action: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
+  check: { color: '#fff', fontSize: 22, fontWeight: '800', lineHeight: 26 },
 });

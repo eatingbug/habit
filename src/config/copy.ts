@@ -926,6 +926,8 @@ export function recordResultLine({
 export const DASHBOARD_COPY = {
   title: '대시보드',
   reflect: '회고하기',
+  /** The head above the habit rows, holding the 7-day dots' one `?` (ADR-0009). */
+  recentWeek: '최근 7일',
   newHabit: '습관 만들기',
   /** The empty screen: one emoji, one sentence, one button (§6.0 Icons). */
   emptyEmoji: '🌱',

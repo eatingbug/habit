@@ -64,7 +64,7 @@ export interface DashboardDay {
    * day inside a pause (ADR-0003). Such a cell draws no mark and opens nothing.
    */
   state: DayState | null;
-  /** 일 … 토, and 오늘 for the last one. */
+  /** 일 … 토, and 오늘 for the last one. Not drawn since ADR-0009: a blank cell's accessible name. */
   label: string;
   /** "10월 8일 목요일 기록 없음". Empty when `state` is `null`. */
   accessibilityLabel: string;
@@ -82,7 +82,7 @@ export interface DashboardRow {
    * history, so a backfill re-joins the runs on either side of a filled day (ADR-0001).
    */
   streakLabel: string;
-  /** The row's status light (§4.6), drawn as shape and word by `StatusLight`. */
+  /** The row's status light (§4.6), drawn as its shape by `StatusLight wordless` (ADR-0009). */
   statusLight: StatusLight;
   /** Only a 🔴 row has 회고하기 (§6.3). A 🟡 reaches Reflection from Habit Detail. */
   reflectable: boolean;

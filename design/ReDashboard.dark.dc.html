@@ -36,6 +36,7 @@
 :root{
   --accent:#2563EB; --done:#1FA463; --over:#12804B; --crit:#D93A30; --warn:#F5B000; --streak:#D96400;
   --r-sm:12px; --r-md:16px; --r-lg:22px;
+  --space-xs:4px; --space-sm:8px; --space-md:12px; --space-lg:16px; --space-xl:20px;
   --tap:44px;
   --sans:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Noto Sans KR","Malgun Gothic",sans-serif;
 }
@@ -58,7 +59,7 @@ button{font:inherit; color:inherit; background:none; border:0; padding:0; cursor
 
 /* 화면 틀 */
 .screen{position:relative; width:390px; background:var(--bg); display:flex; flex-direction:column; overflow:hidden}
-.page{flex:1; padding:24px 20px 28px; display:flex; flex-direction:column; gap:12px}
+.page{flex:1; padding:24px var(--space-xl) 28px; display:flex; flex-direction:column; gap:var(--space-md)}
 .row{display:flex; align-items:center; gap:10px}
 .spread{display:flex; align-items:center; justify-content:space-between; gap:10px}
 .grow{flex:1; min-width:0}
@@ -110,13 +111,15 @@ button{font:inherit; color:inherit; background:none; border:0; padding:0; cursor
 .day{display:flex; flex-direction:column; align-items:center; gap:2px; min-height:var(--tap); font-size:12px; font-weight:700; color:var(--muted)}
 
 /* 오늘 */
-.habit{display:flex; align-items:center; gap:14px}
-.hico{width:52px; height:52px; border-radius:var(--r-md); background:var(--accent-tint); display:flex; align-items:center; justify-content:center; font-size:28px; flex:none}
+.habit{display:flex; align-items:center; gap:var(--space-md); padding:var(--space-md)}
+.hico{width:40px; height:40px; border-radius:var(--r-md); background:var(--accent-tint); display:flex; align-items:center; justify-content:center; font-size:22px; flex:none}
+.prog{display:flex; align-items:center; gap:var(--space-sm); margin-top:var(--space-xs)}
+.prog .bar{flex:1; margin-top:0}
 .bar{height:10px; border-radius:99px; background:var(--inset); margin-top:6px; overflow:hidden; position:relative}
 .bar i{display:block; height:100%; border-radius:99px; background:var(--accent)}
 .bar.ok i{background:var(--done)}
-.act{width:56px; height:56px; border-radius:50%; background:var(--accent); color:#fff; display:flex; align-items:center; justify-content:center; font-size:26px; font-weight:800; flex:none}
-.act .ic{width:28px; height:28px; stroke-width:2.5}
+.act{width:44px; height:44px; border-radius:50%; background:var(--accent); color:#fff; display:flex; align-items:center; justify-content:center; font-size:22px; font-weight:800; flex:none}
+.act .ic{width:24px; height:24px; stroke-width:2.5}
 .act.ok{background:var(--done)}
 .okb{color:var(--done-ink)}
 .banner{background:var(--warn-tint); color:var(--warn-ink); border-radius:var(--r-lg); padding:14px 16px; display:flex; flex-direction:column; gap:10px}
@@ -153,6 +156,18 @@ button{font:inherit; color:inherit; background:none; border:0; padding:0; cursor
 .lvbar{height:8px; border-radius:9px; background:rgba(255,255,255,.3); overflow:hidden}
 .lvbar i{display:block; height:100%; background:#fff; border-radius:9px}
 .streak{color:var(--streak-ink); font-weight:800; white-space:nowrap}
+
+/* 대시보드 습관 줄 (ADR-0009): 상태등은 모양과 색만, 점 22에 칸마다 터치 영역, ?는 목록 위에 하나 */
+.rows{display:flex; flex-direction:column; gap:var(--space-sm)}
+.week-head{display:flex; align-items:center}
+.hrow{padding:var(--space-sm) var(--space-md) 0}
+.hrow.red{padding-bottom:var(--space-md)}
+.hrow-head{display:flex; align-items:center; gap:var(--space-sm)}
+.hrow .day{justify-content:center}
+.light-shape{font-size:12px; font-weight:700; flex:none}
+.light-shape.stable{color:var(--done-ink)}
+.light-shape.caution{color:var(--warn-ink)}
+.light-shape.intervention{color:var(--crit-ink)}
 .statrow{display:flex; flex-direction:column; gap:6px; padding:12px 0; border-bottom:1px solid var(--border)}
 .statrow:last-child{border:0}
 .sbar{height:10px; border-radius:99px; background:var(--inset); overflow:hidden}
@@ -248,18 +263,21 @@ button{font:inherit; color:inherit; background:none; border:0; padding:0; cursor
       <div class="t-label">다음 레벨까지 별 120개</div>
     </div>
     <div class="head-line"><span class="t-title">손볼 습관 1개</span></div>
-    <div class="card red" style="display:flex; flex-direction:column; gap:12px">
-      <div class="row"><span class="light intervention">▲ 손봐야 해요</span><span class="t-title grow">🧘 명상</span><span class="streak">🔥 0</span><span class="q" aria-label="설명 보기"><svg class="ic"><use href="#i-help"/></svg></span></div>
-      <div class="days"><div class="day"><span class="mk done">✓</span>일</div><div class="day"><span class="mk missed">!</span>월</div><div class="day"><span class="mk done">✓</span>화</div><div class="day"><span class="mk missed">!</span>수</div><div class="day"><span class="mk skip">−</span>목</div><div class="day"><span class="mk missed">!</span>금</div><div class="day"><span class="mk pending"></span>오늘</div></div>
-      <button class="btn crit block">회고하기</button>
-    </div>
-    <div class="card" style="display:flex; flex-direction:column; gap:12px">
-      <div class="row"><span class="light caution">◆ 살펴보세요</span><span class="t-title grow">📖 독서</span><span class="streak">🔥 2</span><span class="q" aria-label="설명 보기"><svg class="ic"><use href="#i-help"/></svg></span></div>
-      <div class="days"><div class="day"><span class="mk partial">½</span>일</div><div class="day"><span class="mk done">✓</span>월</div><div class="day"><span class="mk missed">!</span>화</div><div class="day"><span class="mk partial">½</span>수</div><div class="day"><span class="mk done">✓</span>목</div><div class="day"><span class="mk done">✓</span>금</div><div class="day"><span class="mk partial">½</span>오늘</div></div>
-    </div>
-    <div class="card" style="display:flex; flex-direction:column; gap:12px">
-      <div class="row"><span class="light stable">● 괜찮아요 ★</span><span class="t-title grow">💪 턱걸이</span><span class="streak">🔥 12</span><span class="q" aria-label="설명 보기"><svg class="ic"><use href="#i-help"/></svg></span></div>
-      <div class="days"><div class="day"><span class="mk done">✓</span>일</div><div class="day"><span class="mk done">✓</span>월</div><div class="day"><span class="mk over">★</span>화</div><div class="day"><span class="mk done">✓</span>수</div><div class="day"><span class="mk done">✓</span>목</div><div class="day"><span class="mk done">✓</span>금</div><div class="day"><span class="mk done">✓</span>오늘</div></div>
+    <div class="rows">
+      <div class="week-head"><span class="t-label muted grow">최근 7일</span><span class="q" aria-label="설명 보기"><svg class="ic"><use href="#i-help"/></svg></span></div>
+      <div class="card hrow red">
+        <div class="hrow-head"><span class="light-shape intervention">▲</span><span class="t-title grow">🧘 명상</span><span class="streak t-label">🔥 0</span></div>
+        <div class="days"><div class="day"><span class="mk mini done">✓</span></div><div class="day"><span class="mk mini missed">!</span></div><div class="day"><span class="mk mini done">✓</span></div><div class="day"><span class="mk mini missed">!</span></div><div class="day"><span class="mk mini skip">−</span></div><div class="day"><span class="mk mini missed">!</span></div><div class="day"><span class="mk mini pending"></span></div></div>
+        <button class="btn crit block">회고하기</button>
+      </div>
+      <div class="card hrow">
+        <div class="hrow-head"><span class="light-shape caution">◆</span><span class="t-title grow">📖 독서</span><span class="streak t-label">🔥 2</span></div>
+        <div class="days"><div class="day"><span class="mk mini partial">½</span></div><div class="day"><span class="mk mini done">✓</span></div><div class="day"><span class="mk mini missed">!</span></div><div class="day"><span class="mk mini partial">½</span></div><div class="day"><span class="mk mini done">✓</span></div><div class="day"><span class="mk mini done">✓</span></div><div class="day"><span class="mk mini partial">½</span></div></div>
+      </div>
+      <div class="card hrow">
+        <div class="hrow-head"><span class="light-shape stable">● ★</span><span class="t-title grow">💪 턱걸이</span><span class="streak t-label">🔥 12</span></div>
+        <div class="days"><div class="day"><span class="mk mini done">✓</span></div><div class="day"><span class="mk mini done">✓</span></div><div class="day"><span class="mk mini over">★</span></div><div class="day"><span class="mk mini done">✓</span></div><div class="day"><span class="mk mini done">✓</span></div><div class="day"><span class="mk mini done">✓</span></div><div class="day"><span class="mk mini done">✓</span></div></div>
+      </div>
     </div>
     <button class="btn dash block"><svg class="ic"><use href="#i-plus"/></svg>습관 만들기</button>
   </div>
@@ -268,7 +286,7 @@ button{font:inherit; color:inherit; background:none; border:0; padding:0; cursor
     <button class="on"><svg class="ic"><use href="#i-grid"/></svg><span class="t-label">대시보드</span></button>
     <button><svg class="ic"><use href="#i-notebook"/></svg><span class="t-label">글 모음</span></button>
   </nav>
-  <div class="tip" style="left:94px; top:358px; --arrow:235px">점을 누르면 그날 기록을 채울 수 있어요. 테두리만 있는 점은 기록 없는 날이고, 실패로 세요.</div>
+  <div class="tip" style="left:94px; top:315px; --arrow:254px">점을 누르면 그날 기록을 채울 수 있어요. 테두리만 있는 점은 기록 없는 날이고, 실패로 세요.</div>
 </div>
 </div>
 </x-dc>

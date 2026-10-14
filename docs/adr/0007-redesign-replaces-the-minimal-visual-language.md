@@ -2,7 +2,7 @@
 
 - 상태: 채택됨
 - 날짜: 2026-10-10
-- 관계: `docs/SPEC.md` §6.0의 Linear/Notion 미니멀 비주얼 언어를 대체한다. ADR-0008이 결정의 기준 문장을 대체한다.
+- 관계: `docs/SPEC.md` §6.0의 Linear/Notion 미니멀 비주얼 언어를 대체한다. ADR-0008이 결정의 기준 문장을 대체한다. ADR-0009가 상태 표시 규칙에 대시보드 습관 줄의 예외를 둔다.
 - 영향 범위: `docs/SPEC.md` §1.2·§6, `docs/CONCEPT.md` §4, `design/`, `mvp/habiquest-linear.html`, `src/theme/`
 
 ## 문제
