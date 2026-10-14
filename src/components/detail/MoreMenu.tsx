@@ -1,7 +1,7 @@
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import type { DetailMenuItem } from '@/hooks/useHabitDetail';
-import { RADIUS, TAP_TARGET, TYPE } from '@/theme/redesignTokens';
+import { COLUMN_MAX_WIDTH, RADIUS, TAP_TARGET, TYPE } from '@/theme/redesignTokens';
 import { useTheme } from '@/theme/ThemeProvider';
 
 /**
@@ -30,31 +30,35 @@ export function MoreMenu({
         onPress={onClose}
         accessible={false}
       />
-      <View
-        accessibilityRole="menu"
-        style={[
-          styles.menu,
-          { top, backgroundColor: redesign.surface, borderColor: redesign.edge, boxShadow: redesign.lift },
-        ]}
-      >
-        {items.map((item) => (
-          <Pressable
-            key={item.key}
-            onPress={() => onPick(item.key)}
-            accessibilityRole="menuitem"
-            style={({ pressed }) => [styles.item, pressed && { backgroundColor: redesign.surface2 }]}
-          >
-            <Text style={[TYPE.body, styles.text, { color: redesign[item.ink] }]}>
-              {item.label}
-            </Text>
-          </Pressable>
-        ))}
+      {/* The `Modal` draws outside the root column, so `right` is measured from the column again. */}
+      <View pointerEvents="box-none" style={styles.column}>
+        <View
+          accessibilityRole="menu"
+          style={[
+            styles.menu,
+            { top, backgroundColor: redesign.surface, borderColor: redesign.edge, boxShadow: redesign.lift },
+          ]}
+        >
+          {items.map((item) => (
+            <Pressable
+              key={item.key}
+              onPress={() => onPick(item.key)}
+              accessibilityRole="menuitem"
+              style={({ pressed }) => [styles.item, pressed && { backgroundColor: redesign.surface2 }]}
+            >
+              <Text style={[TYPE.body, styles.text, { color: redesign[item.ink] }]}>
+                {item.label}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
       </View>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
+  column: { flex: 1, width: '100%', maxWidth: COLUMN_MAX_WIDTH, alignSelf: 'center' },
   // `.menu` — `right:16px; width:200px; padding:6px; border:2px; --r-md`.
   menu: { position: 'absolute', right: 16, width: 200, padding: 6, borderWidth: 2, borderRadius: RADIUS.md },
   item: { minHeight: TAP_TARGET, justifyContent: 'center', paddingHorizontal: 14, borderRadius: 10 },
