@@ -154,10 +154,10 @@ button{font:inherit; color:inherit; background:none; border:0; padding:0; cursor
 .hrow.red{padding-bottom:var(--space-md)}
 .hrow-head{display:flex; align-items:center; gap:var(--space-sm)}
 .hrow .day{justify-content:center}
-.sl{font-size:12px; font-weight:700; flex:none}
-.sl.stable{color:var(--done-ink)}
-.sl.caution{color:var(--warn-ink)}
-.sl.intervention{color:var(--crit-ink)}
+.light-shape{font-size:12px; font-weight:700; flex:none}
+.light-shape.stable{color:var(--done-ink)}
+.light-shape.caution{color:var(--warn-ink)}
+.light-shape.intervention{color:var(--crit-ink)}
 .statrow{display:flex; flex-direction:column; gap:6px; padding:12px 0; border-bottom:1px solid var(--border)}
 .statrow:last-child{border:0}
 .sbar{height:10px; border-radius:99px; background:var(--inset); overflow:hidden}

@@ -164,10 +164,10 @@ button{font:inherit; color:inherit; background:none; border:0; padding:0; cursor
 .hrow.red{padding-bottom:var(--space-md)}
 .hrow-head{display:flex; align-items:center; gap:var(--space-sm)}
 .hrow .day{justify-content:center}
-.sl{font-size:12px; font-weight:700; flex:none}
-.sl.stable{color:var(--done-ink)}
-.sl.caution{color:var(--warn-ink)}
-.sl.intervention{color:var(--crit-ink)}
+.light-shape{font-size:12px; font-weight:700; flex:none}
+.light-shape.stable{color:var(--done-ink)}
+.light-shape.caution{color:var(--warn-ink)}
+.light-shape.intervention{color:var(--crit-ink)}
 .statrow{display:flex; flex-direction:column; gap:6px; padding:12px 0; border-bottom:1px solid var(--border)}
 .statrow:last-child{border:0}
 .sbar{height:10px; border-radius:99px; background:var(--inset); overflow:hidden}
@@ -266,16 +266,16 @@ button{font:inherit; color:inherit; background:none; border:0; padding:0; cursor
     <div class="rows">
       <div class="week-head"><span class="t-label muted grow">최근 7일</span><span class="q" aria-label="설명 보기"><svg class="ic"><use href="#i-help"/></svg></span></div>
       <div class="card hrow red">
-        <div class="hrow-head"><span class="sl intervention">▲</span><span class="t-title grow">🧘 명상</span><span class="streak t-label">🔥 0</span></div>
+        <div class="hrow-head"><span class="light-shape intervention">▲</span><span class="t-title grow">🧘 명상</span><span class="streak t-label">🔥 0</span></div>
         <div class="days"><div class="day"><span class="mk mini done">✓</span></div><div class="day"><span class="mk mini missed">!</span></div><div class="day"><span class="mk mini done">✓</span></div><div class="day"><span class="mk mini missed">!</span></div><div class="day"><span class="mk mini skip">−</span></div><div class="day"><span class="mk mini missed">!</span></div><div class="day"><span class="mk mini pending"></span></div></div>
         <button class="btn crit block">회고하기</button>
       </div>
       <div class="card hrow">
-        <div class="hrow-head"><span class="sl caution">◆</span><span class="t-title grow">📖 독서</span><span class="streak t-label">🔥 2</span></div>
+        <div class="hrow-head"><span class="light-shape caution">◆</span><span class="t-title grow">📖 독서</span><span class="streak t-label">🔥 2</span></div>
         <div class="days"><div class="day"><span class="mk mini partial">½</span></div><div class="day"><span class="mk mini done">✓</span></div><div class="day"><span class="mk mini missed">!</span></div><div class="day"><span class="mk mini partial">½</span></div><div class="day"><span class="mk mini done">✓</span></div><div class="day"><span class="mk mini done">✓</span></div><div class="day"><span class="mk mini partial">½</span></div></div>
       </div>
       <div class="card hrow">
-        <div class="hrow-head"><span class="sl stable">● ★</span><span class="t-title grow">💪 턱걸이</span><span class="streak t-label">🔥 12</span></div>
+        <div class="hrow-head"><span class="light-shape stable">● ★</span><span class="t-title grow">💪 턱걸이</span><span class="streak t-label">🔥 12</span></div>
         <div class="days"><div class="day"><span class="mk mini done">✓</span></div><div class="day"><span class="mk mini done">✓</span></div><div class="day"><span class="mk mini over">★</span></div><div class="day"><span class="mk mini done">✓</span></div><div class="day"><span class="mk mini done">✓</span></div><div class="day"><span class="mk mini done">✓</span></div><div class="day"><span class="mk mini done">✓</span></div></div>
       </div>
     </div>

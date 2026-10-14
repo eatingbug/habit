@@ -1142,7 +1142,7 @@ On screen (#95, #101, #109, #111):
 - The head "손볼 습관 N개". It has no `?`.
 - Habit rows, sorted by status light with 🔴 on top.
 - One "최근 7일" head above the rows holds the 7-day dots' `?` (ADR-0009).
-- A row's head line holds the status light's shape (●, ◆ or ▲, no word), the icon and name, and "🔥 N" streak. A long name wraps to two lines.
+- A row's head line holds the status light's shape (●, ◆ or ▲, with ★ on a personal best, no word), the icon and name, and "🔥 N" streak. A long name wraps to two lines.
 - Under the head sit the last 7 days as dots, oldest first, without weekday labels. The last one is today.
 - A row shows no stat.
 - Only a 🔴 row has the "회고하기" button.
