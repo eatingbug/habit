@@ -1,10 +1,9 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useState } from 'react';
 
 import {
   characterLevelLabel,
   DAY_WORDS,
   dayCellLabel,
-  LOAD_FAILED_NOTE,
   longDateLabel,
   monthDayLabel,
   needsAttentionLabel,
@@ -15,17 +14,17 @@ import {
   WEEKDAY_LABELS,
 } from '@/config/copy';
 import { TUNING } from '@/config/tuning';
-import { useRepository } from '@/context/RepositoryContext';
 import { isBackfillableDate } from '@/domain/backfill';
 import { dayStates } from '@/domain/classify';
-import { addDays, compareDates, dateOf, weekdayOf, windowEndingAt } from '@/domain/dates';
+import { addDays, weekdayOf, windowEndingAt } from '@/domain/dates';
 import { computeStatXP, levelForXP, type HabitWithEntries } from '@/domain/score';
 import { aggregateStatusCount, deriveStatusLight, type StatusLight } from '@/domain/statusLight';
 import { computeStreak } from '@/domain/streak';
 import { localToday } from '@/lib/device';
 import type { DayState, Habit, HabitEntry, SkipReason, Stat } from '@/models';
 
-import { useFailure, type Failure } from './failure';
+import type { Failure } from './failure';
+import { useHistories } from './history';
 import {
   labelOf,
   recordFromSheet as writeRecord,
@@ -240,16 +239,6 @@ const LIGHT_RANK: Record<StatusLight, number> = {
   stable: 2,
 };
 
-interface Loaded {
-  rows: DashboardRow[];
-  /** Each shown habit's rows, from its birth (or the week's start) through today. */
-  history: Map<string, HabitEntry[]>;
-  stats: StatProgress[];
-  needsAttention: number;
-}
-
-const EMPTY: Loaded = { rows: [], history: new Map(), stats: [], needsAttention: 0 };
-
 type SheetIntent =
   | { kind: 'record' | 'skip'; habitId: string; date: string }
   | { kind: 'stats' };
@@ -258,82 +247,26 @@ export function useDashboard({
   today = localToday(),
   now = () => new Date(),
 }: { today?: string; now?: () => Date } = {}): DashboardView {
-  const repository = useRepository();
-  const { failure, report, clear } = useFailure();
-  const [loaded, setLoaded] = useState<Loaded>(EMPTY);
-  const [loading, setLoading] = useState(true);
-  /**
-   * Bumped by a write, so the load effect is the single place that reads. `loading` is
-   * raised only for the first load: a log must not blank the row it just changed.
-   */
-  const [version, setVersion] = useState(0);
+  const { histories: all, loading, failure, reload } = useHistories(today);
   const [intent, setIntent] = useState<SheetIntent | null>(null);
-
-  // Stable, so the screen can hand it to `useFocusEffect`.
-  const reload = useCallback(() => setVersion((current) => current + 1), []);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const window = windowEndingAt(today, WEEK_DAYS);
-    const from = window[0];
-
-    async function load() {
-      const habits = await repository.getHabits();
-
-      const all = await Promise.all(
-        habits.map(async (habit) => {
-          // `computeStreak` walks back to `createdAt`, so the fetch starts at whichever
-          // of the two is earlier.
-          const start = dateOf(habit.createdAt);
-          const entries = await repository.getEntries(
-            habit.id,
-            compareDates(start, from) < 0 ? start : from,
-            today,
-          );
-          return { habit, entries };
-        }),
-      );
-
-      if (cancelled) return;
-
-      // §3.2 — archived habits are hidden. Paused ones stay, to be resumed (ADR-0003).
-      const visible = all.filter(({ habit }) => habit.lifecycle !== 'archived');
-      const rows = visible
-        .map(({ habit, entries }) => rowOf(habit, entries, window, today))
-        .sort((a, b) => LIGHT_RANK[a.statusLight] - LIGHT_RANK[b.statusLight]);
-      const count = aggregateStatusCount(
-        visible.map(({ habit }) => habit),
-        Object.fromEntries(visible.map(({ habit, entries }) => [habit.id, entries])),
-        today,
-      );
-
-      setLoaded({
-        rows,
-        history: new Map(visible.map(({ habit, entries }) => [habit.id, entries])),
-        // Stats read **every** habit, archived included: archiving must not claw back
-        // what a recorded day earned (ADR-0003).
-        stats: TUNING.stats.map((stat) => statProgress(stat, all)),
-        needsAttention: count.caution + count.intervention,
-      });
-      clear();
-      setLoading(false);
-    }
-
-    load().catch(() => {
-      if (cancelled) return;
-      setLoading(false);
-      report(LOAD_FAILED_NOTE, reload);
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [repository, today, version]);
 
   const quick = useQuickLog({ today, now, onChange: reload });
 
-  const { rows, stats } = loaded;
+  const window = windowEndingAt(today, WEEK_DAYS);
+  // §3.2 — archived habits are hidden. Paused ones stay, to be resumed (ADR-0003).
+  const visible = all.filter(({ habit }) => habit.lifecycle !== 'archived');
+  const history = new Map(visible.map(({ habit, entries }) => [habit.id, entries]));
+  const rows = visible
+    .map(({ habit, entries }) => rowOf(habit, entries, window, today))
+    .sort((a, b) => LIGHT_RANK[a.statusLight] - LIGHT_RANK[b.statusLight]);
+  const count = aggregateStatusCount(
+    visible.map(({ habit }) => habit),
+    Object.fromEntries(history),
+    today,
+  );
+  // Stats read **every** habit, archived included: archiving must not claw back
+  // what a recorded day earned (ADR-0003).
+  const stats = TUNING.stats.map((stat) => statProgress(stat, all));
   const characterLevel = stats.reduce((highest, stat) => Math.max(highest, stat.level), 0);
   const leading = leadingStat(stats, characterLevel);
   const nextLine = starsToNextLevelLabel(
@@ -357,7 +290,7 @@ export function useDashboard({
   function targetOf(habitId: string, date: string) {
     const row = rows.find((r) => r.habit.id === habitId);
     if (row == null || !isBackfillableDate(row.habit, date, today)) return null;
-    const day = dayStates(row.habit, loaded.history.get(habitId) ?? [], date, date, today)[0];
+    const day = dayStates(row.habit, history.get(habitId) ?? [], date, date, today)[0];
     return { habit: row.habit, affordances: logAffordances(row.habit, day) };
   }
 
@@ -420,7 +353,7 @@ export function useDashboard({
     dateLabel: longDateLabel(today, weekdayOf(today)),
     rows,
     level,
-    needsAttentionLabel: rows.length === 0 ? null : needsAttentionLabel(loaded.needsAttention),
+    needsAttentionLabel: rows.length === 0 ? null : needsAttentionLabel(count.caution + count.intervention),
     loading,
     empty: !loading && rows.length === 0 && failure == null && quick.failure == null,
     // A failed undo is `useQuickLog`'s; the two share one banner.

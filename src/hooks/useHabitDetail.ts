@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useState } from 'react';
 
 import {
   dailyAmountLabel,
@@ -17,7 +17,6 @@ import {
   journalRowSummary,
   LIFECYCLE_LABELS,
   LIFECYCLE_NOTE,
-  LOAD_FAILED_NOTE,
   longDateLabel,
   monthDayLabel,
   nextStepLine,
@@ -48,6 +47,7 @@ import type { DayState, Habit, HabitEntry, SkipReason, Stat } from '@/models';
 import type { Palette } from '@/theme/redesignTokens';
 
 import { useFailure, type Failure } from './failure';
+import { useHistory } from './history';
 import { logAffordances, useQuickLog, type QuickLogToast, type StreakCelebration } from './useQuickLog';
 import {
   draftedEntry,
@@ -672,14 +672,6 @@ function patchedText(current: string | undefined, next: string | null | undefine
   return trimmed != null && trimmed.length > 0 ? trimmed : undefined;
 }
 
-interface Loaded {
-  habit: Habit | null;
-  /** The habit's rows from its birth through today — the range `computeStreak` walks. */
-  entries: HabitEntry[];
-}
-
-const EMPTY: Loaded = { habit: null, entries: [] };
-
 /** What is open — the hook's only sheet state. Everything shown is derived from it. */
 type SheetIntent =
   | { kind: 'record' | 'skip'; date: string }
@@ -697,52 +689,14 @@ export function useHabitDetail(
   }: { today?: string; now?: () => Date; date?: string } = {},
 ): HabitDetailView {
   const repository = useRepository();
-  const { failure, report, clear, attempt } = useFailure();
-  const [loaded, setLoaded] = useState<Loaded>(EMPTY);
-  const [loading, setLoading] = useState(true);
+  const { failure, attempt } = useFailure();
+  /**
+   * From birth: `computeStreak` and `deleteOutcome` walk back to `createdAt`, and a
+   * clipped range would report a run the user never had (`readHistory`).
+   */
+  const { habit, entries, loading, failure: loadFailure, reload } = useHistory(habitId, today);
   const [intent, setIntent] = useState<SheetIntent | null>(null);
   const [journalOpen, setJournalOpen] = useState(false);
-  /**
-   * Bumped by a write, so the load effect is the single place that reads. `loading` is
-   * raised only for the first load, never for a reload: filling a past day must not
-   * blank the journal it just changed.
-   */
-  const [version, setVersion] = useState(0);
-
-  // Stable, so the screen can hand it to `useFocusEffect`.
-  const reload = useCallback(() => setVersion((current) => current + 1), []);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function load() {
-      const habit = await repository.getHabit(habitId);
-      // From birth: `computeStreak` and `deleteOutcome` walk back to `createdAt`, and a
-      // clipped range would report a run the user never had.
-      const entries =
-        habit == null ? [] : await repository.getEntries(habit.id, dateOf(habit.createdAt), today);
-
-      if (!cancelled) {
-        setLoaded({ habit, entries });
-        clear();
-        setLoading(false);
-      }
-    }
-
-    load().catch(() => {
-      if (cancelled) return;
-      // 실패 기록과 `setLoading(false)` 는 한 쌍이다. 후자만 붙이면 무한 스피너가 "습관을
-      // 찾을 수 없어요" 로 바뀔 뿐이고, 그것이 더 나쁘다.
-      setLoading(false);
-      report(LOAD_FAILED_NOTE, reload);
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [repository, habitId, today, version]);
-
-  const { habit, entries } = loaded;
 
   const quick = useQuickLog({ date: today, today, now, onChange: reload });
 
@@ -1060,7 +1014,7 @@ export function useHabitDetail(
     deletePreview,
     saveDesign,
     toast: quick.toast,
-    failure: failure ?? quick.failure,
+    failure: loadFailure ?? failure ?? quick.failure,
     undoLast: quick.undoLast,
     celebration: quick.celebration,
     dismissCelebration: quick.dismissCelebration,

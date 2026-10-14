@@ -116,20 +116,6 @@ describe('읽기 실패 — 무한 스피너도, 빈 상태라는 거짓말도 �
     expect(result.current.failure?.message).toBe(LOAD_FAILED_NOTE);
   });
 
-  it('대시보드: 다시 시도가 통하면 행이 오고 실패는 사라진다', async () => {
-    const repository = await flakyWith();
-    const { result } = renderHook(() => useDashboard({ today: TODAY }), {
-      wrapper: wrapperFor(repository),
-    });
-    await waitFor(() => expect(result.current.failure).not.toBeNull());
-
-    repository.failing = false;
-    act(() => result.current.failure?.retry());
-
-    await waitFor(() => expect(result.current.rows).toHaveLength(1));
-    expect(result.current.failure).toBeNull();
-  });
-
   it('오늘: 불러오기가 실패하면 loading 은 내려가고 실패가 남는다', async () => {
     const repository = await flakyWith();
     const { result } = renderHook(() => useToday({ today: TODAY }), {
@@ -152,20 +138,6 @@ describe('읽기 실패 — 무한 스피너도, 빈 상태라는 거짓말도 �
     // 가 바로 이 조합이다 — 없는 게 아니라 못 읽은 것이다.
     expect(result.current.habit).toBeNull();
     expect(result.current.failure?.message).toBe(LOAD_FAILED_NOTE);
-  });
-
-  it('습관 상세: 다시 시도가 통하면 습관이 오고 실패는 사라진다', async () => {
-    const repository = await flakyWith();
-    const { result } = renderHook(() => useHabitDetail('h1', { today: TODAY }), {
-      wrapper: wrapperFor(repository),
-    });
-    await waitFor(() => expect(result.current.failure).not.toBeNull());
-
-    repository.failing = false;
-    act(() => result.current.failure?.retry());
-
-    await waitFor(() => expect(result.current.habit?.id).toBe('h1'));
-    expect(result.current.failure).toBeNull();
   });
 });
 
@@ -255,5 +227,31 @@ describe('쓰기 실패 — 삼켜지지 않는다 (#51)', () => {
 
     expect(result.current.failure?.message).toBe(SAVE_FAILED_NOTE);
     expect(result.current.habit?.lifecycle).toBe('forming');
+  });
+
+  /** 쓰기 실패는 화면 훅의 몫이다. 다른 로딩이 성공해도 지워지지 않는다 (#165). */
+  it('보관하기의 실패는 뒤이은 새로고침이 성공해도 남는다', async () => {
+    const repository = await flakyWith();
+    repository.failing = false;
+    const { result } = renderHook(() => useHabitDetail('h1', { today: TODAY }), {
+      wrapper: wrapperFor(repository),
+    });
+    await waitFor(() => expect(result.current.habit).not.toBeNull());
+    await act(() => result.current.pickMenu('archive'));
+    repository.failing = true;
+    await act(() => result.current.confirmFromSheet());
+
+    repository.failing = false;
+    await repository.upsertEntry({
+      id: 'elsewhere',
+      habitId: 'h1',
+      date: TODAY,
+      timestamp: `${TODAY}T09:00:00.000Z`,
+      actual: 5,
+    });
+    act(() => result.current.reload());
+
+    await waitFor(() => expect(result.current.journal[0].rows).toHaveLength(1));
+    expect(result.current.failure?.message).toBe(SAVE_FAILED_NOTE);
   });
 });

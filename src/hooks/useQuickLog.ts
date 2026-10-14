@@ -17,7 +17,7 @@ import { TUNING } from '@/config/tuning';
 import { useRepository } from '@/context/RepositoryContext';
 import { buildBackfillActivity, buildBackfillSkip } from '@/domain/backfill';
 import { type ClassifiedDay, dayStates, isFloorMet } from '@/domain/classify';
-import { addDays, dateOf, weekdayOf } from '@/domain/dates';
+import { addDays, weekdayOf } from '@/domain/dates';
 import {
   computeStatLevel,
   computeStreak,
@@ -29,6 +29,7 @@ import { localNoonOn, newId } from '@/lib/device';
 import type { Habit, HabitEntry, SkipReason } from '@/models';
 
 import { useFailure, type Failure } from './failure';
+import { readHistory } from './history';
 
 /**
  * The entry-write primitive — SPEC §6.1 / §6.2 (B1, B5, B6) and #13's row edit/delete.
@@ -356,7 +357,7 @@ export function useQuickLog({
    * same reason `useToday` gives its XP delta one.
    */
   function fullHistory(habit: Habit): Promise<HabitEntry[]> {
-    return repository.getEntries(habit.id, dateOf(habit.createdAt), today);
+    return readHistory(repository, habit, today);
   }
 
   /**
