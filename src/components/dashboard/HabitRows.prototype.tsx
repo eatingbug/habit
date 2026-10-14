@@ -14,6 +14,9 @@ export const PROTOTYPE_VARIANTS = [
   { key: 'a', name: '작은 점 카드' },
   { key: 'b', name: '한 표' },
   { key: 'c', name: '한 줄 카드' },
+  { key: 'd', name: '두 줄 카드' },
+  { key: 'e', name: '한 줄, 이름 줄바꿈' },
+  { key: 'f', name: '한 줄, 왼쪽 2단' },
 ];
 
 export interface HabitRowsPrototypeProps {
@@ -120,9 +123,31 @@ function VariantB({ rows, onPress, onDay, onReflect }: HabitRowsPrototypeProps) 
   );
 }
 
-/** C — one line per habit: light, name, streak, then seven 22px marks. Days open via Detail. */
-function VariantC({ rows, onPress, onReflect }: HabitRowsPrototypeProps) {
+/**
+ * C — one card per habit, seven 22px marks, whole card opens Detail. Days open via Detail.
+ * c: one line, name ellipsised. d: name line on top, marks below on the right.
+ * e: one line, a long name wraps to two lines. f: name (≤2 lines) over the streak, marks right.
+ */
+function VariantC({ rows, onPress, onReflect, variant }: HabitRowsPrototypeProps) {
   const { redesign } = useTheme();
+  const marks = (row: DashboardRow) => (
+    <View style={styles.cMarks}>
+      {row.week.map((day) =>
+        day.state != null ? (
+          <DayMark key={day.date} state={day.state} size={22} />
+        ) : (
+          <View key={day.date} style={{ width: 22, height: 22 }} />
+        ),
+      )}
+    </View>
+  );
+  const name = (row: DashboardRow, lines: number) => (
+    <Text style={[TYPE.title, styles.grow, { color: redesign.text }]} numberOfLines={lines}>{row.label}</Text>
+  );
+  const streak = (row: DashboardRow) => (
+    <Text style={[TYPE.label, styles.streak, { color: redesign.streakInk }]}>{row.streakLabel}</Text>
+  );
+
   return (
     <View style={{ gap: SPACE.sm }}>
       {rows.map((row) => (
@@ -131,20 +156,34 @@ function VariantC({ rows, onPress, onReflect }: HabitRowsPrototypeProps) {
             onPress={() => onPress(row)}
             accessibilityRole="button"
             accessibilityLabel={row.label}
-            style={({ pressed }) => [styles.cLine, pressed && { opacity: 0.7 }]}
+            style={({ pressed }) => [variant === 'd' ? styles.dCol : styles.cLine, pressed && { opacity: 0.7 }]}
           >
-            <LightGlyph row={row} />
-            <Text style={[TYPE.title, styles.grow, { color: redesign.text }]} numberOfLines={1}>{row.label}</Text>
-            <Text style={[TYPE.label, styles.streak, { color: redesign.streakInk }]}>{row.streakLabel}</Text>
-            <View style={styles.cMarks}>
-              {row.week.map((day) =>
-                day.state != null ? (
-                  <DayMark key={day.date} state={day.state} size={22} />
-                ) : (
-                  <View key={day.date} style={{ width: 22, height: 22 }} />
-                ),
-              )}
-            </View>
+            {variant === 'd' ? (
+              <>
+                <View style={styles.dHead}>
+                  <LightGlyph row={row} />
+                  {name(row, 2)}
+                  {streak(row)}
+                </View>
+                <View style={styles.dMarks}>{marks(row)}</View>
+              </>
+            ) : variant === 'f' ? (
+              <>
+                <LightGlyph row={row} />
+                <View style={styles.grow}>
+                  {name(row, 2)}
+                  {streak(row)}
+                </View>
+                {marks(row)}
+              </>
+            ) : (
+              <>
+                <LightGlyph row={row} />
+                {name(row, variant === 'e' ? 2 : 1)}
+                {streak(row)}
+                {marks(row)}
+              </>
+            )}
           </Pressable>
           {row.reflectable && (
             <View style={{ paddingHorizontal: SPACE.md, paddingBottom: SPACE.md }}>
@@ -169,4 +208,7 @@ const styles = StyleSheet.create({
   bName: { minHeight: TAP_TARGET },
   cLine: { flexDirection: 'row', alignItems: 'center', gap: SPACE.sm, minHeight: TAP_TARGET, paddingHorizontal: SPACE.md, paddingVertical: SPACE.sm },
   cMarks: { flexDirection: 'row', gap: 3 },
+  dCol: { gap: SPACE.xs, minHeight: TAP_TARGET, paddingHorizontal: SPACE.md, paddingVertical: SPACE.sm },
+  dHead: { flexDirection: 'row', alignItems: 'center', gap: SPACE.sm },
+  dMarks: { alignItems: 'flex-end' },
 });
