@@ -115,7 +115,7 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 
 ### Issue tracker
 
-Issues live in GitHub Issues for `eatingbug/habit`, via the `gh` CLI. See `docs/agents/issue-tracker.md`.
+Issues live in GitHub Issues for `eatingbug/habit`, via the `gh` CLI. See `docs/agents/issue-tracker.md`. Claim the issue there before implementing it.
 
 ### Triage labels
 
