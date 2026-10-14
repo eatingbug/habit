@@ -130,7 +130,7 @@ export const PALETTES: Record<ThemeName, Palette> = { light, dark };
 /** `--r-sm`, `--r-md`, `--r-lg`, and the CSS's `999px` pill. */
 export const RADIUS = { sm: 12, md: 16, lg: 22, pill: 999 } as const;
 
-/** `--space-xs` … `--space-xl`. Used by the screen frame and the habit cards (ADR-0008). */
+/** `--space-xs` … `--space-xl` (ADR-0008). */
 export const SPACE = { xs: 4, sm: 8, md: 12, lg: 16, xl: 20 } as const;
 
 /**

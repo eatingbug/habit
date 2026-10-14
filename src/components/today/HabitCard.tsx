@@ -71,7 +71,7 @@ export function HabitCard({ row, onPress, accessibilityLabel }: HabitCardProps) 
 }
 
 const styles = StyleSheet.create({
-  // `.card.habit` — `display:flex; align-items:center; gap:12px; padding:12px`.
+  // `.habit` — `display:flex; align-items:center; gap:var(--space-md); padding:var(--space-md)`.
   card: { flexDirection: 'row', alignItems: 'center', gap: SPACE.md, padding: SPACE.md },
   icon: { width: 40, height: 40, borderRadius: RADIUS.md, alignItems: 'center', justifyContent: 'center' },
   iconText: { fontSize: 22, lineHeight: 28 },
