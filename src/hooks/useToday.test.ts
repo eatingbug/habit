@@ -1982,3 +1982,31 @@ describe('useToday', () => {
     });
   });
 });
+
+/** #171: the server stores the row once, then the response is lost. */
+class StoresThenRejectsOnce extends LocalRepository {
+  private lost = false;
+
+  async upsertEntry(entry: HabitEntry): Promise<void> {
+    await super.upsertEntry(entry);
+    if (!this.lost) {
+      this.lost = true;
+      throw new Error('timeout');
+    }
+  }
+}
+
+describe('a record sheet retried after a lost response (#171)', () => {
+  it('stores the activity once', async () => {
+    const repository = new StoresThenRejectsOnce(await seed([habit()]));
+    const result = await todayScreen(repository);
+
+    await act(async () => result.current.openRecord('h1'));
+    await act(async () => {
+      await expect(result.current.recordFromSheet(3)).rejects.toThrow('timeout');
+    });
+    await act(async () => result.current.recordFromSheet(3));
+
+    expect(await repository.getEntries('h1', TODAY, TODAY)).toHaveLength(1);
+  });
+});

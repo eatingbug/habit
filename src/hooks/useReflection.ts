@@ -559,7 +559,11 @@ export function useReflection(
               };
             }),
           },
-    fill: (date) => answer((subject) => quick.logActivity(subject, subject.floor, { date })),
+    // Minted outside the write: the banner's retry replays it under the same id (#171).
+    fill: (date) => {
+      const id = newId();
+      return answer((subject) => quick.logActivity(subject, subject.floor, { date, id }));
+    },
     askWhy: setAsking,
     asking:
       habit == null || asking == null
@@ -571,7 +575,8 @@ export function useReflection(
           },
     cancelAsk: () => setAsking(null),
     skip: async (date, reason, note) => {
-      await answer((subject) => quick.logSkip(subject, reason, { date, note }));
+      const id = newId();
+      await answer((subject) => quick.logSkip(subject, reason, { date, note, id }));
       // Closed either way: a failure is said once, in the banner, and the date stays
       // listed to be answered again.
       setAsking(null);

@@ -56,9 +56,19 @@ import { readHistory } from './history';
  * throw away somebody else's fact.
  *
  * **No optimistic local mutation.** A write is followed by `onChange()`, and the
- * consuming hook reloads from the repository. The repository is a local KV, so the
- * reload is immediate; a speculative in-memory mutation would need a rollback path on
- * failure that nothing here asks for (CLAUDE.md §2). This is a decision, not a gap.
+ * consuming hook reloads from the repository. The server is the single source of truth
+ * (ADR-0005), so the reload is a round trip; a speculative in-memory mutation would
+ * need a rollback path on failure that nothing here asks for (CLAUDE.md §2). This is a
+ * decision, not a gap.
+ *
+ * **A stored row is a successful write (#171).** The reads after `upsertEntry` only
+ * shape the toast and the celebration; if they fail, the append still resolves with a
+ * bare toast. Rejecting there would invite a retry that stores the same activity twice.
+ * A caller that can retry passes `opts.id`, so the retry overwrites its own row.
+ *
+ * **Where a failure is said.** A write started from a sheet rejects, and the sheet
+ * says so and stays open for the retry. A write with no sheet (undo, Reflection's
+ * answers, lifecycle) goes through `attempt`, and the screen's banner says so.
  *
  * The toast retires itself after `TUNING.undoToastMs`. Without a window it would
  * survive until the next append, leaving 실행취소 armed indefinitely — a press an hour
@@ -73,8 +83,11 @@ export interface QuickLogToast {
   /** The row 실행취소 will delete — minted before the write (§6.2 B6). */
   entryId: string;
   message: string;
-  /** The mono slot — the amount, and on an activity log the XP it earned. */
-  detail: string;
+  /**
+   * The mono slot — the amount, and on an activity log the XP it earned. Absent when
+   * the row is stored but its effect could not be read back (#171).
+   */
+  detail?: string;
   /**
    * The plain-text second half: what this log just unlocked (§4.2 C1). Absent on the
    * skip toast, which has no reward to attribute.
@@ -139,12 +152,19 @@ export interface QuickLog {
    * Append one activity row, stamped now — or noon-pinned on a backfill (§6.3).
    * `opts.note` is the optional note typed beside the amount — it belongs to this row,
    * exactly as a skip's note belongs to its row (#77). `opts.date` names the day for
-   * this one call, overriding the hook's `date` (see `logSkip`).
+   * this one call, overriding the hook's `date` (see `logSkip`). `opts.id` is the row's
+   * id when the caller holds one across retries (#171): a sheet mints it once per
+   * opening, so a retry after a lost response overwrites its own row instead of adding
+   * a second. Omitted, the id is minted here.
    *
    * Rejects `actual <= 0` — §3.3's invariant. A zero amount is not an activity row;
    * the state that means "didn't do it" is a skip row, which carries a reason.
    */
-  logActivity(habit: Habit, actual: number, opts?: { note?: string; date?: string }): Promise<void>;
+  logActivity(
+    habit: Habit,
+    actual: number,
+    opts?: { note?: string; date?: string; id?: string },
+  ): Promise<void>;
   /**
    * Append one **skip** row for today: `actual: 0` plus a reason (§3.3's row
    * discriminator, §6.2 B5). One chip tap is the whole gesture, so this takes the
@@ -163,11 +183,12 @@ export interface QuickLog {
    * control back (§6.2 B4) — so reason-tagging a past day is this same chip, on a
    * backfilled row (#14). `opts.date` is for a surface that answers several past days
    * at once — #22's recover-first prompt — and so has no single date to bind.
+   * `opts.id` is `logActivity`'s, for the same retry.
    */
   logSkip(
     habit: Habit,
     reason: SkipReason,
-    opts?: { note?: string; date?: string },
+    opts?: { note?: string; date?: string; id?: string },
   ): Promise<void>;
   /**
    * Rewrite one **existing** row, keyed on `entry.id` (#13). The repository upserts by
@@ -350,6 +371,11 @@ export function useQuickLog({
     return repository.getEntries(habitId, day, day);
   }
 
+  /** `rows` minus the one a retry is about to overwrite (#171). */
+  function withoutRow(rows: HabitEntry[], entryId: string): HabitEntry[] {
+    return rows.filter((row) => row.id !== entryId);
+  }
+
   /**
    * A habit's **whole** history, `createdAt` through today. Not one day's rows: XP is
    * run-keyed (streak bonuses, milestones), so what a single log is worth can only be
@@ -470,7 +496,7 @@ export function useQuickLog({
   async function logActivity(
     habit: Habit,
     actual: number,
-    opts: { note?: string; date?: string } = {},
+    opts: { note?: string; date?: string; id?: string } = {},
   ): Promise<void> {
     if (!(actual > 0)) {
       throw new RangeError('활동 기록의 양은 0보다 커야 합니다 — 0은 건너뛰기입니다 (§3.3).');
@@ -478,14 +504,15 @@ export function useQuickLog({
 
     // Minted here, not by the repository: the toast has to name the row before the
     // write so undo can never resolve to a different one.
-    const entryId = newId();
+    const entryId = opts.id ?? newId();
     const note = opts.note?.trim();
     const day = opts.date ?? date;
     const isBackfill = isBackfillOn(day);
     // Read **before** the write: `describeLogEffect` identifies the new row by the
     // id-set difference between the two snapshots, so a `before` taken afterwards
     // would contain the row and report that nothing happened.
-    const before = await fullHistory(habit);
+    // A retry may find its own row already stored (#171); it is not part of "before".
+    const before = withoutRow(await fullHistory(habit), entryId);
 
     await repository.upsertEntry({
       ...(isBackfill
@@ -498,7 +525,7 @@ export function useQuickLog({
               habit,
               day,
               localNoonOn(day),
-              await rowsOnDate(habit.id, day),
+              withoutRow(await rowsOnDate(habit.id, day), entryId),
               entryId,
               today,
             ),
@@ -521,8 +548,19 @@ export function useQuickLog({
      * local mutation (see the module docblock), and `rowsOnDate` above already takes
      * the repository as the authority on what a date holds.
      */
-    const after = await fullHistory(habit);
-    const siblings = await statSiblings(habit);
+    let after: HabitEntry[];
+    let siblings: HabitWithEntries[];
+    try {
+      after = await fullHistory(habit);
+      siblings = await statSiblings(habit);
+    } catch {
+      // The row is stored, so the write succeeded (#171). Rejecting here would let the
+      // sheet retry and store the same activity twice; the toast drops the effect
+      // lines and the celebration, and the reload below reports its own failure.
+      setToast({ entryId, message: UNDO_TOAST_COPY.title });
+      onChange();
+      return;
+    }
     const effect = describeLogEffect(before, after, habit, siblings);
 
     const key = `${habit.id}:${day}`;
@@ -568,11 +606,11 @@ export function useQuickLog({
   async function logSkip(
     habit: Habit,
     reason: SkipReason,
-    opts: { note?: string; date?: string } = {},
+    opts: { note?: string; date?: string; id?: string } = {},
   ): Promise<void> {
     // Same shape as `logActivity`: minted before the write, so the toast names the
     // row undo will delete and can never resolve to a different one.
-    const entryId = newId();
+    const entryId = opts.id ?? newId();
     const note = opts.note?.trim();
     const day = opts.date ?? date;
 
@@ -582,7 +620,7 @@ export function useQuickLog({
             habit,
             day,
             localNoonOn(day),
-            await rowsOnDate(habit.id, day),
+            withoutRow(await rowsOnDate(habit.id, day), entryId),
             entryId,
             reason,
             today,

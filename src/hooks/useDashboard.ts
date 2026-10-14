@@ -20,7 +20,7 @@ import { addDays, weekdayOf, windowEndingAt } from '@/domain/dates';
 import { computeStatXP, levelForXP, type HabitWithEntries } from '@/domain/score';
 import { aggregateStatusCount, deriveStatusLight, type StatusLight } from '@/domain/statusLight';
 import { computeStreak } from '@/domain/streak';
-import { localToday } from '@/lib/device';
+import { localToday, newId } from '@/lib/device';
 import type { DayState, Habit, HabitEntry, SkipReason, Stat } from '@/models';
 
 import type { Failure } from './failure';
@@ -240,7 +240,7 @@ const LIGHT_RANK: Record<StatusLight, number> = {
 };
 
 type SheetIntent =
-  | { kind: 'record' | 'skip'; habitId: string; date: string }
+  | { kind: 'record' | 'skip'; habitId: string; date: string; entryId: string }
   | { kind: 'stats' };
 
 export function useDashboard({
@@ -338,14 +338,14 @@ export function useDashboard({
   const sheet = sheetOf(intent);
 
   async function recordFromSheet(amount: number, note?: string): Promise<void> {
-    if (sheet?.kind !== 'record') return;
-    await writeRecord(quick, sheet, amount, note, sheet.date);
+    if (sheet?.kind !== 'record' || intent?.kind !== 'record') return;
+    await writeRecord(quick, sheet, amount, note, sheet.date, intent.entryId);
     setIntent(null);
   }
 
   async function skipFromSheet(reason: SkipReason, note?: string): Promise<void> {
-    if (sheet?.kind !== 'skip') return;
-    await writeSkip(quick, sheet, reason, note, sheet.date);
+    if (sheet?.kind !== 'skip' || intent?.kind !== 'skip') return;
+    await writeSkip(quick, sheet, reason, note, sheet.date, intent.entryId);
     setIntent(null);
   }
 
@@ -359,8 +359,8 @@ export function useDashboard({
     // A failed undo is `useQuickLog`'s; the two share one banner.
     failure: failure ?? quick.failure,
     sheet,
-    openRecord: (habitId, date) => setIntent({ kind: 'record', habitId, date }),
-    openSkip: (habitId, date) => setIntent({ kind: 'skip', habitId, date }),
+    openRecord: (habitId, date) => setIntent({ kind: 'record', habitId, date, entryId: newId() }),
+    openSkip: (habitId, date) => setIntent({ kind: 'skip', habitId, date, entryId: newId() }),
     openStats: () => setIntent({ kind: 'stats' }),
     closeSheet: () => setIntent(null),
     recordFromSheet,

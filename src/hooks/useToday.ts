@@ -230,7 +230,7 @@ export interface FreeDraft {
 
 /** What is open — the hook's only sheet state. Everything shown is derived from it. */
 type SheetIntent =
-  | { kind: 'record' | 'skip'; habitId: string; day: SheetDay; fromList: boolean }
+  | { kind: 'record' | 'skip'; habitId: string; day: SheetDay; fromList: boolean; entryId: string }
   | { kind: 'yesterdayList' }
   | { kind: 'freeLog' }
   | { kind: 'edit'; id: string };
@@ -1030,11 +1030,11 @@ export function useToday({
   }
 
   function openRecord(habitId: string, day: SheetDay = 'today') {
-    setIntent({ kind: 'record', habitId, day, fromList: cameFromList() });
+    setIntent({ kind: 'record', habitId, day, fromList: cameFromList(), entryId: newId() });
   }
 
   function openSkip(habitId: string, day: SheetDay = 'today') {
-    setIntent({ kind: 'skip', habitId, day, fromList: cameFromList() });
+    setIntent({ kind: 'skip', habitId, day, fromList: cameFromList(), entryId: newId() });
   }
 
   /**
@@ -1053,16 +1053,16 @@ export function useToday({
   }
 
   async function recordFromSheet(amount: number, note?: string): Promise<void> {
-    if (sheet?.kind !== 'record' || intent == null) return;
+    if (sheet?.kind !== 'record' || intent?.kind !== 'record') return;
     const isYesterday = sheet.day === 'yesterday';
-    await writeRecord(quick, sheet, amount, note, isYesterday ? yesterday : undefined);
+    await writeRecord(quick, sheet, amount, note, isYesterday ? yesterday : undefined, intent.entryId);
     setIntent(after(intent, isYesterday ? sheet.habit.id : null));
   }
 
   async function skipFromSheet(reason: SkipReason, note?: string): Promise<void> {
-    if (sheet?.kind !== 'skip' || intent == null) return;
+    if (sheet?.kind !== 'skip' || intent?.kind !== 'skip') return;
     const isYesterday = sheet.day === 'yesterday';
-    await writeSkip(quick, sheet, reason, note, isYesterday ? yesterday : undefined);
+    await writeSkip(quick, sheet, reason, note, isYesterday ? yesterday : undefined, intent.entryId);
     setIntent(after(intent, isYesterday ? sheet.habit.id : null));
   }
 

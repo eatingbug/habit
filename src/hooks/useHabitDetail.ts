@@ -42,7 +42,7 @@ import { successRate } from '@/domain/rates';
 import { deriveStatusLight, type StatusLight } from '@/domain/statusLight';
 import { computeStreak, engagementStreak, longestStreak, showedUpDays } from '@/domain/streak';
 import { weeklyActualTotals } from '@/domain/weekly';
-import { localClock, localNoonOn, localToday } from '@/lib/device';
+import { localClock, localNoonOn, localToday, newId } from '@/lib/device';
 import type { DayState, Habit, HabitEntry, SkipReason, Stat } from '@/models';
 import type { Palette } from '@/theme/redesignTokens';
 
@@ -674,7 +674,7 @@ function patchedText(current: string | undefined, next: string | null | undefine
 
 /** What is open — the hook's only sheet state. Everything shown is derived from it. */
 type SheetIntent =
-  | { kind: 'record' | 'skip'; date: string }
+  | { kind: 'record' | 'skip'; date: string; entryId: string }
   | { kind: 'entry'; id: string }
   | { kind: 'confirm'; action: 'pause' | 'archive' }
   | { kind: 'design' }
@@ -848,23 +848,23 @@ export function useHabitDetail(
 
   function openRecord(date: string): void {
     if (habit == null || !isBackfillableDate(habit, date, today)) return;
-    setIntent({ kind: 'record', date });
+    setIntent({ kind: 'record', date, entryId: newId() });
   }
 
   function openSkip(date: string): void {
     if (habit == null || !isBackfillableDate(habit, date, today)) return;
-    setIntent({ kind: 'skip', date });
+    setIntent({ kind: 'skip', date, entryId: newId() });
   }
 
   async function recordFromSheet(amount: number, note: string): Promise<void> {
-    if (sheet?.kind !== 'record') return;
-    await writeRecord(quick, sheet, amount, note, sheet.date);
+    if (sheet?.kind !== 'record' || intent?.kind !== 'record') return;
+    await writeRecord(quick, sheet, amount, note, sheet.date, intent.entryId);
     setIntent(null);
   }
 
   async function skipFromSheet(reason: SkipReason, note: string): Promise<void> {
-    if (sheet?.kind !== 'skip') return;
-    await writeSkip(quick, sheet, reason, note, sheet.date);
+    if (sheet?.kind !== 'skip' || intent?.kind !== 'skip') return;
+    await writeSkip(quick, sheet, reason, note, sheet.date, intent.entryId);
     setIntent(null);
   }
 
