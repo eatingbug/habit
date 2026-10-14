@@ -22,7 +22,7 @@ export interface HelpTipProps {
   text: string;
   /**
    * Without children: the bare `?` — a 32px box with a 20px icon, whose touch area is
-   * grown to 48x48 (`.q`, §6.0 Touch areas). With children: the children are the
+   * grown to `TAP_TARGET` square (`.q`, §6.0 Touch areas). With children: the children are the
    * trigger, so the whole of them is the touch area (the pill rule). They draw their
    * own `HelpIcon` where it belongs.
    */
@@ -151,7 +151,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   wrap: { minHeight: TAP_TARGET },
-  // `.tip` — `--r-sm`, padding 10/12, 14px at weight 600, line height 1.5.
+  // `.tip` — `--r-sm`, padding 10/12, 12px at weight 600, line height 1.5.
   bubble: {
     position: 'absolute',
     borderRadius: RADIUS.sm,
@@ -169,5 +169,5 @@ const styles = StyleSheet.create({
     borderLeftColor: 'transparent',
     borderRightColor: 'transparent',
   },
-  text: { fontSize: 14, fontWeight: '600', lineHeight: 21 },
+  text: { fontSize: 12, fontWeight: '600', lineHeight: 18 },
 });

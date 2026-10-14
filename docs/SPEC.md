@@ -861,7 +861,7 @@ Visual baseline:
 
 Principles:
 
-- Clarity: a grade-school child can read each screen at a glance. Users are still adults.
+- Ease: anyone can use each screen easily (ADR-0008).
 - Each screen answers one question. Only the core information for that question is on screen.
 - Explanations move to `?` tooltips (§6.8).
 - A feature may be hidden or moved behind a tap. No feature is deleted.
@@ -873,7 +873,7 @@ Principles:
 
 Readability (#92):
 
-- Body text is 17 or larger. Label text is 14 or larger. There is no smaller step.
+- Body text is 15 or larger. Label text is 12 or larger. There is no smaller step.
 - Text contrast is at least 4.5:1. The target is 7:1. Large text is at least 3:1.
 - Status marks and control borders are at least 3:1 against their background.
 - `allowFontScaling` stays on.
@@ -888,20 +888,20 @@ Color tokens (#96, #98):
 - `faint` is never used for text.
 - No gradients. The level card is a solid `accent` `fill` in both themes.
 
-Type scale and shape (#96):
+Type scale and shape (#96, #178):
 
 | Token | Size | Weight | Use |
 |---|---|---|---|
-| `label` | 14 | 700 | chips, pill names, legends, tab labels, tooltips |
-| `body` | 17 | 400, 600 | body text, 언제·어디서, journal rows, buttons |
-| `title` | 20 | 800 | habit names, card titles, sheet titles |
-| `headline` | 24 | 800 | section heads, modal titles, pill numbers |
-| `display` | 30 | 800 | screen titles |
-| `number` | 44 | 900 | hero numbers, the stepper |
+| `label` | 12 | 700 | chips, pill names, legends, tab labels, tooltips |
+| `body` | 15 | 400, 600 | body text, 언제·어디서, journal rows, buttons |
+| `title` | 17 | 800 | habit names, card titles, sheet titles |
+| `headline` | 20 | 800 | section heads, modal titles, pill numbers |
+| `display` | 24 | 800 | screen titles |
+| `number` | 34 | 900 | hero numbers, the stepper |
 
 - Line height is 1.5 for body text and 1.25 for titles.
 - Numbers use the regular font with `tabular-nums`. No monospace font.
-- Radii: `sm`, `md`, `lg` and `pill`. `TAP_TARGET` is 48.
+- Radii: `sm`, `md`, `lg` and `pill`. `TAP_TARGET` is 44.
 
 Dark theme (#98):
 
@@ -944,12 +944,11 @@ Icons (#103):
 - Only four buttons are icon-only: ⚙️, ⋯, close and `?`. Each has an accessible name.
 - No illustrations. An empty screen shows one large emoji, one sentence and one button.
 
-Touch areas (#92, #109, #112):
+Touch areas (#92, #109, #112, #178):
 
-- Every control is at least 48x48.
-- Exception: a date grid cell is at least 44 wide and 48 tall.
+- Every control is at least 44x44. A date grid cell has no exception.
 - A date grid cell's touch area is the whole cell, mark and weekday label included.
-- The `?` icon keeps its drawn size. Its touch area grows to 48x48.
+- The `?` icon keeps its drawn size. Its touch area grows to 44x44.
 - In a pill, the whole pill is the touch area of its `?`.
 
 Screen words (#93, #102, #111):
@@ -1223,7 +1222,7 @@ Heatmap (#109):
 
 - 7 columns by 3 rows: the last 21 days. It ends today, in the bottom-right cell.
 - One weekday row sits on top.
-- Cells are drawn at 40 in 48-tall rows.
+- Cells are drawn at 40 in 44-tall rows.
 - Tap a cell: the record sheet for that date, as on the Dashboard (§6.3).
 - Days older than 3 weeks are filled from the journal's "+ 지난 날 기록 추가".
 - `TUNING.heatmapDays` goes from 20 to 21 in the implementation issue.

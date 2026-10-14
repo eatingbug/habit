@@ -6,7 +6,7 @@ import { useTheme } from '@/theme/ThemeProvider';
 
 /**
  * The ⋯ menu (SPEC §6.5, `ReDetailEstablished`'s `.menu`): a 200-wide box under the ⋯
- * button with one 48-tall row per item. A `scrim` lies behind it (§6.0 Visual rules);
+ * button with one `TAP_TARGET`-tall row per item. A `scrim` lies behind it (§6.0 Visual rules);
  * a tap on it closes the menu. In dark it has no shadow and an `edge` outline.
  */
 export function MoreMenu({

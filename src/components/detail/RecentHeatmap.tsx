@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Card, DayMark, HelpTip } from '@/components/re';
 import { DETAIL_COPY, TOOLTIPS } from '@/config/copy';
 import type { DetailHeatmap } from '@/hooks/useHabitDetail';
-import { TYPE } from '@/theme/redesignTokens';
+import { TAP_TARGET, TYPE } from '@/theme/redesignTokens';
 import { useTheme } from '@/theme/ThemeProvider';
 
 /** Columns of the grid: one week per row, 3 rows (§6.5 Heatmap). */
@@ -12,7 +12,7 @@ const COLUMNS = 7;
 /**
  * The 최근 3주 heatmap card (SPEC §6.5 Heatmap, `.heat`): a weekday row, then 7 by 3
  * cells ending on today at the bottom right, then the six-state legend. A cell is drawn
- * at 40 in a 48-tall row, and the whole cell is the touch area (§6.0 Touch areas).
+ * at 40 in a `TAP_TARGET`-tall row, and the whole cell is the touch area (§6.0 Touch areas).
  */
 export function RecentHeatmap({
   heatmap,
@@ -75,8 +75,8 @@ const styles = StyleSheet.create({
   grid: { marginTop: 6 },
   row: { flexDirection: 'row' },
   weekday: { flex: 1, height: 24, textAlign: 'center', textAlignVertical: 'bottom' },
-  // At least 44 wide and 48 tall; the card's width gives each of 7 columns about 45.
-  cell: { flex: 1, minWidth: 44, height: 48, alignItems: 'center', justifyContent: 'center' },
+  // At least `TAP_TARGET` square; the card's width gives each of 7 columns about 45.
+  cell: { flex: 1, minWidth: TAP_TARGET, height: TAP_TARGET, alignItems: 'center', justifyContent: 'center' },
   blank: { width: 40, height: 40 },
   legend: { flexDirection: 'row', flexWrap: 'wrap', columnGap: 12, rowGap: 6, marginTop: 12 },
   legendItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },

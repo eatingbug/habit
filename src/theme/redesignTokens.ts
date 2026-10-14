@@ -137,17 +137,17 @@ export const RADIUS = { sm: 12, md: 16, lg: 22, pill: 999 } as const;
  * `fontSize`, rounded, and `letterSpacing` is the CSS `em` times `fontSize`.
  */
 export const TYPE = {
-  label: { fontSize: 14, fontWeight: '700', lineHeight: 20 },
-  body: { fontSize: 17, fontWeight: '400', lineHeight: 26 },
-  bodyStrong: { fontSize: 17, fontWeight: '600', lineHeight: 26 },
-  title: { fontSize: 20, fontWeight: '800', lineHeight: 25 },
-  headline: { fontSize: 24, fontWeight: '800', lineHeight: 30 },
-  display: { fontSize: 30, fontWeight: '800', lineHeight: 38, letterSpacing: -0.6 },
-  number: { fontSize: 44, fontWeight: '900', lineHeight: 44 },
+  label: { fontSize: 12, fontWeight: '700', lineHeight: 17 },
+  body: { fontSize: 15, fontWeight: '400', lineHeight: 23 },
+  bodyStrong: { fontSize: 15, fontWeight: '600', lineHeight: 23 },
+  title: { fontSize: 17, fontWeight: '800', lineHeight: 21 },
+  headline: { fontSize: 20, fontWeight: '800', lineHeight: 25 },
+  display: { fontSize: 24, fontWeight: '800', lineHeight: 30, letterSpacing: -0.48 },
+  number: { fontSize: 34, fontWeight: '900', lineHeight: 34 },
 } as const satisfies Record<string, TextStyle>;
 
-/** Every control is at least 48x48 (§6.0 Touch areas). */
-export const TAP_TARGET = 48;
+/** `--tap`. Every control is at least 44x44 (§6.0 Touch areas). */
+export const TAP_TARGET = 44;
 
 /** On a wide window the app is a centered column this wide, with `bg` either side. */
 export const COLUMN_MAX_WIDTH = 480;

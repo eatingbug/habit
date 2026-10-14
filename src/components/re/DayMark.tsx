@@ -60,5 +60,5 @@ export function DayMark({ state, size = 36, square = false }: DayMarkProps) {
 
 const styles = StyleSheet.create({
   mark: { alignItems: 'center', justifyContent: 'center' },
-  glyph: { fontSize: 14, fontWeight: '800', lineHeight: 18 },
+  glyph: { fontSize: 12, fontWeight: '800', lineHeight: 16 },
 });

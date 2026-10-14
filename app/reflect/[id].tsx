@@ -18,7 +18,7 @@ import {
 import { DiagnosisCardView } from '@/components/reflection/DiagnosisCardView';
 import { useReflection, type ReflectionView } from '@/hooks/useReflection';
 import type { ReflectionAction } from '@/models';
-import { RADIUS, TYPE } from '@/theme/redesignTokens';
+import { RADIUS, TAP_TARGET, TYPE } from '@/theme/redesignTokens';
 import { useTheme } from '@/theme/ThemeProvider';
 
 /**
@@ -276,9 +276,9 @@ const styles = StyleSheet.create({
   // `.recover` — `surface`, 2px `borderStrong`, `--r-lg`, padding 16, gap 10.
   recover: { borderWidth: 2, borderRadius: RADIUS.lg, padding: 16, gap: 10 },
   answer: { minWidth: 104 },
-  // `.days` — seven equal columns; `.day` is at least 48 tall.
+  // `.days` — seven equal columns; `.day` is at least `TAP_TARGET` tall.
   days: { flexDirection: 'row' },
-  day: { flex: 1, alignItems: 'center', gap: 2, minHeight: 48 },
+  day: { flex: 1, alignItems: 'center', gap: 2, minHeight: TAP_TARGET },
   blank: { width: 40, height: 40, borderRadius: 10, borderWidth: 2 },
   // `.card` with `padding:12px 16px`.
   notes: { borderWidth: 2, borderRadius: RADIUS.lg, paddingVertical: 12, paddingHorizontal: 16, gap: 6 },

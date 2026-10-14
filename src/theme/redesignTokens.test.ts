@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { PALETTES, RADIUS, TYPE } from './redesignTokens';
+import { PALETTES, RADIUS, TAP_TARGET, TYPE } from './redesignTokens';
 
 /**
  * `design/_tokens.redesign.css` is the source of the concrete values (SPEC §6.0). These
@@ -54,11 +54,12 @@ function cssTheme(selector: string): Record<string, string> {
 }
 
 /**
- * CSS custom properties with no palette counterpart: radii (`RADIUS`) and the font stack.
+ * CSS custom properties with no palette counterpart: radii (`RADIUS`), the touch area
+ * minimum (`TAP_TARGET`) and the font stack.
  * A deny-list on purpose: a new custom property in the CSS fails the palette test until
  * it is mapped here or added to the palette.
  */
-const NOT_IN_PALETTE = ['rSm', 'rMd', 'rLg', 'sans'];
+const NOT_IN_PALETTE = ['rSm', 'rMd', 'rLg', 'tap', 'sans'];
 
 function cssPalette(selector: string): Record<string, string> {
   return Object.fromEntries(
@@ -88,6 +89,10 @@ describe('redesign tokens match design/_tokens.redesign.css', () => {
       lg: parseFloat(shared.rLg),
       pill: 999,
     });
+  });
+
+  it('touch area minimum is --tap', () => {
+    expect(TAP_TARGET).toBe(parseFloat(shared.tap));
   });
 
   it('type scale follows the .t-* classes', () => {
