@@ -305,6 +305,29 @@ describe('useToday', () => {
     expect(result.current.feed).toHaveLength(1);
   });
 
+  it('reads an archived habit\u2019s history too, and still shows none of it (#165)', async () => {
+    const repository = new LocalRepository(
+      await seed([
+        habit({ id: 'h1', name: '팔굽혀펴기' }),
+        habit({ id: 'archived', name: '접은 습관', lifecycle: 'archived' }),
+      ]),
+    );
+    await repository.upsertEntry({
+      id: 'folded',
+      habitId: 'archived',
+      date: TODAY,
+      timestamp: `${TODAY}T08:00:00.000Z`,
+      actual: 5,
+    });
+    const read = jest.spyOn(repository, 'getEntries');
+    const result = await todayScreen(repository);
+
+    // The one more request is the accepted cost: §7.3 takes performance off the criteria.
+    expect(read.mock.calls.map(([habitId]) => habitId).sort()).toEqual(['archived', 'h1']);
+    expect(result.current.rows.map((row) => row.habit.id)).toEqual(['h1']);
+    expect(result.current.feed).toEqual([]);
+  });
+
   it('leaves archived and paused habits off the cards and the count chip (#127)', async () => {
     const repository = new LocalRepository(
       await seed([
