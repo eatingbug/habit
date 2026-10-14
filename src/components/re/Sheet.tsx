@@ -94,7 +94,7 @@ export function Sheet({ visible, onClose, title, eyebrow, titleAside, children }
 const styles = StyleSheet.create({
   fill: { flex: 1, justifyContent: 'flex-end' },
   // `.sheet` — `border-radius:28px 28px 0 0; padding:12px 20px 32px; gap:12px`.
-  // `Modal` 은 루트 기둥 밖에 그려지므로 기둥 폭을 여기서 다시 건다.
+  // The `Modal` draws outside the root column, so the sheet takes the column width again.
   sheet: {
     width: '100%',
     maxWidth: COLUMN_MAX_WIDTH,

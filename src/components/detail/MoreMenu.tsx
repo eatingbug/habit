@@ -30,7 +30,7 @@ export function MoreMenu({
         onPress={onClose}
         accessible={false}
       />
-      {/* `Modal` 은 루트 기둥 밖에 그려지므로, 메뉴의 `right` 를 기둥 기준으로 다시 잡는다. */}
+      {/* The `Modal` draws outside the root column, so `right` is measured from the column again. */}
       <View pointerEvents="box-none" style={styles.column}>
         <View
           accessibilityRole="menu"
