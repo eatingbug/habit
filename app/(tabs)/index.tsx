@@ -1,12 +1,14 @@
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { Plus, Settings } from 'lucide-react-native';
 import { useCallback, useRef } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { HabitRow } from '@/components/dashboard/HabitRow';
+import { HabitRowsPrototype, PROTOTYPE_VARIANTS } from '@/components/dashboard/HabitRows.prototype';
 import { LevelCard } from '@/components/dashboard/LevelCard';
 import { StatsSheet } from '@/components/dashboard/StatsSheet';
 import { Banner, Button, IconButton, RecordSheet, SkipSheet } from '@/components/re';
+import { PrototypeSwitcher } from '@/components/PrototypeSwitcher';
 import { LogOverlay, TOAST_CLEARANCE } from '@/components/today/LogOverlay';
 import {
   DASHBOARD_COPY,
@@ -32,6 +34,8 @@ export default function Dashboard() {
   const router = useRouter();
   const view = useDashboard();
   const { reload, sheet, toast, celebration } = view;
+  // PROTOTYPE (#180): `?variant=a|b|c` swaps the habit rows. No param is today's rendering.
+  const variant = useLocalSearchParams<{ variant?: string }>().variant ?? '';
 
   /**
    * Re-read on every return to this tab. It stays mounted under what it pushes, so a
@@ -91,7 +95,15 @@ export default function Dashboard() {
                     {view.needsAttentionLabel}
                   </Text>
                 )}
-                {view.rows.map((row) => (
+                {variant !== '' ? (
+                  <HabitRowsPrototype
+                    variant={variant}
+                    rows={view.rows}
+                    onPress={(row) => router.push(`/habit/${row.habit.id}`)}
+                    onDay={(row, date) => view.openRecord(row.habit.id, date)}
+                    onReflect={(row) => router.push(`/reflect/${row.habit.id}`)}
+                  />
+                ) : view.rows.map((row) => (
                   <HabitRow
                     key={row.habit.id}
                     row={row}
@@ -106,6 +118,8 @@ export default function Dashboard() {
           </>
         )}
       </ScrollView>
+
+      <PrototypeSwitcher variants={PROTOTYPE_VARIANTS} current={variant} />
 
       <LogOverlay
         toast={toast}
