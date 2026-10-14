@@ -3,7 +3,7 @@ import { Animated, Easing, Modal, Pressable, StyleSheet, Text, View } from 'reac
 
 import { CELEBRATION_COPY } from '@/config/copy';
 import { MILESTONE_POPUP_MS, type StreakCelebration } from '@/hooks/useQuickLog';
-import { TYPE } from '@/theme/redesignTokens';
+import { COLUMN_MAX_WIDTH, TYPE } from '@/theme/redesignTokens';
 import { useTheme } from '@/theme/ThemeProvider';
 
 import { WeekStrip } from './WeekStrip';
@@ -88,11 +88,17 @@ export function MilestonePopup({ celebration, onDismiss }: { celebration: Streak
   );
 }
 
+const SIDE = 45;
+
 const styles = StyleSheet.create({
-  fill: { flex: 1, justifyContent: 'center', paddingHorizontal: 45 },
+  fill: { flex: 1, justifyContent: 'center', paddingHorizontal: SIDE },
   confetti: { position: 'absolute', fontSize: 22 },
-  // `.popup` — radius 28, padding 24/22/20, gap 8, centred.
+  // `.popup` — radius 28, padding 24/22/20, gap 8, centred. The `Modal` draws outside
+  // the root column, so the card keeps the width it has in a column-wide window.
   popup: {
+    width: '100%',
+    maxWidth: COLUMN_MAX_WIDTH - SIDE * 2,
+    alignSelf: 'center',
     borderRadius: 28,
     borderWidth: 2,
     paddingTop: 24,

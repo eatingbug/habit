@@ -148,3 +148,6 @@ export const TYPE = {
 
 /** Every control is at least 48x48 (§6.0 Touch areas). */
 export const TAP_TARGET = 48;
+
+/** On a wide window the app is a centered column this wide, with `bg` either side. */
+export const COLUMN_MAX_WIDTH = 480;
