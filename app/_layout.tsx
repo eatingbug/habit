@@ -1,9 +1,12 @@
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import type { ReactNode } from 'react';
+import { StyleSheet, View } from 'react-native';
 
 import { Misconfigured, SessionChecking, SignIn } from '@/components/SignIn';
 import { RepositoryProvider } from '@/context/RepositoryContext';
 import { SessionProvider, useSession } from '@/context/SessionContext';
+import { COLUMN_MAX_WIDTH } from '@/theme/redesignTokens';
 import { ThemeProvider, useTheme } from '@/theme/ThemeProvider';
 
 function Shell() {
@@ -57,12 +60,33 @@ function Gate() {
   );
 }
 
+/**
+ * 넓은 창에서 앱을 `COLUMN_MAX_WIDTH` 폭의 가운데 기둥으로 세운다. 기둥 밖은 `bg` 다.
+ * 탭 바는 기둥 안에서 그려지므로 따로 맞출 것이 없다. `Modal` 은 웹에서 `body` 로
+ * 빠져나가므로 시트와 메뉴는 각자 같은 폭을 다시 건다.
+ */
+function Column({ children }: { children: ReactNode }) {
+  const { redesign } = useTheme();
+  return (
+    <View style={[styles.page, { backgroundColor: redesign.bg }]}>
+      <View style={styles.column}>{children}</View>
+    </View>
+  );
+}
+
 export default function RootLayout() {
   return (
     <ThemeProvider>
-      <SessionProvider>
-        <Gate />
-      </SessionProvider>
+      <Column>
+        <SessionProvider>
+          <Gate />
+        </SessionProvider>
+      </Column>
     </ThemeProvider>
   );
 }
+
+const styles = StyleSheet.create({
+  page: { flex: 1 },
+  column: { flex: 1, width: '100%', maxWidth: COLUMN_MAX_WIDTH, alignSelf: 'center' },
+});

@@ -13,7 +13,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ICON_LABELS } from '@/config/copy';
-import { TYPE } from '@/theme/redesignTokens';
+import { COLUMN_MAX_WIDTH, TYPE } from '@/theme/redesignTokens';
 import { useTheme } from '@/theme/ThemeProvider';
 
 import { IconButton } from './IconButton';
@@ -94,7 +94,11 @@ export function Sheet({ visible, onClose, title, eyebrow, titleAside, children }
 const styles = StyleSheet.create({
   fill: { flex: 1, justifyContent: 'flex-end' },
   // `.sheet` — `border-radius:28px 28px 0 0; padding:12px 20px 32px; gap:12px`.
+  // `Modal` 은 루트 기둥 밖에 그려지므로 기둥 폭을 여기서 다시 건다.
   sheet: {
+    width: '100%',
+    maxWidth: COLUMN_MAX_WIDTH,
+    alignSelf: 'center',
     maxHeight: '90%',
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
