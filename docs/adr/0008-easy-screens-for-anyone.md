@@ -3,7 +3,7 @@
 - 상태: 채택됨
 - 날짜: 2026-10-14
 - 관계: ADR-0007의 "기준은 초등학생도 한눈에 알아볼 명료함이다"를 대체한다. ADR-0007의 나머지 결정은 유지한다.
-- 영향 범위: `docs/SPEC.md` §6.0, `design/_tokens.redesign.css`, `design/`, `src/theme/`, `src/components/today/HabitCard.tsx`
+- 영향 범위: `docs/SPEC.md` §6.0, `design/_tokens.redesign.css`, `design/`, `src/theme/`, `src/components/today/HabitCard.tsx`, `src/components/dashboard/HabitRow.tsx`, `app/_layout.tsx`
 
 ## 문제
 
@@ -17,11 +17,11 @@
 ## 결정
 
 - 기준은 누구든 쓰기 쉬운 화면이다.
-- 글씨 단계를 한 단계씩 줄인다. label, body, title, headline, display, number 순으로 12, 15, 17, 20, 24, 34다.
+- 글씨 단계를 줄인다. label, body, title, headline, display, number 순으로 12, 15, 17, 20, 24, 34다.
 - 굵기와 줄 높이 비율은 그대로다.
 - 최소 터치 영역은 48에서 44로 낮춘다.
 - 간격 단계를 토큰으로 둔다. 이번에는 화면 틀과 습관 카드에만 적용한다.
-- 웹에서는 콘텐츠를 최대 폭 480으로 제한하고 가운데에 둔다. 기둥 밖은 테마 `bg` 색이다.
+- 웹에서는 콘텐츠를 최대 폭 480으로 제한하고 가운데에 둔다. 최대 폭 밖은 테마 `bg` 색이다.
 - 오늘 탭과 홈 탭의 습관 카드를 컴팩트하게 바꾼다. 390×844 화면에 습관 카드 5~6개가 보이게 한다.
 - ADR-0007의 나머지 결정은 유지한다. 밝은 색, 상태의 색·아이콘·글자 병기, `?` 툴팁, 또렷한 게임 요소가 그대로다.
 
