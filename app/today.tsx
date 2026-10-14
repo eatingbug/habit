@@ -503,7 +503,6 @@ function FreeComposer({
   date: string;
   onLog: (type: LogType, text: string, opts?: { timestamp?: string }) => Promise<void>;
 }) {
-  const { colors } = useTheme();
   const [type, setType] = useState<LogType>('note');
   const [text, setText] = useState('');
   const [timeOpen, setTimeOpen] = useState(false);

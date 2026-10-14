@@ -94,7 +94,7 @@ function useLoading<T>(initial: T, read: (repository: HabitRepository) => Promis
     return () => {
       cancelled = true;
     };
-  }, [repository, read, version, reload]);
+  }, [repository, read, version, reload, clear, report]);
 
   return { data, loading, failure, reload };
 }

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 
 /**
  * 실패한 동작 하나 — **무엇이 실패했는지와 다시 해 볼 방법**, 둘 다.
@@ -21,14 +21,17 @@ export interface Failure {
 export function useFailure() {
   const [failure, setFailure] = useState<Failure | null>(null);
 
-  /** 읽기처럼 자기 취소 규약(`cancelled`)을 가진 자리에서 직접 기록한다. */
-  function report(message: string, retry: () => void) {
+  /**
+   * 읽기처럼 자기 취소 규약(`cancelled`)을 가진 자리에서 직접 기록한다. 참조가 바뀌지
+   * 않으므로 읽기 효과의 의존성에 넣어도 다시 읽기를 일으키지 않는다.
+   */
+  const report = useCallback((message: string, retry: () => void) => {
     setFailure({ message, retry });
-  }
+  }, []);
 
-  function clear() {
+  const clear = useCallback(() => {
     setFailure(null);
-  }
+  }, []);
 
   /**
    * 쓰기 한 번. 실패하면 **그 쓰기 그대로** 가 다시 시도의 내용이 된다 — 사용자가 같은

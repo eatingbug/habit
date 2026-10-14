@@ -629,7 +629,7 @@ export function useToday({
     return () => {
       cancelled = true;
     };
-  }, [repository, date, version, reload]);
+  }, [repository, date, version, reload, clear, report]);
 
   const freeLogsOnDate = freeLogs?.date === date ? freeLogs.logs : [];
   const loaded = assemble(histories.histories, freeLogsOnDate, date, today);
