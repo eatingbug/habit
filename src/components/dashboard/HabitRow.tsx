@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Button, Card, DayMark, HelpTip, StatusLight } from '@/components/re';
 import { DASHBOARD_COPY, TOOLTIPS } from '@/config/copy';
 import type { DashboardRow } from '@/hooks/useDashboard';
-import { TAP_TARGET, TYPE } from '@/theme/redesignTokens';
+import { SPACE, TAP_TARGET, TYPE } from '@/theme/redesignTokens';
 import { useTheme } from '@/theme/ThemeProvider';
 
 /** Drawn for the eye only: the row's `Pressable` already announces these words. */
@@ -79,7 +79,8 @@ export function HabitRow({ row, onPress, onDay, onReflect }: HabitRowProps) {
 }
 
 const styles = StyleSheet.create({
-  card: { gap: 12 },
+  // Compact by ADR-0008: padding 12, not the shared `.card`'s 16.
+  card: { gap: SPACE.md, padding: SPACE.md },
   head: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   title: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 10 },
   grow: { flex: 1, minWidth: 0 },

@@ -15,7 +15,7 @@ import {
   SETTINGS_COPY,
 } from '@/config/copy';
 import { useDashboard } from '@/hooks/useDashboard';
-import { TYPE } from '@/theme/redesignTokens';
+import { SPACE, TYPE } from '@/theme/redesignTokens';
 import { useTheme } from '@/theme/ThemeProvider';
 
 /**
@@ -148,8 +148,8 @@ export default function Dashboard() {
 const styles = StyleSheet.create({
   fill: { flex: 1 },
   grow: { flexGrow: 1 },
-  // `.page` — `padding:24px 20px 28px; gap:12px`.
-  page: { paddingTop: 24, paddingHorizontal: 20, paddingBottom: TOAST_CLEARANCE, gap: 12 },
+  // `.page` — `padding:24px var(--space-xl) 28px; gap:var(--space-md)`.
+  page: { paddingTop: 24, paddingHorizontal: SPACE.xl, paddingBottom: TOAST_CLEARANCE, gap: SPACE.md },
   top: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 },
   // `.head-line` — `margin:12px 0 0`.
   headLine: { marginTop: 12 },
