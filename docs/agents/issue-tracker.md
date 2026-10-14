@@ -5,7 +5,7 @@ Issues and PRDs for this repo live as GitHub issues. Use the `gh` CLI for all op
 ## Conventions
 
 - **Create an issue**: `gh issue create --title "..." --body "..."`. Use a heredoc for multi-line bodies.
-- **Read an issue**: `gh issue view <number> --comments`, filtering comments by `jq` and also fetching labels.
+- **Read an issue**: `gh issue view <number> --json title,body,comments,labels`. Plain `--comments` fails on the deprecated Projects (classic) field.
 - **Claim an issue before implementing it**:
   - `gh pr list --state open --search '"Closes #<number>" in:body'` and `gh issue view <number> --json assignees`.
   - Either one non-empty means another session owns the issue. Stop and report it to the user.
