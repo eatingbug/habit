@@ -17,6 +17,8 @@ export const PROTOTYPE_VARIANTS = [
   { key: 'd', name: '두 줄 카드' },
   { key: 'e', name: '한 줄, 이름 줄바꿈' },
   { key: 'f', name: '한 줄, 왼쪽 2단' },
+  { key: 'g', name: 'd + 날짜 탭' },
+  { key: 'h', name: 'd + 날짜 탭 + ? 하나' },
 ];
 
 export interface HabitRowsPrototypeProps {
@@ -30,6 +32,7 @@ export interface HabitRowsPrototypeProps {
 export function HabitRowsPrototype(props: HabitRowsPrototypeProps) {
   if (props.variant === 'a') return <VariantA {...props} />;
   if (props.variant === 'b') return <VariantB {...props} />;
+  if (props.variant === 'g' || props.variant === 'h') return <VariantG {...props} />;
   return <VariantC {...props} />;
 }
 
@@ -196,6 +199,37 @@ function VariantC({ rows, onPress, onReflect, variant }: HabitRowsPrototypeProps
   );
 }
 
+/**
+ * G — d with the day taps kept: the marks spread over seven 44×44 cells across the card.
+ * h adds one "최근 7일 ?" head above the list instead of a `?` per row.
+ */
+function VariantG({ rows, onPress, onDay, onReflect, variant }: HabitRowsPrototypeProps) {
+  const { redesign } = useTheme();
+  return (
+    <View style={{ gap: SPACE.sm }}>
+      {variant === 'h' && (
+        <View style={styles.head}>
+          <Text style={[TYPE.label, styles.grow, { color: redesign.muted }]}>최근 7일</Text>
+          <HelpTip text={TOOLTIPS.sevenDayDots} />
+        </View>
+      )}
+      {rows.map((row) => (
+        <Card key={row.habit.id} tone={row.reflectable ? 'red' : undefined} style={styles.gCard}>
+          {/* The card's tap sits behind its content, so the day cells are not nested in it. */}
+          <Pressable onPress={() => onPress(row)} accessibilityRole="button" accessibilityLabel={row.label} style={StyleSheet.absoluteFill} />
+          <View style={styles.dHead} pointerEvents="none">
+            <LightGlyph row={row} />
+            <Text style={[TYPE.title, styles.grow, { color: redesign.text }]} numberOfLines={2}>{row.label}</Text>
+            <Text style={[TYPE.label, styles.streak, { color: redesign.streakInk }]}>{row.streakLabel}</Text>
+          </View>
+          <Days row={row} onDay={onDay} dot={22} labels={false} />
+          {row.reflectable && <Button label={DASHBOARD_COPY.reflect} variant="crit" block onPress={() => onReflect(row)} />}
+        </Card>
+      ))}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   grow: { flex: 1, minWidth: 0 },
   head: { flexDirection: 'row', alignItems: 'center', gap: SPACE.sm },
@@ -211,4 +245,5 @@ const styles = StyleSheet.create({
   dCol: { gap: SPACE.xs, minHeight: TAP_TARGET, paddingHorizontal: SPACE.md, paddingVertical: SPACE.sm },
   dHead: { flexDirection: 'row', alignItems: 'center', gap: SPACE.sm },
   dMarks: { alignItems: 'flex-end' },
+  gCard: { paddingHorizontal: SPACE.md, paddingTop: SPACE.sm, paddingBottom: 0 },
 });
