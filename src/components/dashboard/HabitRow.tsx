@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Button, Card, DayMark, HelpTip, StatusLight } from '@/components/re';
 import { DASHBOARD_COPY, TOOLTIPS } from '@/config/copy';
 import type { DashboardRow } from '@/hooks/useDashboard';
-import { TYPE } from '@/theme/redesignTokens';
+import { TAP_TARGET, TYPE } from '@/theme/redesignTokens';
 import { useTheme } from '@/theme/ThemeProvider';
 
 /** Drawn for the eye only: the row's `Pressable` already announces these words. */
@@ -84,8 +84,8 @@ const styles = StyleSheet.create({
   title: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 10 },
   grow: { flex: 1, minWidth: 0 },
   streak: { fontWeight: '800', fontVariant: ['tabular-nums'] },
-  // `.days` — seven equal columns; `.day` — `min-height:48px; gap:2px`.
+  // `.days` — seven equal columns; `.day` — `min-height:var(--tap); gap:2px`.
   days: { flexDirection: 'row' },
-  day: { flex: 1, minHeight: 48, alignItems: 'center', gap: 2 },
+  day: { flex: 1, minHeight: TAP_TARGET, alignItems: 'center', gap: 2 },
   blank: { width: DOT, height: DOT },
 });
