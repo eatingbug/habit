@@ -6,13 +6,14 @@ import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { HabitRow } from '@/components/dashboard/HabitRow';
 import { LevelCard } from '@/components/dashboard/LevelCard';
 import { StatsSheet } from '@/components/dashboard/StatsSheet';
-import { Banner, Button, IconButton, RecordSheet, SkipSheet } from '@/components/re';
+import { Banner, Button, HelpTip, IconButton, RecordSheet, SkipSheet } from '@/components/re';
 import { LogOverlay, TOAST_CLEARANCE } from '@/components/today/LogOverlay';
 import {
   DASHBOARD_COPY,
   LOADING_NOTE,
   RETRY_LABEL,
   SETTINGS_COPY,
+  TOOLTIPS,
 } from '@/config/copy';
 import { useDashboard } from '@/hooks/useDashboard';
 import { SPACE, TYPE } from '@/theme/redesignTokens';
@@ -91,15 +92,23 @@ export default function Dashboard() {
                     {view.needsAttentionLabel}
                   </Text>
                 )}
-                {view.rows.map((row) => (
-                  <HabitRow
-                    key={row.habit.id}
-                    row={row}
-                    onPress={() => router.push(`/habit/${row.habit.id}`)}
-                    onDay={(date) => view.openRecord(row.habit.id, date)}
-                    onReflect={() => router.push(`/reflect/${row.habit.id}`)}
-                  />
-                ))}
+                <View style={styles.rows}>
+                  <View style={styles.weekHead}>
+                    <Text style={[TYPE.label, styles.weekLabel, { color: redesign.muted }]}>
+                      {DASHBOARD_COPY.recentWeek}
+                    </Text>
+                    <HelpTip text={TOOLTIPS.sevenDayDots} />
+                  </View>
+                  {view.rows.map((row) => (
+                    <HabitRow
+                      key={row.habit.id}
+                      row={row}
+                      onPress={() => router.push(`/habit/${row.habit.id}`)}
+                      onDay={(date) => view.openRecord(row.habit.id, date)}
+                      onReflect={() => router.push(`/reflect/${row.habit.id}`)}
+                    />
+                  ))}
+                </View>
                 <Button label={DASHBOARD_COPY.newHabit} icon={Plus} variant="dash" block onPress={newHabit} />
               </>
             )}
@@ -153,6 +162,10 @@ const styles = StyleSheet.create({
   top: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 },
   // `.head-line` — `margin:12px 0 0`.
   headLine: { marginTop: 12 },
+  // The habit rows sit closer than the page gap. Their one `?` heads them (ADR-0009).
+  rows: { gap: SPACE.sm },
+  weekHead: { flexDirection: 'row', alignItems: 'center' },
+  weekLabel: { flex: 1 },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 },
   emptyEmoji: { fontSize: 64, lineHeight: 72 },
   emptyButton: { paddingHorizontal: 28 },

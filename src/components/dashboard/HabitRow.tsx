@@ -1,7 +1,7 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { Button, Card, DayMark, HelpTip, StatusLight } from '@/components/re';
-import { DASHBOARD_COPY, TOOLTIPS } from '@/config/copy';
+import { Button, Card, DayMark, StatusLight } from '@/components/re';
+import { DASHBOARD_COPY } from '@/config/copy';
 import type { DashboardRow } from '@/hooks/useDashboard';
 import { SPACE, TAP_TARGET, TYPE } from '@/theme/redesignTokens';
 import { useTheme } from '@/theme/ThemeProvider';
@@ -25,18 +25,19 @@ export interface HabitRowProps {
 }
 
 /** The dot's drawn size (§6.3). The touch area is the whole cell. */
-const DOT = 36;
+const DOT = 22;
 
 /**
- * One Dashboard habit row (SPEC §6.3, `ReDashboard`'s `.card`): the status light, icon
- * and name, "🔥 N" and the 7-day dots' `?` on the head line, the 7 dots under it, and
- * 회고하기 on a 🔴 row only. Every word and state is the hook's.
+ * One Dashboard habit row (SPEC §6.3, `ReDashboard`'s `.card.hrow`): the status light's
+ * shape, icon and name, and "🔥 N" on the head line, the 7 dots under it, and 회고하기 on
+ * a 🔴 row only. The dots' `?` sits once above the list (ADR-0009). Every word and state
+ * is the hook's.
  */
 export function HabitRow({ row, onPress, onDay, onReflect }: HabitRowProps) {
   const { redesign } = useTheme();
 
   return (
-    <Card tone={row.reflectable ? 'red' : undefined} style={styles.card}>
+    <Card tone={row.reflectable ? 'red' : undefined} style={[styles.card, row.reflectable && styles.cardReflect]}>
       {/* The row's tap target sits behind its content, so no control is nested inside it. */}
       <Pressable
         onPress={onPress}
@@ -44,15 +45,12 @@ export function HabitRow({ row, onPress, onDay, onReflect }: HabitRowProps) {
         accessibilityLabel={row.label}
         style={StyleSheet.absoluteFill}
       />
-      <View style={styles.head} pointerEvents="box-none">
-        <View style={styles.title} {...VISUAL_ONLY}>
-          <StatusLight light={row.statusLight} />
-          <Text style={[TYPE.title, styles.grow, { color: redesign.text }]} numberOfLines={1}>
-            {row.label}
-          </Text>
-          <Text style={[TYPE.body, styles.streak, { color: redesign.streakInk }]}>{row.streakLabel}</Text>
-        </View>
-        <HelpTip text={TOOLTIPS.sevenDayDots} />
+      <View style={styles.head} {...VISUAL_ONLY}>
+        <StatusLight light={row.statusLight} wordless />
+        <Text style={[TYPE.title, styles.grow, { color: redesign.text }]} numberOfLines={2}>
+          {row.label}
+        </Text>
+        <Text style={[TYPE.label, styles.streak, { color: redesign.streakInk }]}>{row.streakLabel}</Text>
       </View>
 
       <View style={styles.days} pointerEvents="box-none">
@@ -68,7 +66,6 @@ export function HabitRow({ row, onPress, onDay, onReflect }: HabitRowProps) {
             style={({ pressed }) => [styles.day, pressed && { opacity: 0.7 }]}
           >
             {day.state != null ? <DayMark state={day.state} size={DOT} /> : <View style={styles.blank} />}
-            <Text style={[TYPE.label, { color: redesign.muted }]}>{day.label}</Text>
           </Pressable>
         ))}
       </View>
@@ -79,14 +76,14 @@ export function HabitRow({ row, onPress, onDay, onReflect }: HabitRowProps) {
 }
 
 const styles = StyleSheet.create({
-  // Compact by ADR-0008: padding 12, not the shared `.card`'s 16.
-  card: { gap: SPACE.md, padding: SPACE.md },
-  head: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  title: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  // `.hrow` — `padding:var(--space-sm) var(--space-md) 0`. The day cells' height is the bottom space.
+  card: { paddingTop: SPACE.sm, paddingHorizontal: SPACE.md, paddingBottom: 0 },
+  cardReflect: { paddingBottom: SPACE.md },
+  head: { flexDirection: 'row', alignItems: 'center', gap: SPACE.sm },
   grow: { flex: 1, minWidth: 0 },
   streak: { fontWeight: '800', fontVariant: ['tabular-nums'] },
-  // `.days` — seven equal columns; `.day` — `min-height:var(--tap); gap:2px`.
+  // `.days` — seven equal columns; `.day` — `min-height:var(--tap)`, the mark centred.
   days: { flexDirection: 'row' },
-  day: { flex: 1, minHeight: TAP_TARGET, alignItems: 'center', gap: 2 },
+  day: { flex: 1, minHeight: TAP_TARGET, alignItems: 'center', justifyContent: 'center' },
   blank: { width: DOT, height: DOT },
 });

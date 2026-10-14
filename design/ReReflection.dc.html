@@ -156,6 +156,18 @@ button{font:inherit; color:inherit; background:none; border:0; padding:0; cursor
 .lvbar{height:8px; border-radius:9px; background:rgba(255,255,255,.3); overflow:hidden}
 .lvbar i{display:block; height:100%; background:#fff; border-radius:9px}
 .streak{color:var(--streak-ink); font-weight:800; white-space:nowrap}
+
+/* 대시보드 습관 줄 (ADR-0009): 상태등은 모양과 색만, 점 22에 칸마다 터치 영역, ?는 목록 위에 하나 */
+.rows{display:flex; flex-direction:column; gap:var(--space-sm)}
+.week-head{display:flex; align-items:center}
+.hrow{padding:var(--space-sm) var(--space-md) 0}
+.hrow.red{padding-bottom:var(--space-md)}
+.hrow-head{display:flex; align-items:center; gap:var(--space-sm)}
+.hrow .day{justify-content:center}
+.sl{font-size:12px; font-weight:700; flex:none}
+.sl.stable{color:var(--done-ink)}
+.sl.caution{color:var(--warn-ink)}
+.sl.intervention{color:var(--crit-ink)}
 .statrow{display:flex; flex-direction:column; gap:6px; padding:12px 0; border-bottom:1px solid var(--border)}
 .statrow:last-child{border:0}
 .sbar{height:10px; border-radius:99px; background:var(--inset); overflow:hidden}

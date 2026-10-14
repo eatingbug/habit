@@ -868,6 +868,7 @@ Principles:
 - Domain rules do not change. `CONTEXT.md` terms do not change.
 - Colors are bright and many. Each color has a `fill`, an `ink` and a `tint`.
 - State is never told by color alone. A shape and words go with the color.
+  The Dashboard habit row is the exception: its status light is a shape and a color. Habit Detail shows the word (ADR-0009).
 - Game elements (별, 연속, status lights) are drawn clearly.
 - Light and dark are both first-class themes.
 
@@ -1140,8 +1141,9 @@ On screen (#95, #101, #109, #111):
   - A progress bar and "다음 레벨까지 별 N개".
 - The head "손볼 습관 N개". It has no `?`.
 - Habit rows, sorted by status light with 🔴 on top.
-- A row holds the status light (shape and word), the icon and name, "🔥 N" streak and a `?` at its head.
-- Under the head sit the last 7 days as dots, each with its weekday. The last one reads 오늘.
+- One "최근 7일" head above the rows holds the 7-day dots' `?` (ADR-0009).
+- A row's head line holds the status light's shape (●, ◆ or ▲, no word), the icon and name, and "🔥 N" streak. A long name wraps to two lines.
+- Under the head sit the last 7 days as dots, oldest first, without weekday labels. The last one is today.
 - A row shows no stat.
 - Only a 🔴 row has the "회고하기" button.
 - The "습관 만들기" button sits at the bottom.
@@ -1150,7 +1152,7 @@ Actions:
 
 - Tap a row: Habit Detail.
 - Tap a dot: the record sheet for that date. The sheet head shows the date in large type. Only the sheet's "기록하기" button saves. A stray tap changes no data (#109).
-- The dot is drawn at 36. Its touch area is the whole cell (§6.0).
+- The dot is drawn at 22. Its touch area is the whole cell (§6.0).
 - Tap the level card: the stat sheet (`ReDashboardStats`).
   - One progress bar per stat, with the stat's level.
   - Under each bar, the habit names tied to that stat and the 별 left to its next level.
@@ -1391,7 +1393,7 @@ Copy:
 | 별과 레벨 | 최소량을 채우면 별을 받아요. 별이 모이면 레벨이 올라요. |
 | 캐릭터 레벨 (Dashboard) | 능력치 가운데 가장 높은 레벨이에요. 습관을 하면 그 습관의 능력치에 별이 쌓여요. |
 | 상태등 | 최근 기록을 보고 습관이 잘 굴러가는지 알려 줘요. 손봐야 해요가 뜨면 회고하기로 원인을 찾아요. |
-| 7일 점 (Dashboard row head) | 점을 누르면 그날 기록을 채울 수 있어요. 테두리만 있는 점은 기록 없는 날이고, 실패로 세요. |
+| 7일 점 (Dashboard "최근 7일" head) | 점을 누르면 그날 기록을 채울 수 있어요. 테두리만 있는 점은 기록 없는 날이고, 실패로 세요. |
 | 최근 3주 (Habit Detail heatmap) | 최근 3주를 하루 한 칸으로 보여 줘요. 칸을 누르면 그날 기록을 채울 수 있어요. |
 | 자리 잡기 | 날짜가 아니라 실제로 한 날로 세요. 보통 두 달쯤 걸리니 더뎌도 괜찮아요. |
 | 주마다 한 양 (Habit Detail) | 막대 하나가 한 주 동안 한 양을 모두 더한 값이에요. 가로선은 하루 최소량과 목표를 7일로 곱한 기준이에요. |
