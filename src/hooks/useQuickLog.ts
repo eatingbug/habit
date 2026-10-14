@@ -5,7 +5,6 @@ import { TUNING } from '@/config/tuning';
 import { useRepository } from '@/context/RepositoryContext';
 import { buildBackfillActivity, buildBackfillSkip } from '@/domain/backfill';
 import { type ClassifiedDay, isFloorMet } from '@/domain/classify';
-import { dateOf } from '@/domain/dates';
 import {
   computeStatLevel,
   describeLogEffect,
@@ -15,6 +14,7 @@ import { localNoonOn, newId } from '@/lib/device';
 import type { Habit, HabitEntry, SkipReason } from '@/models';
 
 import { useFailure, type Failure } from './failure';
+import { fetchHistory } from './useHistory';
 
 /**
  * The entry-write primitive — SPEC §6.1 / §6.2 (B1, B5, B6) and #13's row edit/delete.
@@ -286,13 +286,12 @@ export function useQuickLog({
   }
 
   /**
-   * A habit's **whole** history, `createdAt` through today. Not one day's rows: XP is
-   * run-keyed (streak bonuses, milestones), so what a single log is worth can only be
-   * read off the full run, and the upper bound is `today` even on a backfill for the
-   * same reason `useToday` gives its XP delta one.
+   * A habit's **whole** history, not one day's rows: XP is run-keyed (streak bonuses,
+   * milestones), so what a single log is worth can only be read off the full run.
+   * Read fresh, not from a screen's snapshot. The range is `fetchHistory`'s.
    */
   function fullHistory(habit: Habit): Promise<HabitEntry[]> {
-    return repository.getEntries(habit.id, dateOf(habit.createdAt), today);
+    return fetchHistory(repository, habit, today);
   }
 
   /**

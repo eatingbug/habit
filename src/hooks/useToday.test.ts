@@ -1251,6 +1251,39 @@ describe('useToday', () => {
       expect(await repository.getFreeLogs(YESTERDAY, YESTERDAY)).toHaveLength(1);
     });
 
+    it('never shows one date’s free logs on another while the new date’s read is in flight (#165)', async () => {
+      const inner = new LocalRepository(await seed([habit()]));
+      await seedFree(inner, { id: 'today-log', date: TODAY });
+      let release: () => void = () => {};
+      const held = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const repository = new Proxy(inner, {
+        get(target, key, receiver) {
+          const value = Reflect.get(target, key, receiver);
+          if (key !== 'getFreeLogs') return typeof value === 'function' ? value.bind(target) : value;
+          return async (from: string, to: string) => {
+            if (from === YESTERDAY) await held;
+            return target.getFreeLogs(from, to);
+          };
+        },
+      });
+      const now = stepClock();
+      const view = renderHook(({ date }: { date: string }) => useToday({ today: TODAY, date, now }), {
+        wrapper: wrapperFor(repository),
+        initialProps: { date: TODAY },
+      });
+      await waitFor(() => expect(freeFeed(view.result.current)).toHaveLength(1));
+
+      view.rerender({ date: YESTERDAY });
+
+      expect(freeFeed(view.result.current)).toEqual([]);
+      await act(async () => {
+        release();
+        await held;
+      });
+    });
+
     it('edits text, type and timestamp on the same row, keyed on id (AC 5, AC 7)', async () => {
       const repository = new LocalRepository(await seed([habit()]));
       const stored = await seedFree(repository);

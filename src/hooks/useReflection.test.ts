@@ -575,6 +575,16 @@ describe('the recover-first prompt (#22, ADR-0002)', () => {
     expect(await repository.getEntries('h1', GAP[1], GAP[1])).toHaveLength(1);
   });
 
+  it('lifts answering once the reload after a fill lands', async () => {
+    const repository = await seed(habit(), doneExcept(GAP));
+    const { result } = await render(repository);
+
+    await settle(() => result.current.fill(GAP[1]));
+
+    await waitFor(() => expect(result.current.mirror[3].state).toBe('done'));
+    expect(result.current.answering).toBe(false);
+  });
+
   it('reports a failed write and keeps the date listed and answerable', async () => {
     const repository = await seed(habit(), doneExcept(GAP));
     const { result } = await render(repository);

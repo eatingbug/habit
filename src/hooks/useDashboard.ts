@@ -1,10 +1,6 @@
-import { useCallback, useEffect, useState } from 'react';
-
-import { LOAD_FAILED_NOTE } from '@/config/copy';
 import { TUNING } from '@/config/tuning';
-import { useRepository } from '@/context/RepositoryContext';
 import { dayStates } from '@/domain/classify';
-import { compareDates, dateOf, windowEndingAt } from '@/domain/dates';
+import { windowEndingAt } from '@/domain/dates';
 import { heatCells, type HeatCell } from '@/domain/heatLevel';
 import { computeStatXP, levelForXP, type HabitWithEntries } from '@/domain/score';
 import { aggregateStatusCount, deriveStatusLight, type StatusLight } from '@/domain/statusLight';
@@ -12,7 +8,8 @@ import { computeStreak } from '@/domain/streak';
 import { localToday } from '@/lib/device';
 import type { Habit, SkipReason, Stat } from '@/models';
 
-import { useFailure, type Failure } from './failure';
+import type { Failure } from './failure';
+import { useHistories } from './useHistory';
 import {
   logAffordances,
   useQuickLog,
@@ -180,121 +177,64 @@ function statProgress(stat: Stat, all: HabitWithEntries[]): StatProgress {
 }
 
 export function useDashboard({ today = localToday() }: { today?: string } = {}): DashboardView {
-  const repository = useRepository();
-  const { failure, report, clear } = useFailure();
-  const [rows, setRows] = useState<DashboardRow[]>([]);
-  const [stats, setStats] = useState<StatProgress[]>([]);
-  const [shaky, setShaky] = useState(0);
-  const [loading, setLoading] = useState(true);
-  /**
-   * Bumped by a write, so the load effect is the single place that reads. `loading` is
-   * raised only for the first load, never for a reload — matching `useToday`: a
-   * log must not blank the row it just changed, and "loading" would describe a
-   * row that is already on screen (§6.1: the row updates in place).
-   */
-  const [version, setVersion] = useState(0);
+  const { histories, loading, failure, reload } = useHistories({ today });
 
-  // Stable, so the screen can hand it to `useFocusEffect` without re-running it on
-  // every render.
-  const reload = useCallback(() => setVersion((current) => current + 1), []);
+  const window = windowEndingAt(today, TUNING.heatmapDays);
+  const from = window[0];
+  const to = window[window.length - 1];
 
-  useEffect(() => {
-    let cancelled = false;
-
-    const window = windowEndingAt(today, TUNING.heatmapDays);
-    const from = window[0];
-    const to = window[window.length - 1];
-
-    async function load() {
-      const habits = await repository.getHabits();
-
-      const loaded = await Promise.all(
-        habits.map(async (habit) => {
-          // `computeStreak` walks back to `createdAt`, so the fetch starts at whichever
-          // of the two is earlier; `heatCells` is given its own window either way.
-          const start = dateOf(habit.createdAt);
-          const entries = await repository.getEntries(
-            habit.id,
-            compareDates(start, from) < 0 ? start : from,
-            to,
-          );
-
-          // The rows and the stat cards read the same fetch, from two angles: the row
-          // is what the habit shows, `entries` is what its stat is owed.
-          const statusLight = deriveStatusLight(habit, entries, today);
-          return {
-            habit,
-            entries,
-            row: {
-              habit,
-              stat: statFor(habit.statId),
-              cells: heatCells(habit, entries, from, to, today),
-              streak: computeStreak(entries, habit, today),
-              statusLight,
-              reflectable: statusLight === 'intervention' || statusLight === 'caution',
-              // The log form reads a classified day, not a heat cell: a cell is
-              // a *rendering* instruction, and deriving an affordance from one is how
-              // this drifted away from Today's identical derivation once already.
-              ...logAffordances(habit, dayStates(habit, entries, today, today, today)[0]),
-            },
-          };
-        }),
-      );
-
-      if (!cancelled) {
-        // §3.2 — archived habits are hidden from the Dashboard. Paused ones are not:
-        // pause is "later", not "over" (ADR-0003), and it stays visible to be resumed.
-        const visible = loaded.filter(({ habit }) => habit.lifecycle !== 'archived');
-        setRows(visible.map(({ row }) => row));
-        // The chip's number comes from the domain, not from counting `rows` here: the
-        // rules for what counts (paused ignored, an entry-less habit absent rather than
-        // an error) are `aggregateStatusCount`'s, and `statusLight.test.ts` is where
-        // they are asserted.
-        const shakyCount = aggregateStatusCount(
-          visible.map(({ habit }) => habit),
-          Object.fromEntries(visible.map(({ habit, entries }) => [habit.id, entries])),
-          today,
-        );
-        setShaky(shakyCount.caution + shakyCount.intervention);
-        // The stat cards read **every** habit, archived included. AC 5 calls the figure
-        // cumulative XP, and ADR-0003's rule that a recorded day's earnings are never
-        // clawed back applies here too: filtering the same list the rows use would drop
-        // a user's stat level the moment they tidied a finished habit away.
-        setStats(
-          TUNING.stats.map((stat) =>
-            statProgress(
-              stat,
-              loaded.map(({ habit, entries }) => ({ habit, entries })),
-            ),
-          ),
-        );
-        clear();
-        setLoading(false);
-      }
-    }
-
-    load().catch(() => {
-      if (cancelled) return;
-      // `setLoading(false)` 를 **실패 기록과 같이** 한다. 이것만 붙이면 무한 스피너가
-      // "아직 습관이 없습니다" 로 바뀔 뿐이라 함정이다 (`DashboardView.failure`).
-      setLoading(false);
-      // 다시 시도는 이 훅이 이미 가진 `version` 카운터다 — 읽기는 이 효과 하나뿐이므로
-      // 그것을 올리면 같은 읽기가 그대로 다시 돈다.
-      report(LOAD_FAILED_NOTE, reload);
-    });
-
-    return () => {
-      cancelled = true;
+  const loaded = histories.map(({ habit, entries }) => {
+    // The rows and the stat cards read the same history, from two angles: the row
+    // is what the habit shows, `entries` is what its stat is owed.
+    const statusLight = deriveStatusLight(habit, entries, today);
+    return {
+      habit,
+      entries,
+      row: {
+        habit,
+        stat: statFor(habit.statId),
+        cells: heatCells(habit, entries, from, to, today),
+        streak: computeStreak(entries, habit, today),
+        statusLight,
+        reflectable: statusLight === 'intervention' || statusLight === 'caution',
+        // The log form reads a classified day, not a heat cell: a cell is
+        // a *rendering* instruction, and deriving an affordance from one is how
+        // this drifted away from Today's identical derivation once already.
+        ...logAffordances(habit, dayStates(habit, entries, today, today, today)[0]),
+      },
     };
-  }, [repository, today, version]);
+  });
+
+  // §3.2 — archived habits are hidden from the Dashboard. Paused ones are not:
+  // pause is "later", not "over" (ADR-0003), and it stays visible to be resumed.
+  const visible = loaded.filter(({ habit }) => habit.lifecycle !== 'archived');
+  // The chip's number comes from the domain, not from counting `rows` here: the
+  // rules for what counts (paused ignored, an entry-less habit absent rather than
+  // an error) are `aggregateStatusCount`'s, and `statusLight.test.ts` is where
+  // they are asserted.
+  const shakyCount = aggregateStatusCount(
+    visible.map(({ habit }) => habit),
+    Object.fromEntries(visible.map(({ habit, entries }) => [habit.id, entries])),
+    today,
+  );
+  // The stat cards read **every** habit, archived included. AC 5 calls the figure
+  // cumulative XP, and ADR-0003's rule that a recorded day's earnings are never
+  // clawed back applies here too: filtering the same list the rows use would drop
+  // a user's stat level the moment they tidied a finished habit away.
+  const stats = TUNING.stats.map((stat) =>
+    statProgress(
+      stat,
+      loaded.map(({ habit, entries }) => ({ habit, entries })),
+    ),
+  );
 
   const quick = useQuickLog({ today, onChange: reload });
 
   return {
-    rows,
+    rows: visible.map(({ row }) => row),
     stats,
     characterLevel: stats.reduce((highest, stat) => Math.max(highest, stat.level), 0),
-    shaky,
+    shaky: shakyCount.caution + shakyCount.intervention,
     loading,
     // 실행취소의 실패는 `useQuickLog` 가 들고 있다 — 한 배너 자리를 둘이 나눠 쓴다.
     failure: failure ?? quick.failure,

@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 
-import { LIFECYCLE_LABELS, LOAD_FAILED_NOTE, SAVE_FAILED_NOTE } from '@/config/copy';
+import { LIFECYCLE_LABELS, SAVE_FAILED_NOTE } from '@/config/copy';
 import { TUNING } from '@/config/tuning';
 import { useRepository } from '@/context/RepositoryContext';
 import { isBackfillableDate, isBackfilledRow } from '@/domain/backfill';
@@ -17,6 +17,7 @@ import { localNoonOn, localToday } from '@/lib/device';
 import type { DayState, Habit, HabitEntry, SkipReason, Stat } from '@/models';
 
 import { useFailure, type Failure } from './failure';
+import { useHistory } from './useHistory';
 import { logAffordances, useQuickLog, type LogAffordances, type QuickLogToast } from './useQuickLog';
 
 /**
@@ -563,14 +564,6 @@ function patchedText(current: string | undefined, next: string | null | undefine
   return trimmed != null && trimmed.length > 0 ? trimmed : undefined;
 }
 
-interface Loaded {
-  habit: Habit | null;
-  /** The habit's rows from its birth through today — the range `computeStreak` walks. */
-  entries: HabitEntry[];
-}
-
-const EMPTY: Loaded = { habit: null, entries: [] };
-
 export function useHabitDetail(
   habitId: string,
   {
@@ -579,57 +572,11 @@ export function useHabitDetail(
   }: { today?: string; now?: () => Date } = {},
 ): HabitDetailView {
   const repository = useRepository();
-  const { failure, report, clear, attempt } = useFailure();
-  const [loaded, setLoaded] = useState<Loaded>(EMPTY);
-  const [loading, setLoading] = useState(true);
+  // 쓰기 실패만 든다. 로딩 실패는 `useHistory` 가 든다 (#165).
+  const { failure, attempt } = useFailure();
   const [backfillDate, setBackfillDate] = useState<string | null>(null);
-  /**
-   * Bumped by a write, so the load effect is the single place that reads. `loading` is
-   * raised only for the first load, never for a reload — as on the other two screens:
-   * filling a past day must not blank the journal it just changed.
-   */
-  const [version, setVersion] = useState(0);
-
-  function reload() {
-    setVersion((current) => current + 1);
-  }
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function load() {
-      const habit = await repository.getHabit(habitId);
-      // From birth, not from the journal window: `computeStreak` and `deleteOutcome`
-      // walk back to `createdAt`, and a clipped range would report a run the user
-      // never had. V1 keeps entry volume small and §7.3 makes performance a
-      // non-criterion.
-      const entries =
-        habit == null
-          ? []
-          : await repository.getEntries(habit.id, dateOf(habit.createdAt), today);
-
-      if (!cancelled) {
-        setLoaded({ habit, entries });
-        clear();
-        setLoading(false);
-      }
-    }
-
-    load().catch(() => {
-      if (cancelled) return;
-      // 실패 기록과 `setLoading(false)` 는 한 쌍이다. 후자만 붙이면 무한 스피너가 "습관을
-      // 찾을 수 없습니다" 로 바뀔 뿐이고, 그것이 더 나쁘다 (`HabitDetailView.failure`).
-      setLoading(false);
-      // 다시 시도는 `version` 카운터 — 읽기는 이 효과 하나뿐이다.
-      report(LOAD_FAILED_NOTE, reload);
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [repository, habitId, today, version]);
-
-  const { habit, entries } = loaded;
+  const history = useHistory(habitId, { today });
+  const { habit, entries, loading, reload } = history;
 
   const quick = useQuickLog({
     // With no composer open the writes go to today, which is not a backfill — so the
@@ -809,7 +756,7 @@ export function useHabitDetail(
     saveDesign,
     lifecycleActions: habit == null ? [] : lifecycleActions(habit),
     toast: quick.toast,
-    failure: failure ?? quick.failure,
+    failure: history.failure ?? failure ?? quick.failure,
     undoLast: quick.undoLast,
   };
 }

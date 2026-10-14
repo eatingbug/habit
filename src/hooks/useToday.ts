@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 import {
   FREE_LOG_NO_TEXT_NOTE,
@@ -24,6 +24,7 @@ import { localNoonOn, localToday, newId } from '@/lib/device';
 import type { FreeLog, Habit, HabitEntry, LogType, SkipReason } from '@/models';
 
 import { useFailure, type Failure } from './failure';
+import { useHistories, type HabitHistory } from './useHistory';
 import {
   logAffordances,
   useQuickLog,
@@ -475,19 +476,114 @@ interface Loaded {
   earliest: string | null;
   /**
    * Each visible habit's rows from its birth through today, by habit id — the range
-   * the load effect already reads for the XP delta, kept because `deleteOutcome`
+   * `useHistories` already reads for the XP delta, kept because `deleteOutcome`
    * recomputes the streak over exactly that range and `deletePreview` is synchronous.
    */
   history: Map<string, HabitEntry[]>;
 }
 
-const EMPTY: Loaded = {
-  rows: [],
-  feed: [],
-  xpToday: 0,
-  earliest: null,
-  history: new Map(),
-};
+/**
+ * The screen's figures, assembled from the histories and the day's free logs. Pure:
+ * the reads live in `useHistories` and the free-log effect.
+ */
+function assemble(
+  histories: HabitHistory[],
+  freeLogs: FreeLog[],
+  date: string,
+  today: string,
+): Loaded {
+  // §3.2 — archived habits are gone from the logging surfaces. Paused ones are
+  // not: pause is "later", not "over" (ADR-0003), and a paused day still records.
+  const visible = histories.filter(({ habit }) => habit.lifecycle !== 'archived');
+
+  // The stepper's lower bound is the union over the habits on screen, so
+  // it is taken before the per-date filter below narrows them.
+  const earliest = visible
+    .map(({ habit }) => dateOf(habit.createdAt))
+    .reduce<string | null>(
+      (lowest, start) => (lowest == null || compareDates(start, lowest) < 0 ? start : lowest),
+      null,
+    );
+
+  // A habit that did not exist on `date` is not shown at all, rather than
+  // shown inert: `isBackfillableDate` is the domain's own answer to "may this habit
+  // be written to on this day?", and a disabled row would need copy the canvas
+  // does not have (its footnote `:90` already explains the absence).
+  const selectable = visible.filter(({ habit }) => isBackfillableDate(habit, date, today));
+
+  const perHabit = selectable.map(({ habit, entries: history }) => {
+    // The XP delta is run-keyed (streak bonuses, milestones), so it needs the
+    // habit's whole history **through today** — not merely through `date` — or a
+    // backfill's worth would be measured against a truncated run.
+    const rowsOnDate = history.filter((entry) => entry.date === date);
+    const before = history.filter((entry) => entry.date !== date);
+
+    return {
+      habit,
+      // `today` stays the last argument: it is what separates `pending`
+      // from `missed`, and passing `date` would make every past day pending.
+      day: dayStates(habit, rowsOnDate, date, date, today)[0],
+      rowsOnDate,
+      history,
+      xp: computeXP(history, habit) - computeXP(before, habit),
+      // #37 — the same two scores this `xp` is the difference of, taken one row
+      // at a time. `before` is the baseline for both, so the rewards sum to `xp`.
+      rewards: attributeDayXP(before, rowsOnDate, habit),
+    };
+  });
+
+  const byId = new Map(selectable.map(({ habit }) => [habit.id, habit]));
+  const rewardById = new Map(
+    perHabit.flatMap(({ habit, rewards }) =>
+      rewards.map((row) => [row.entry.id, rowReward(habit, row)] as const),
+    ),
+  );
+  const allRows = perHabit.flatMap((entry) => entry.rowsOnDate);
+
+  return {
+    earliest,
+    history: new Map(perHabit.map(({ habit, history }) => [habit.id, history])),
+    rows: perHabit.map(({ habit, day }) => ({
+      habit,
+      day,
+      ...logAffordances(habit, day),
+    })),
+    // One sort over the habit rows **and** the free logs together, so the feed is
+    // the domain's total order across both kinds (§6.2) — not a per-habit
+    // concatenation, and not habit rows with free ones appended. The ordering pair
+    // is lifted to the top level because that is all the two shapes share.
+    // The ordering pair comes off each concrete row — `entry` or `log` — rather
+    // than off the assembled item: at this point the two are still separate maps,
+    // so neither arm has to ask what kind the other is. (`feedItemId` is for the
+    // callers downstream, which hold a `TodayFeedItem` and nothing narrower.)
+    feed: sortByDomainOrder([
+      ...allRows.map((entry) => ({
+        id: entry.id,
+        timestamp: entry.timestamp,
+        item: {
+          kind: 'habit',
+          habit: byId.get(entry.habitId) as Habit,
+          entry,
+          // On today there is nothing to have backfilled, and a row logged by hand
+          // at 12:00 sharp would otherwise be labelled as one.
+          backfilled: entry.date !== today && isBackfilledRow(entry, localNoonOn(entry.date)),
+          reward: rewardById.get(entry.id) as TodayRowReward,
+        } satisfies TodayHabitFeedItem,
+      })),
+      ...freeLogs.map((log) => ({
+        id: log.id,
+        timestamp: log.timestamp,
+        item: {
+          kind: 'free',
+          log,
+          label: LOG_TYPE_LABELS[log.type],
+          note: log.text.length > 0 ? log.text : FREE_LOG_NO_TEXT_NOTE,
+        } satisfies TodayFreeFeedItem,
+      })),
+    ]).map((row): TodayFeedItem => row.item),
+    xpToday: perHabit.reduce((total, entry) => total + entry.xp, 0),
+  };
+}
 
 export function useToday({
   today = localToday(),
@@ -495,150 +591,48 @@ export function useToday({
   now = () => new Date(),
 }: { today?: string; date?: string; now?: () => Date } = {}): TodayView {
   const repository = useRepository();
+  const histories = useHistories({ today });
+  // §3.4 — free logs are not habit history, so they keep their own read (#165).
   const { failure, report, clear } = useFailure();
-  const [loaded, setLoaded] = useState<Loaded>(EMPTY);
-  const [loading, setLoading] = useState(true);
-  /**
-   * Bumped by a write, so the load effect is the single place that reads.
-   *
-   * Note the deliberate difference from `useDashboard`: `loading` is raised only for
-   * the first load, never for a reload. A log must not blank the tallies it just
-   * changed, and "loading" here would describe a screen that is already on screen.
-   */
+  // Keyed by the date they were read for, so a stepped screen never shows the last
+  // date's logs while its own read is in flight.
+  const [freeLogs, setFreeLogs] = useState<{ date: string; logs: FreeLog[] } | null>(null);
+  // Bumped by a write, together with the histories' own `reload`.
   const [version, setVersion] = useState(0);
+  const loading = histories.loading || freeLogs == null;
 
-  function reload() {
+  const reloadHistories = histories.reload;
+  const reload = useCallback(() => {
+    reloadHistories();
     setVersion((current) => current + 1);
-  }
+  }, [reloadHistories]);
 
   useEffect(() => {
     let cancelled = false;
 
-    async function load() {
-      const habits = await repository.getHabits();
-      // §3.2 — archived habits are gone from the logging surfaces. Paused ones are
-      // not: pause is "later", not "over" (ADR-0003), and a paused day still records.
-      const visible = habits.filter((habit) => habit.lifecycle !== 'archived');
-
-      // The stepper's lower bound is the union over the habits on screen, so
-      // it is taken before the per-date filter below narrows them.
-      const earliest = visible
-        .map((habit) => dateOf(habit.createdAt))
-        .reduce<string | null>(
-          (lowest, start) => (lowest == null || compareDates(start, lowest) < 0 ? start : lowest),
-          null,
-        );
-
-      // A habit that did not exist on `date` is not shown at all, rather than
-      // shown inert: `isBackfillableDate` is the domain's own answer to "may this habit
-      // be written to on this day?", and a disabled row would need copy the canvas
-      // does not have (its footnote `:90` already explains the absence).
-      const selectable = visible.filter((habit) => isBackfillableDate(habit, date, today));
-
-      const perHabit = await Promise.all(
-        selectable.map(async (habit) => {
-          // The XP delta is run-keyed (streak bonuses, milestones), so it needs the
-          // habit's whole history **through today** — not merely through `date` — or a
-          // backfill's worth would be measured against a truncated run. V1 keeps entry
-          // volume small and §7.3 makes performance a non-criterion.
-          const start = dateOf(habit.createdAt);
-          const from = compareDates(start, date) < 0 ? start : date;
-          const history = await repository.getEntries(habit.id, from, today);
-          const rowsOnDate = history.filter((entry) => entry.date === date);
-          const before = history.filter((entry) => entry.date !== date);
-
-          return {
-            habit,
-            // `today` stays the last argument: it is what separates `pending`
-            // from `missed`, and passing `date` would make every past day pending.
-            day: dayStates(habit, rowsOnDate, date, date, today)[0],
-            rowsOnDate,
-            history,
-            xp: computeXP(history, habit) - computeXP(before, habit),
-            // #37 — the same two scores this `xp` is the difference of, taken one row
-            // at a time. `before` is the baseline for both, so the rewards sum to `xp`.
-            rewards: attributeDayXP(before, rowsOnDate, habit),
-          };
-        }),
-      );
-
-      const byId = new Map(selectable.map((habit) => [habit.id, habit]));
-      const rewardById = new Map(
-        perHabit.flatMap(({ habit, rewards }) =>
-          rewards.map((row) => [row.entry.id, rowReward(habit, row)] as const),
-        ),
-      );
-      const allRows = perHabit.flatMap((entry) => entry.rowsOnDate);
-      // §3.4 — free logs are grouped by their own declared `date`, which is what
-      // `getFreeLogs` filters on. They are read for **any** `date`, including a past
-      // one: only *writing* them is today-only (`freeLogAvailable`).
-      const freeLogs = await repository.getFreeLogs(date, date);
-
-      const next: Loaded = {
-        earliest,
-        history: new Map(perHabit.map(({ habit, history }) => [habit.id, history])),
-        rows: perHabit.map(({ habit, day }) => ({
-          habit,
-          day,
-          ...logAffordances(habit, day),
-        })),
-        // One sort over the habit rows **and** the free logs together, so the feed is
-        // the domain's total order across both kinds (§6.2) — not a per-habit
-        // concatenation, and not habit rows with free ones appended. The ordering pair
-        // is lifted to the top level because that is all the two shapes share.
-        // The ordering pair comes off each concrete row — `entry` or `log` — rather
-        // than off the assembled item: at this point the two are still separate maps,
-        // so neither arm has to ask what kind the other is. (`feedItemId` is for the
-        // callers downstream, which hold a `TodayFeedItem` and nothing narrower.)
-        feed: sortByDomainOrder([
-          ...allRows.map((entry) => ({
-            id: entry.id,
-            timestamp: entry.timestamp,
-            item: {
-              kind: 'habit',
-              habit: byId.get(entry.habitId) as Habit,
-              entry,
-              // On today there is nothing to have backfilled, and a row logged by hand
-              // at 12:00 sharp would otherwise be labelled as one.
-              backfilled:
-                entry.date !== today && isBackfilledRow(entry, localNoonOn(entry.date)),
-              reward: rewardById.get(entry.id) as TodayRowReward,
-            } satisfies TodayHabitFeedItem,
-          })),
-          ...freeLogs.map((log) => ({
-            id: log.id,
-            timestamp: log.timestamp,
-            item: {
-              kind: 'free',
-              log,
-              label: LOG_TYPE_LABELS[log.type],
-              note: log.text.length > 0 ? log.text : FREE_LOG_NO_TEXT_NOTE,
-            } satisfies TodayFreeFeedItem,
-          })),
-        ]).map((row): TodayFeedItem => row.item),
-        xpToday: perHabit.reduce((total, entry) => total + entry.xp, 0),
-      };
-
-      if (!cancelled) {
-        setLoaded(next);
+    // They are read for **any** `date`, including a past one: only *writing* them is
+    // today-only (`freeLogAvailable`). `getFreeLogs` filters on their own declared `date`.
+    repository
+      .getFreeLogs(date, date)
+      .then((logs) => {
+        if (cancelled) return;
+        setFreeLogs({ date, logs });
         clear();
-        setLoading(false);
-      }
-    }
-
-    load().catch(() => {
-      if (cancelled) return;
-      // 실패 기록과 `setLoading(false)` 는 한 쌍이다. 후자만 붙이면 무한 스피너가 "아직
-      // 습관이 없습니다" 로 바뀔 뿐이고, 그것이 더 나쁘다 (`TodayView.failure`).
-      setLoading(false);
-      // 다시 시도는 `version` 카운터 — 읽기는 이 효과 하나뿐이다.
-      report(LOAD_FAILED_NOTE, reload);
-    });
+      })
+      .catch(() => {
+        if (cancelled) return;
+        // 실패 기록과 로딩 끝은 한 쌍이다. 빈 목록을 두면 `loading` 이 내려간다.
+        setFreeLogs((current) => current ?? { date, logs: [] });
+        report(LOAD_FAILED_NOTE, reload);
+      });
 
     return () => {
       cancelled = true;
     };
-  }, [repository, date, today, version]);
+  }, [repository, date, version, reload]);
+
+  const freeLogsOnDate = freeLogs?.date === date ? freeLogs.logs : [];
+  const loaded = assemble(histories.histories, freeLogsOnDate, date, today);
 
   function rowFor(habitId: string): TodayHabitRow | undefined {
     return loaded.rows.find((row) => row.habit.id === habitId);
@@ -733,7 +727,7 @@ export function useToday({
    * The at-risk habit the banner names, or none (#18 AC 5, SPEC §4.3 C2).
    *
    * Derived from the loaded snapshot rather than held as state, so a write re-derives
-   * it for free: `reload()` bumps `version`, the load effect re-reads every habit's
+   * it for free: `reload()` re-reads every habit's
    * history, and this asks `atRiskToday` again. Nothing patches the banner on a write,
    * which is what makes "reaching the floor clears it" a property of the screen rather
    * than of a second rule that could disagree with the domain.
@@ -856,7 +850,7 @@ export function useToday({
     editFreeLog,
     removeFreeLog,
     toast: quick.toast,
-    failure: failure ?? quick.failure,
+    failure: histories.failure ?? failure ?? quick.failure,
     undoLast: quick.undoLast,
   };
 }

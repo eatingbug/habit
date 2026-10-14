@@ -1,11 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 
 import {
   COMPONENT_LABELS,
   DECLINE_BADGE,
   declineEvidence,
   declineMessage,
-  LOAD_FAILED_NOTE,
   REFLECTION_ACTION_LABELS,
   REFLECTION_ACTION_REASONS,
   SAVE_FAILED_NOTE,
@@ -14,7 +13,7 @@ import {
 import { useRepository } from '@/context/RepositoryContext';
 import { backfillPrompt } from '@/domain/backfillPrompt';
 import { dayStates } from '@/domain/classify';
-import { dateOf, mondayOf, weekdayOf, windowEndingAt } from '@/domain/dates';
+import { mondayOf, weekdayOf, windowEndingAt } from '@/domain/dates';
 import { diagnose } from '@/domain/diagnose';
 import { archiveHabit, pauseHabit } from '@/domain/lifecycle';
 import { offeredActions, suggestAction } from '@/domain/recommend';
@@ -32,6 +31,7 @@ import type {
 } from '@/models';
 
 import { useFailure, type Failure } from './failure';
+import { useHistory } from './useHistory';
 import { designErrors, growthChart, type GrowthChart } from './useHabitDetail';
 import { useQuickLog, type QuickLogToast } from './useQuickLog';
 
@@ -303,11 +303,6 @@ function applied(
   }
 }
 
-interface Loaded {
-  habit: Habit | null;
-  entries: HabitEntry[];
-}
-
 export function useReflection(
   habitId: string,
   {
@@ -316,52 +311,26 @@ export function useReflection(
   }: { today?: string; now?: () => Date } = {},
 ): ReflectionView {
   const repository = useRepository();
-  const { failure, report, clear, attempt } = useFailure();
-  const [loaded, setLoaded] = useState<Loaded>({ habit: null, entries: [] });
-  const [loading, setLoading] = useState(true);
+  // 쓰기 실패만 든다. 로딩 실패는 `useHistory` 가 든다 (#165).
+  const { failure, attempt } = useFailure();
   const [picked, setPicked] = useState<ReflectionAction | null>(null);
   const [committed, setCommitted] = useState(false);
-  const [version, setVersion] = useState(0);
   const [prompting, setPrompting] = useState<boolean | null>(null);
   const [asking, setAsking] = useState<string | null>(null);
-  const [answering, setAnswering] = useState(false);
-  // The guard itself: two taps in one render share one `answering` value.
-  const inFlight = useRef(false);
-  const quick = useQuickLog({ today, now, onChange: () => setVersion((current) => current + 1) });
+  // The history an answer was written against. The guard holds while that history is
+  // still the one on screen, and lifts when the reload lands a new one.
+  const [answeredOn, setAnsweredOn] = useState<HabitEntry[] | null>(null);
+  // The guard itself: two taps in one render share one `answeredOn` value.
+  const inFlight = useRef<HabitEntry[] | null>(null);
+  const history = useHistory(habitId, { today });
+  const { habit, entries, loading } = history;
+  const quick = useQuickLog({ today, now, onChange: history.reload });
+  const answering = answeredOn != null && answeredOn === entries;
 
-  useEffect(() => {
-    let cancelled = false;
-
-    async function load() {
-      const habit = await repository.getHabit(habitId);
-      // From birth: the growth chart, the decline arm and every diagnosis window read
-      // back from today, and a clipped range would cite totals the user never had.
-      const entries =
-        habit == null ? [] : await repository.getEntries(habit.id, dateOf(habit.createdAt), today);
-      if (!cancelled) {
-        setLoaded({ habit, entries });
-        if (habit != null) {
-          setPrompting((latched) => latched ?? backfillPrompt(habit, entries, today).shouldPrompt);
-        }
-        inFlight.current = false;
-        setAnswering(false);
-        clear();
-        setLoading(false);
-      }
-    }
-
-    load().catch(() => {
-      if (cancelled) return;
-      setLoading(false);
-      report(LOAD_FAILED_NOTE, () => setVersion((current) => current + 1));
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [repository, habitId, today, version]);
-
-  const { habit, entries } = loaded;
+  // Latched on the first landed load, for the rest of the visit.
+  if (prompting == null && habit != null) {
+    setPrompting(backfillPrompt(habit, entries, today).shouldPrompt);
+  }
   const flags = habit == null ? [] : diagnose(habit, entries, today);
   const suggested = habit == null ? 'keep' : suggestAction(flags, habit);
   const offered = habit == null ? [] : offeredActions(habit);
@@ -371,17 +340,17 @@ export function useReflection(
 
   /** One answer. The guard lifts when the reload lands, or here if the write failed. */
   async function answer(write: (subject: Habit) => Promise<void>): Promise<void> {
-    if (habit == null || inFlight.current) return;
-    inFlight.current = true;
-    setAnswering(true);
+    if (habit == null || inFlight.current === entries) return;
+    inFlight.current = entries;
+    setAnsweredOn(entries);
     let wrote = false;
     await attempt(WRITE_FAILED_NOTE, async () => {
       await write(habit);
       wrote = true;
     });
     if (!wrote) {
-      inFlight.current = false;
-      setAnswering(false);
+      inFlight.current = null;
+      setAnsweredOn(null);
     }
   }
 
@@ -416,7 +385,7 @@ export function useReflection(
   return {
     loading,
     // 실행취소의 실패는 `useQuickLog` 가 들고 있다 — 한 배너 자리를 둘이 나눠 쓴다.
-    failure: failure ?? quick.failure,
+    failure: history.failure ?? failure ?? quick.failure,
     habit,
     mirror: habit == null ? [] : mirrorFor(habit, entries, today),
     notes: habit == null ? [] : notesFor(entries, today),
