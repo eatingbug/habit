@@ -59,6 +59,9 @@ class Flaky implements HabitRepository {
   upsertHabit(h: Habit): Promise<void> {
     return this.guard(() => this.inner.upsertHabit(h));
   }
+  reorderHabits(ids: string[]): Promise<void> {
+    return this.guard(() => this.inner.reorderHabits(ids));
+  }
   deleteHabit(id: string): Promise<void> {
     return this.guard(() => this.inner.deleteHabit(id));
   }

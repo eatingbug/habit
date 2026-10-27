@@ -87,6 +87,18 @@ export class LocalRepository implements HabitRepository {
     await this.writeAll(HABITS_KEY, upsertById(await this.readAll<Habit>(HABITS_KEY), habit));
   }
 
+  async reorderHabits(ids: string[]): Promise<void> {
+    const habits = await this.readAll<Habit>(HABITS_KEY);
+    const byId = new Map(habits.map((habit) => [habit.id, habit]));
+    const selected = new Set(ids);
+    if (selected.size !== ids.length || ids.some((id) => !byId.has(id))) {
+      throw new Error('Invalid habit order');
+    }
+    let at = 0;
+    const next = habits.map((habit) => selected.has(habit.id) ? byId.get(ids[at++])! : habit);
+    await this.writeAll(HABITS_KEY, next);
+  }
+
   /**
    * Deleting a habit **cascades** to its entries and reflection sessions.
    *

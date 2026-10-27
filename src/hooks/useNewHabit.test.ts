@@ -212,12 +212,13 @@ describe('useNewHabit — 습관 아이콘', () => {
 });
 
 describe('useNewHabit — 화면 문구 (§6.6, §6.8)', () => {
-  it('fixes the `?` copy of 측정 방식, 언제·어디서, 능력치 and 이유 to the §6.8 table', () => {
+  it('fixes the `?` copy of 측정 방식, 언제, 어떻게, 능력치 and 이유 to the §6.8 table', () => {
     const { result } = form();
 
     expect(result.current.tooltips).toMatchObject({
       kind: '횟수 · 양은 한 만큼 적고, 최소량을 채우면 그날 몫을 해요. 예 · 아니오는 했는지만 보고, 이어 간 날이 쌓이면 별을 더 받아요.',
-      cue: '습관을 시작할 때와 곳이에요. 비워 둬도 되고, 잘 안 될 때 먼저 정해 보자고 물어볼게요.',
+      cue: '습관을 시작할 시점이나 직전 행동이에요. 예: 아침 식사 후.',
+      method: '습관을 실행하는 구체적인 방법이에요. 예: 책상에서 종이책을 펼쳐 읽기.',
       stat: '이 습관으로 받은 별이 쌓이는 갈래예요. 가장 높은 능력치 레벨이 캐릭터 레벨이 돼요.',
       identity: '어떤 사람이 되고 싶어서 하는지 적어요. 내키지 않는 날 다시 꺼내 보면 이어 가기 쉬워요.',
     });
@@ -253,7 +254,8 @@ describe('useNewHabit — 화면 문구 (§6.6, §6.8)', () => {
       ['kind', '측정 방식'],
       ['floor', '최소량'],
       ['target', '목표'],
-      ['cue', '언제·어디서'],
+      ['cue', '언제'],
+      ['method', '어떻게'],
       ['stat', '능력치'],
       ['identity', '이유'],
     ]);
@@ -274,4 +276,16 @@ describe('useNewHabit — 화면 문구 (§6.6, §6.8)', () => {
       { id: 'willpower', label: '🧘 의지', selected: false },
     ]);
   });
+});
+
+it('saves when and how independently, trimming both optional fields', async () => {
+  const { result, repository } = form();
+  fillRequired(result);
+  act(() => {
+    result.current.setCue('  아침 식사 후  ');
+    result.current.setMethod('  책상에서 종이책 읽기  ');
+  });
+  expect(await submit(result)).toBe(true);
+  const [saved] = await repository.getHabits();
+  expect(saved).toMatchObject({ cue: '아침 식사 후', method: '책상에서 종이책 읽기', floor: 5 });
 });

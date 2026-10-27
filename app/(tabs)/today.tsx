@@ -10,6 +10,7 @@ import { HabitCard } from '@/components/today/HabitCard';
 import { LogOverlay, TOAST_CLEARANCE } from '@/components/today/LogOverlay';
 import {
   LOADING_NOTE,
+  ORDER_COPY,
   RETRY_LABEL,
   SHEET_COPY,
   TODAY_COPY,
@@ -58,7 +59,7 @@ export default function Today() {
 
   return (
     <View style={[styles.fill, { backgroundColor: redesign.bg }]}>
-      <ScrollView style={styles.fill} contentContainerStyle={styles.page}>
+      <ScrollView style={styles.fill} contentContainerStyle={[styles.page, view.orderEditor != null && styles.editingPage]}>
         <View>
           <Text style={[TYPE.label, { color: redesign.muted }]}>{view.dateLabel}</Text>
           <Text style={[TYPE.display, { color: redesign.text }]} accessibilityRole="header">
@@ -68,7 +69,15 @@ export default function Today() {
         {backToToday != null && (
           <Button label={backToToday.label} variant="soft" onPress={() => router.navigate(backToToday.href)} />
         )}
-        {view.countChip != null && <Chip label={view.countChip} tone="count" />}
+        {view.countChip != null && (
+          <View style={styles.editHeading}>
+            <Chip label={view.countChip} tone="count" />
+            {view.orderEditor == null && !view.loading && view.failure == null && view.rows.length > 1 && (
+              <Button label={ORDER_COPY.edit} variant="text" onPress={view.startOrderEdit} />
+            )}
+          </View>
+        )}
+        {view.orderEditor != null && <Text style={[TYPE.body, { color: redesign.muted }]}>{ORDER_COPY.hint}</Text>}
 
         {/* A failed read is said here, once. Retry is the hook's (#51). */}
         {view.failure != null && (
@@ -119,6 +128,11 @@ export default function Today() {
                 row={row}
                 accessibilityLabel={`${row.habit.name} ${SHEET_COPY.record}`}
                 onPress={() => view.openRecord(row.habit.id)}
+                order={view.orderEditor == null ? undefined : {
+                  canMoveUp: view.orderEditor.canMoveUp(row.habit.id),
+                  canMoveDown: view.orderEditor.canMoveDown(row.habit.id),
+                  onMove: (direction) => view.moveHabit(row.habit.id, direction),
+                }}
               />
             ))}
 
@@ -161,6 +175,26 @@ export default function Today() {
           </>
         )}
       </ScrollView>
+
+      {view.orderEditor != null && (
+        <View style={[styles.orderBar, { backgroundColor: redesign.surface, borderColor: redesign.border }]}>
+          {view.orderEditor.error != null && (
+            <Text style={[TYPE.body, { color: redesign.critInk }]} accessibilityRole="alert" accessibilityLiveRegion="polite">
+              {view.orderEditor.error}
+            </Text>
+          )}
+          <View style={styles.pair}>
+            <Button label={ORDER_COPY.cancel} variant="soft" disabled={view.orderEditor.saving} onPress={view.cancelOrderEdit} style={styles.cell} />
+            <Button
+              label={view.orderEditor.saving ? ORDER_COPY.saving : view.orderEditor.error != null ? ORDER_COPY.retry : ORDER_COPY.save}
+              variant="pri"
+              disabled={!view.orderEditor.canSave}
+              onPress={() => void view.saveOrder()}
+              style={styles.cell}
+            />
+          </View>
+        </View>
+      )}
 
       <LogOverlay
         toast={toast}
@@ -269,6 +303,9 @@ function FeedRow({ item, onPress }: { item: TodayFeedItem; onPress: () => void }
 
 const styles = StyleSheet.create({
   fill: { flex: 1 },
+  editHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: SPACE.sm, flexWrap: 'wrap' },
+  editingPage: { paddingBottom: TOAST_CLEARANCE + 180 },
+  orderBar: { position: 'absolute', bottom: 0, left: 0, right: 0, padding: SPACE.md, gap: SPACE.sm, borderTopWidth: 1 },
   // `.page` — `padding:24px var(--space-xl) 28px; gap:var(--space-md)`.
   page: { paddingTop: 24, paddingHorizontal: SPACE.xl, paddingBottom: TOAST_CLEARANCE, gap: SPACE.md },
   pair: { flexDirection: 'row', gap: 8 },

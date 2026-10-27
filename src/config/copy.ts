@@ -513,7 +513,8 @@ export const BEST_RECORD_GLYPH = '★';
 export const SCREEN_WORDS = {
   star: '별',
   stat: '능력치',
-  cue: '언제·어디서',
+  cue: '언제',
+  method: '어떻게',
   identity: '이유',
   engagementStreak: '조금이라도 한 날',
   streak: '연속',
@@ -551,7 +552,8 @@ export const TOOLTIPS = {
   floor: '아무리 바빠도 할 수 있는 양이에요. 이만큼 하면 그날 몫을 한 거예요.',
   target: '최소량보다 큰 선택 목표예요. 넘기면 별을 더 받지만 안 해도 괜찮아요.',
   kind: '횟수 · 양은 한 만큼 적고, 최소량을 채우면 그날 몫을 해요. 예 · 아니오는 했는지만 보고, 이어 간 날이 쌓이면 별을 더 받아요.',
-  cue: '습관을 시작할 때와 곳이에요. 비워 둬도 되고, 잘 안 될 때 먼저 정해 보자고 물어볼게요.',
+  cue: '습관을 시작할 시점이나 직전 행동이에요. 예: 아침 식사 후.',
+  method: '습관을 실행하는 구체적인 방법이에요. 예: 책상에서 종이책을 펼쳐 읽기.',
   stat: '이 습관으로 받은 별이 쌓이는 갈래예요. 가장 높은 능력치 레벨이 캐릭터 레벨이 돼요.',
   identity:
     '어떤 사람이 되고 싶어서 하는지 적어요. 내키지 않는 날 다시 꺼내 보면 이어 가기 쉬워요.',
@@ -828,7 +830,7 @@ export function foldLabel(count: number): string {
 
 /** The 언제·어디서 value on a habit card, with no label (§6.0 Screen words). */
 export function cueLine(cue: string): string {
-  return `🕐 ${cue}`;
+  return `🕐 언제 · ${cue}`;
 }
 
 /** The card's status words, mark first: ✓ 했어요, ★ 목표까지 했어요, − 못 했어요. */
@@ -983,17 +985,19 @@ export const NEW_HABIT_COPY = {
     floor: '최소량',
     target: '목표',
     cue: SCREEN_WORDS.cue,
+    method: SCREEN_WORDS.method,
     stat: SCREEN_WORDS.stat,
     identity: SCREEN_WORDS.identity,
   },
-  /** 목표, 언제·어디서, 이유 뒤에 붙는다. */
+  /** 목표, 언제, 어떻게, 이유 뒤에 붙는다. */
   optional: '· 선택',
   placeholders: {
     name: '예: 턱걸이',
     floor: '5',
     floorUnit: '회',
     target: '10',
-    cue: '예: 아침 커피 마신 뒤, 문틀 바에서',
+    cue: '예: 아침 커피 마신 뒤',
+    method: '예: 문틀 바에서 매달려 당기기',
     identity: '예: 나는 매일 몸을 쓰는 사람이니까',
   },
   kinds: { count: '횟수 · 양', binary: '예 · 아니오' },
@@ -1275,4 +1279,19 @@ export function journalRowSummary({
 }): string {
   if (skipReason != null) return `${DAY_STATE_WORDS.skip} · ${SKIP_REASON_LABELS[skipReason]}`;
   return isCount ? `+${actual}${unit}` : `${DAY_STATE_GLYPHS.done} ${DAY_STATE_WORDS.done}`;
+}
+
+/** Habit card order editor (#185). */
+export const ORDER_COPY = {
+  edit: '순서 편집',
+  hint: '위·아래 버튼으로 순서를 바꿔 주세요.',
+  cancel: '취소',
+  save: '저장',
+  saving: '저장 중…',
+  retry: '다시 저장',
+  failed: '순서를 저장하지 못했어요. 바꾼 순서는 그대로예요. 다시 저장해 주세요.',
+} as const;
+
+export function methodLine(method: string): string {
+  return `📝 어떻게 · ${method}`;
 }

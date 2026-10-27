@@ -48,6 +48,8 @@ export interface Habit {
   target?: number;
   /** Optional at creation (§5 — deliberate late introduction). */
   cue?: string;
+  /** Optional execution method, separate from when to start (#185). */
+  method?: string;
   /** Optional at creation (§5). */
   identity?: string;
   /** Optional emoji (§6.6). Absent ⇒ screens show the stat's icon. */
@@ -125,6 +127,8 @@ export interface HabitDesignSnapshot {
   floorUnit: string;
   target?: number;
   cue?: string;
+  /** Optional execution method, separate from when to start (#185). */
+  method?: string;
   identity?: string;
 }
 

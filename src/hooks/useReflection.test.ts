@@ -813,3 +813,14 @@ describe('loading', () => {
     expect(result.current.options).toEqual([]);
   });
 });
+
+it('keeps how in the habit and both reflection snapshots when changing when', async () => {
+  const repository = await seed(habit({ method: '책상에서 종이책 읽기' }));
+  const { result } = await render(repository);
+  act(() => result.current.choose('adjust_cue'));
+  await act(async () => { expect(await result.current.commit('점심 식사 후')).toBeNull(); });
+  expect(await repository.getHabit('h1')).toMatchObject({ cue: '점심 식사 후', method: '책상에서 종이책 읽기' });
+  const [session] = await repository.getReflectionSessions('h1');
+  expect(session.designBefore.method).toBe('책상에서 종이책 읽기');
+  expect(session.designAfter.method).toBe('책상에서 종이책 읽기');
+});

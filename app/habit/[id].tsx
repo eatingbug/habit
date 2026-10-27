@@ -286,6 +286,7 @@ function DesignCardView({ card, onEdit }: { card: DesignCard; onEdit: () => void
         <Button label={DETAIL_COPY.edit} variant="soft" onPress={onEdit} />
       </View>
       <DesignRow label={SCREEN_WORDS.cue} value={card.cue} ink={card.cueInk} />
+      {card.method != null && <DesignRow label={SCREEN_WORDS.method} value={card.method} help={TOOLTIPS.method} />}
       {card.floor != null && <DesignRow label={SCREEN_WORDS.floor} value={card.floor} help={TOOLTIPS.floor} />}
       {card.target != null && <DesignRow label={DETAIL_COPY.target} value={card.target} help={TOOLTIPS.target} />}
       {card.stat != null && <DesignRow label={SCREEN_WORDS.stat} value={card.stat} last />}

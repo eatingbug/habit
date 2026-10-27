@@ -30,7 +30,7 @@ export interface NewHabitView {
   /** Title, field labels in screen order, the "· 선택" mark, placeholders, button words. */
   copy: typeof NEW_HABIT_COPY;
   /** The `?` copy per field (§6.8). 측정 방식 has one copy whatever the selection. */
-  tooltips: Pick<typeof TOOLTIPS, 'kind' | 'floor' | 'target' | 'cue' | 'stat' | 'identity'>;
+  tooltips: Pick<typeof TOOLTIPS, 'kind' | 'floor' | 'target' | 'cue' | 'method' | 'stat' | 'identity'>;
   kindOptions: { value: HabitKind; label: string }[];
   statOptions: { id: string; label: string; selected: boolean }[];
   name: string;
@@ -49,6 +49,8 @@ export interface NewHabitView {
   targetUnit: string;
   cue: string;
   setCue(next: string): void;
+  method: string;
+  setMethod(next: string): void;
   identity: string;
   setIdentity(next: string): void;
   statId: string;
@@ -89,6 +91,7 @@ export function useNewHabit(): NewHabitView {
   const [floorUnit, setFloorUnitValue] = useState('');
   const [target, setTargetValue] = useState('');
   const [cue, setCue] = useState('');
+  const [method, setMethod] = useState('');
   const [identity, setIdentity] = useState('');
   const [statId, setStatId] = useState<string>(DEFAULT_STAT_ID);
   const [pickedIcon, setPickedIcon] = useState<string | undefined>();
@@ -154,6 +157,7 @@ export function useNewHabit(): NewHabitView {
         // diagnosis rules read cue/identity emptiness (§4.4 rule 4).
         ...(targetValue != null ? { target: targetValue } : {}),
         ...(trimmedCue.length > 0 ? { cue: trimmedCue } : {}),
+        ...(method.trim().length > 0 ? { method: method.trim() } : {}),
         ...(trimmedIdentity.length > 0 ? { identity: trimmedIdentity } : {}),
         ...(pickedIcon != null ? { icon: pickedIcon } : {}),
         lifecycle: 'forming',
@@ -222,6 +226,8 @@ export function useNewHabit(): NewHabitView {
     targetUnit: floorUnit.trim(),
     cue,
     setCue,
+    method,
+    setMethod,
     identity,
     setIdentity,
     statId,

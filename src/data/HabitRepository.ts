@@ -16,6 +16,8 @@ export interface HabitRepository {
   getHabits(): Promise<Habit[]>;
   getHabit(id: string): Promise<Habit | null>;
   upsertHabit(habit: Habit): Promise<void>;
+  /** Atomically reorder these habits in their existing slots; others stay in place. */
+  reorderHabits(ids: string[]): Promise<void>;
   deleteHabit(id: string): Promise<void>;
 
   // Entries
