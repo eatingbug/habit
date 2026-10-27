@@ -280,6 +280,7 @@ function snapshot(habit: Habit): HabitDesignSnapshot {
     floorUnit: habit.floorUnit,
     target: habit.target,
     cue: habit.cue,
+    method: habit.method,
     identity: habit.identity,
   };
 }

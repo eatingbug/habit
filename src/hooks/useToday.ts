@@ -1,11 +1,12 @@
 import type { Href } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import {
   cardBadge,
   cardProgressLine,
   countChipLabel,
   cueLine,
+  methodLine,
   DAY_STATE_WORDS,
   DAY_WORDS,
   editTimeLabel,
@@ -18,6 +19,7 @@ import {
   longDateLabel,
   SKIP_REASON_LABELS,
   TODAY_COPY,
+  ORDER_COPY,
   yesterdayBannerTitle,
 } from '@/config/copy';
 import { useRepository } from '@/context/RepositoryContext';
@@ -96,8 +98,9 @@ export interface TodayHabitRow extends LogAffordances {
   day?: ClassifiedDay;
   /** The habit card's icon (`habitIcon`). */
   icon: string;
-  /** "🕐 자기 전, 침대 옆에서", or `null` with no 언제·어디서. */
+  /** "🕐 언제 · 자기 전", or `null` when unset. */
   cueLine: string | null;
+  methodLine: string | null;
   /** "✓ 했어요", "★ 목표까지 했어요" or "− 못 했어요", or `null` (`cardBadge`). */
   badge: string | null;
   /**
@@ -391,6 +394,17 @@ export interface DateControl {
 export const TODAY_HREF = { pathname: '/today', params: {} } as const satisfies Href;
 
 export interface TodayView {
+  orderEditor: {
+    saving: boolean;
+    error: string | null;
+    canSave: boolean;
+    canMoveUp(id: string): boolean;
+    canMoveDown(id: string): boolean;
+  } | null;
+  startOrderEdit(): void;
+  moveHabit(id: string, direction: -1 | 1): void;
+  cancelOrderEdit(): void;
+  saveOrder(): Promise<void>;
   /**
    * The day being recorded — 'YYYY-MM-DD'. Today unless the date control stepped it
    * back (§6.2 B4), in which case every write to it is a backfill (§6.3).
@@ -577,6 +591,7 @@ function cardOf(habit: Habit, day: ClassifiedDay | undefined, affordances: LogAf
   return {
     icon: habitIcon(habit),
     cueLine: cue != null && cue.length > 0 ? cueLine(cue) : null,
+    methodLine: habit.method?.trim() ? methodLine(habit.method.trim()) : null,
     badge: day == null ? null : cardBadge(day.state),
     progressLine: isCount
       ? cardProgressLine({
@@ -771,6 +786,66 @@ export function useToday({
   );
   // A failed read lowers `loading` too: a spinner that never ends reads as "no habits yet".
   const loading = histories.loading || (freeLogs == null && failure == null);
+
+  const [orderDraft, setOrderDraft] = useState<{ original: string[]; ids: string[] } | null>(null);
+  const [orderSaving, setOrderSaving] = useState(false);
+  const orderBusy = useRef(false);
+  const [orderError, setOrderError] = useState<string | null>(null);
+  // Bridge the successful write and history reload without flashing the old order.
+  const [committedOrder, setCommittedOrder] = useState<{
+    source: HabitWithEntries[]; ids: string[];
+  } | null>(null);
+  const orderedIds = orderDraft?.ids ??
+    (committedOrder?.source === histories.histories ? committedOrder.ids : null);
+  const ranks = new Map(orderedIds?.map((id, index) => [id, index]));
+  const rows = orderedIds == null ? loaded.rows : [...loaded.rows].sort((a, b) =>
+    (ranks.get(a.habit.id) ?? Infinity) - (ranks.get(b.habit.id) ?? Infinity));
+  const orderChanged = orderDraft != null && orderDraft.ids.some((id, i) => id !== orderDraft.original[i]);
+
+  function startOrderEdit() {
+    if (loading || histories.failure != null || rows.length < 2 || orderBusy.current) return;
+    const ids = rows.map((row) => row.habit.id);
+    setOrderDraft({ original: ids, ids });
+    setOrderError(null);
+  }
+
+  function moveHabit(id: string, direction: -1 | 1) {
+    if (orderBusy.current) return;
+    setOrderDraft((draft) => {
+      if (draft == null) return draft;
+      const from = draft.ids.indexOf(id);
+      const to = from + direction;
+      if (from < 0 || to < 0 || to >= draft.ids.length) return draft;
+      const ids = [...draft.ids];
+      [ids[from], ids[to]] = [ids[to], ids[from]];
+      return { ...draft, ids };
+    });
+    setOrderError(null);
+  }
+
+  function cancelOrderEdit() {
+    if (orderBusy.current) return;
+    setOrderDraft(null);
+    setOrderError(null);
+  }
+
+  async function saveOrder() {
+    if (orderDraft == null || !orderChanged || orderBusy.current) return;
+    orderBusy.current = true;
+    setOrderSaving(true);
+    setOrderError(null);
+    try {
+      await repository.reorderHabits(orderDraft.ids);
+      setCommittedOrder({ source: histories.histories, ids: orderDraft.ids });
+      setOrderDraft(null);
+      reload();
+    } catch {
+      setOrderError(ORDER_COPY.failed);
+    } finally {
+      orderBusy.current = false;
+      setOrderSaving(false);
+    }
+  }
 
   function rowFor(habitId: string): TodayHabitRow | undefined {
     return loaded.rows.find((row) => row.habit.id === habitId);
@@ -1160,7 +1235,19 @@ export function useToday({
     celebration: quick.celebration,
     dismissCelebration: quick.dismissCelebration,
     loading,
-    rows: loaded.rows,
+    rows,
+    orderEditor: orderDraft == null ? null : {
+      saving: orderSaving,
+      error: orderError,
+      canSave: orderChanged && !orderSaving,
+      canMoveUp: (id) => !orderSaving && orderDraft.ids.indexOf(id) > 0,
+      canMoveDown: (id) => !orderSaving && orderDraft.ids.indexOf(id) >= 0 &&
+        orderDraft.ids.indexOf(id) < orderDraft.ids.length - 1,
+    },
+    startOrderEdit,
+    moveHabit,
+    cancelOrderEdit,
+    saveOrder,
     feed: loaded.feed,
     logActivity,
     logSkip: quick.logSkip,

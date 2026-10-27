@@ -1155,6 +1155,7 @@ describe('useHabitDetail — the design card (§6.5 Design card)', () => {
     expect(result.current.designCard).toEqual({
       cue: '출근 전, 문틀 바에서',
       cueInk: 'text',
+      method: null,
       floor: '하루 5reps',
       target: '하루 8reps',
       stat: '💪 힘',
@@ -1385,4 +1386,15 @@ describe('useHabitDetail — the ⋯ menu and its confirm sheets (§6.5 ⋯ menu
     expect(result.current.habit?.pauses).toEqual([{ from: TODAY, to: TODAY, resumeTo: 'forming' }]);
     expect(pill(result.current, 'streak')?.value).toBe('1');
   });
+});
+
+it('edits and clears how independently while preserving when and amounts', async () => {
+  const repository = await seed(habit({ cue: '커피 후' }));
+  const result = await detail(repository);
+  await act(async () => { await result.current.saveDesign({ method: '  종이책 펼치기  ' }); });
+  await waitFor(() => expect(result.current.design?.method).toBe('종이책 펼치기'));
+  expect(await repository.getHabit('h1')).toMatchObject({ cue: '커피 후', method: '종이책 펼치기', floor: 5, target: 8 });
+  await act(async () => { await result.current.saveDesign({ method: null }); });
+  expect((await repository.getHabit('h1'))?.method).toBeUndefined();
+  expect((await repository.getHabit('h1'))?.cue).toBe('커피 후');
 });

@@ -11,7 +11,7 @@ import { useTheme } from '@/theme/ThemeProvider';
 const AMOUNT_WIDTH = 120;
 
 /**
- * The design card's edit sheet (수정, SPEC §6.5 Design card): 언제·어디서, 최소량 and 목표
+ * The design card's edit sheet (수정, SPEC §6.5 Design card): 언제, 어떻게, 최소량 and 목표
  * (count habits only), and 이유. The hook validates and writes (`saveDesign`), and
  * closes the sheet once the edit is stored; refused fields show their message here.
  */
@@ -28,6 +28,7 @@ export function DesignSheet({
   const { design } = sheet;
   const copy = NEW_HABIT_COPY;
   const [cue, setCue] = useState(design.cue ?? '');
+  const [method, setMethod] = useState(design.method ?? '');
   const [identity, setIdentity] = useState(design.identity ?? '');
   const [floor, setFloor] = useState(`${design.floor}`);
   const [floorUnit, setFloorUnit] = useState(design.floorUnit);
@@ -45,6 +46,7 @@ export function DesignSheet({
       const found = await onSave({
         // A blank box clears the field; both are optional.
         cue: cue.trim().length > 0 ? cue : null,
+        method: method.trim().length > 0 ? method : null,
         identity: identity.trim().length > 0 ? identity : null,
         // Omitted for a yes/no habit, whose amounts this form never showed.
         ...(design.editsAmounts
@@ -67,6 +69,15 @@ export function DesignSheet({
           onChangeText={setCue}
           placeholder={copy.placeholders.cue}
           accessibilityLabel={SCREEN_WORDS.cue}
+        />
+      </FormField>
+
+      <FormField label={SCREEN_WORDS.method} optional={copy.optional} help={TOOLTIPS.method}>
+        <InputField
+          value={method}
+          onChangeText={setMethod}
+          placeholder={copy.placeholders.method}
+          accessibilityLabel={SCREEN_WORDS.method}
         />
       </FormField>
 

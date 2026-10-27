@@ -460,11 +460,12 @@ describe('STATUS_LIGHT_WORDS — 상태등은 색, 모양, 글자가 함께 간�
 });
 
 describe('SCREEN_WORDS — 화면이 부르는 이름 (§6.0 Screen words)', () => {
-  it('XP는 별, 스탯은 능력치, cue는 언제·어디서, identity는 이유다', () => {
+  it('XP는 별, 스탯은 능력치, cue는 언제, method는 어떻게, identity는 이유다', () => {
     expect(SCREEN_WORDS).toEqual({
       star: '별',
       stat: '능력치',
-      cue: '언제·어디서',
+      cue: '언제',
+      method: '어떻게',
       identity: '이유',
       engagementStreak: '조금이라도 한 날',
       streak: '연속',
@@ -514,7 +515,8 @@ describe('TOOLTIPS — `?` 툴팁 문구 (§6.8 표)', () => {
       floor: '아무리 바빠도 할 수 있는 양이에요. 이만큼 하면 그날 몫을 한 거예요.',
       target: '최소량보다 큰 선택 목표예요. 넘기면 별을 더 받지만 안 해도 괜찮아요.',
       kind: '횟수 · 양은 한 만큼 적고, 최소량을 채우면 그날 몫을 해요. 예 · 아니오는 했는지만 보고, 이어 간 날이 쌓이면 별을 더 받아요.',
-      cue: '습관을 시작할 때와 곳이에요. 비워 둬도 되고, 잘 안 될 때 먼저 정해 보자고 물어볼게요.',
+      cue: '습관을 시작할 시점이나 직전 행동이에요. 예: 아침 식사 후.',
+      method: '습관을 실행하는 구체적인 방법이에요. 예: 책상에서 종이책을 펼쳐 읽기.',
       stat: '이 습관으로 받은 별이 쌓이는 갈래예요. 가장 높은 능력치 레벨이 캐릭터 레벨이 돼요.',
       identity:
         '어떤 사람이 되고 싶어서 하는지 적어요. 내키지 않는 날 다시 꺼내 보면 이어 가기 쉬워요.',
@@ -599,7 +601,7 @@ describe('오늘 화면 문구 (§6.2)', () => {
     expect(cardBadge('pending')).toBeNull();
     expect(cardProgressLine({ sum: 6, floor: 10, unit: '쪽' })).toBe('6 / 10쪽');
     expect(cardProgressLine({ sum: 30, floor: 10, unit: '쪽', target: 30 })).toBe('30쪽 · 목표 30쪽');
-    expect(cueLine('자기 전, 침대 옆에서')).toBe('🕐 자기 전, 침대 옆에서');
+    expect(cueLine('자기 전, 침대 옆에서')).toBe('🕐 언제 · 자기 전, 침대 옆에서');
   });
 
   describe('recordResultLine — 이 양이 오늘 몫에 무엇을 하는지 (C7a)', () => {

@@ -222,6 +222,7 @@ export interface DesignCard {
   cue: string;
   /** `critInk` when 언제·어디서 is empty (`ReDetailRed`), else `text`. */
   cueInk: DetailInk;
+  method: string | null;
   /** "하루 10쪽", or `null` on a yes/no habit. */
   floor: string | null;
   /** "하루 30쪽", or `null` on a yes/no habit or with no target that counts. */
@@ -237,6 +238,7 @@ export interface DesignCard {
 /** The design edit sheet's current hypothesis (§6.5, AC 8). */
 export interface DesignBox {
   cue?: string;
+  method?: string;
   identity?: string;
   floor: number;
   floorUnit: string;
@@ -252,6 +254,7 @@ export interface DesignBox {
  */
 export interface DesignPatch {
   cue?: string | null;
+  method?: string | null;
   identity?: string | null;
   /** Ignored on a binary habit — its floor is always 1 (§3.2). */
   floor?: number;
@@ -745,6 +748,7 @@ export function useHabitDetail(
       ? null
       : {
           cue: habit.cue,
+          method: habit.method,
           identity: habit.identity,
           floor: habit.floor,
           floorUnit: habit.floorUnit,
@@ -932,6 +936,7 @@ export function useHabitDetail(
     await repository.upsertHabit({
       ...habit,
       cue: patchedText(habit.cue, patch.cue),
+      method: patchedText(habit.method, patch.method),
       identity: patchedText(habit.identity, patch.identity),
       floor,
       floorUnit,
@@ -983,6 +988,7 @@ export function useHabitDetail(
         ? null
         : {
             cue: habit.cue ?? DETAIL_COPY.cueEmpty,
+            method: habit.method?.trim() || null,
             cueInk: habit.cue == null || habit.cue.length === 0 ? 'critInk' : 'text',
             floor: habit.kind === 'count' ? dailyAmountLabel(habit.floor, habit.floorUnit) : null,
             target: target == null ? null : dailyAmountLabel(target, habit.floorUnit),

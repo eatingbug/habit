@@ -127,6 +127,15 @@ export default function NewHabit() {
           />
         </FormField>
 
+        <FormField label={copy.labels.method} optional={copy.optional} help={tooltips.method}>
+          <InputField
+            value={form.method}
+            onChangeText={form.setMethod}
+            placeholder={copy.placeholders.method}
+            accessibilityLabel={copy.labels.method}
+          />
+        </FormField>
+
         <FormField label={copy.labels.stat} help={tooltips.stat}>
           <View style={styles.chips}>
             {form.statOptions.map((stat) => (

@@ -104,6 +104,7 @@ function fullHabit(id) {
     floorUnit: 'reps',
     target: 30,
     cue: '양치 후',
+    method: '문틀 바에서 당기기',
     identity: '운동하는 사람',
     icon: '🏃',
     lifecycle: 'established',
@@ -139,7 +140,7 @@ describe('habits — upsertHabit · getHabits · getHabit · deleteHabit', () =>
     const loaded = await repo.getHabit(habit.id);
     // 통째 비교가 요점이다: 키가 하나라도 더 생기면 여기서 깨진다.
     assert.deepStrictEqual(loaded, habit);
-    for (const key of ['target', 'cue', 'identity', 'icon', 'pauses']) {
+    for (const key of ['target', 'cue', 'method', 'identity', 'icon', 'pauses']) {
       assert.ok(!(key in loaded), `${key} 키가 생겼다 — LocalRepository 는 만들지 않는다`);
     }
   });
@@ -531,5 +532,53 @@ describe('실패는 던진다 (착수 전 결정 7 — #50 의 티켓 관리자 
       }),
       /SupabaseRepository\.upsertEntry/,
     );
+  });
+});
+
+
+describe('habit order — #185', () => {
+  it('saves one order atomically, preserves designs and rejects invalid requests', async () => {
+    const a = { ...minimalHabit(), cue: '식사 후', method: '종이책 읽기' };
+    const hidden = { ...minimalHabit(), lifecycle: 'paused' };
+    const b = minimalHabit();
+    for (const habit of [a, hidden, b]) await repo.upsertHabit(habit);
+    await repo.reorderHabits([a.id, hidden.id, b.id]);
+    await repo.reorderHabits([b.id, a.id]);
+    const ids = [a.id, hidden.id, b.id];
+    const readOrder = async () => (await repo.getHabits()).filter(h => ids.includes(h.id)).map(h => h.id);
+    assert.deepEqual(await readOrder(), [b.id, hidden.id, a.id]);
+    assert.deepEqual(await repo.getHabit(a.id), a);
+    // Ordinary design updates must not reset the server-owned display order.
+    await repo.upsertHabit({ ...a, method: '소리 내어 읽기' });
+    assert.deepEqual(await readOrder(), [b.id, hidden.id, a.id]);
+    await assert.rejects(repo.reorderHabits([a.id, a.id]));
+    await assert.rejects(repo.reorderHabits([a.id, uuid()]));
+    assert.deepEqual(await readOrder(), [b.id, hidden.id, a.id]);
+    const anotherDevice = new SupabaseRepository(client, OFFSET);
+    assert.deepEqual((await anotherDevice.getHabits()).filter(h => ids.includes(h.id)).map(h => h.id), [b.id, hidden.id, a.id]);
+    const withoutMethod = { ...a };
+    delete withoutMethod.method;
+    await repo.upsertHabit(withoutMethod);
+    assert.deepEqual(await repo.getHabit(a.id), withoutMethod);
+  });
+
+  it('rejects another account’s habit without changing either user’s order', async () => {
+    const other = createClient(SUPABASE_URL, PUBLISHABLE_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
+    const { error } = await other.auth.signInWithPassword(ACCOUNTS.B);
+    assert.equal(error, null);
+    const otherRepo = new SupabaseRepository(other, OFFSET);
+    const foreign = minimalHabit();
+    try {
+      await otherRepo.upsertHabit(foreign);
+      const own = minimalHabit();
+      await repo.upsertHabit(own);
+      const before = (await repo.getHabits()).map(h => h.id);
+      await assert.rejects(repo.reorderHabits([own.id, foreign.id]));
+      assert.deepEqual((await repo.getHabits()).map(h => h.id), before);
+      assert.deepEqual(await otherRepo.getHabit(foreign.id), foreign);
+    } finally {
+      await otherRepo.deleteHabit(foreign.id);
+      await other.auth.signOut();
+    }
   });
 });

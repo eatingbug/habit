@@ -7,7 +7,7 @@ import { LocalRepository } from './LocalRepository';
  * Repository behaviour, exercised through `LocalRepository` + `MemoryKV` — no device,
  * no storage driver (SPEC §5.2, and the KV seam the architecture test enforces).
  *
- * Row order is deliberately not asserted: the domain sorts a day's rows itself
+ * Entry order is deliberately not asserted: the domain sorts a day's rows itself
  * (`sortDayRows`, §7.3), so persisted order is not part of the contract.
  */
 
@@ -71,6 +71,7 @@ describe('LocalRepository — habits', () => {
       id: 'h2',
       target: 30,
       cue: '아침 양치 후',
+      method: '문틀 바에서 당기기',
       identity: '나는 매일 몸을 쓰는 사람',
       icon: '🏃',
       lifecycle: 'paused',
@@ -84,7 +85,7 @@ describe('LocalRepository — habits', () => {
     expect(loadedFull!.pauses![1]).not.toHaveProperty('to');
 
     const loadedBare = (await repo.getHabit('h1'))!;
-    for (const key of ['target', 'cue', 'identity', 'icon', 'pauses'] as const) {
+    for (const key of ['target', 'cue', 'method', 'identity', 'icon', 'pauses'] as const) {
       expect(loadedBare).not.toHaveProperty(key);
     }
   });
@@ -328,5 +329,21 @@ describe('MemoryKV', () => {
     expect(await kv.get('k')).toBe('b');
     await kv.remove('k');
     expect(await kv.get('k')).toBeNull();
+  });
+});
+
+describe('LocalRepository — habit display order', () => {
+  it('persists a reordered subset without changing hidden habits, designs or later additions', async () => {
+    const kv = new MemoryKV();
+    const repo = new LocalRepository(kv);
+    await repo.upsertHabit({ ...habit, id: 'a', cue: '식사 후' });
+    await repo.upsertHabit({ ...habit, id: 'hidden', lifecycle: 'paused' });
+    await repo.upsertHabit({ ...habit, id: 'b' });
+    await repo.reorderHabits(['b', 'a']);
+    const reopened = new LocalRepository(kv);
+    expect((await reopened.getHabits()).map((h) => h.id)).toEqual(['b', 'hidden', 'a']);
+    expect((await reopened.getHabit('a'))?.cue).toBe('식사 후');
+    await reopened.upsertHabit({ ...habit, id: 'new' });
+    expect((await reopened.getHabits()).map((h) => h.id)).toEqual(['b', 'hidden', 'a', 'new']);
   });
 });

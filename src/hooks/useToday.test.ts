@@ -1422,7 +1422,7 @@ describe('useToday', () => {
 
       expect(rowOf(result.current, 'h1')).toMatchObject({
         icon: '💪',
-        cueLine: '🕐 아침 커피 후',
+        cueLine: '🕐 언제 · 아침 커피 후',
         badge: null,
         progressLine: '0 / 5reps',
         progressRatio: 0,
@@ -2009,4 +2009,88 @@ describe('a record sheet retried after a lost response (#171)', () => {
 
     expect(await repository.getEntries('h1', TODAY, TODAY)).toHaveLength(1);
   });
+});
+
+describe('useToday — order editing', () => {
+  it('previews and cancels without writes, then preserves a failed draft for retry', async () => {
+    const repo = new LocalRepository(new MemoryKV());
+    await repo.upsertHabit(habit({ id: 'a' }));
+    await repo.upsertHabit(habit({ id: 'b' }));
+    const result = await todayScreen(repo);
+    const ids = () => result.current.rows.map((row) => row.habit.id);
+    act(() => result.current.startOrderEdit());
+    expect(result.current.orderEditor?.canMoveUp('a')).toBe(false);
+    act(() => result.current.moveHabit('b', -1));
+    expect(ids()).toEqual(['b', 'a']);
+    expect((await repo.getHabits()).map((h) => h.id)).toEqual(['a', 'b']);
+    act(() => result.current.cancelOrderEdit());
+    expect(ids()).toEqual(['a', 'b']);
+    act(() => { result.current.startOrderEdit(); });
+    act(() => result.current.moveHabit('b', -1));
+    jest.spyOn(repo, 'reorderHabits').mockRejectedValueOnce(new Error('offline'));
+    await act(async () => { await result.current.saveOrder(); });
+    expect(ids()).toEqual(['b', 'a']);
+    expect(result.current.orderEditor?.error).not.toBeNull();
+    expect((await repo.getHabits()).map((h) => h.id)).toEqual(['a', 'b']);
+    await act(async () => { await result.current.saveOrder(); });
+    expect(result.current.orderEditor).toBeNull();
+    expect(ids()).toEqual(['b', 'a']);
+    expect((await repo.getHabits()).map((h) => h.id)).toEqual(['b', 'a']);
+  });
+});
+
+
+it('shows independent when and how lines and hides empty values', async () => {
+  const repo = new LocalRepository(new MemoryKV());
+  await repo.upsertHabit(habit({ cue: '  아침 식사 후  ', method: '  책상에서 읽기  ' }));
+  await repo.upsertHabit(binary({ cue: ' ', method: undefined }));
+  const result = await todayScreen(repo);
+  expect(rowOf(result.current, 'h1')).toMatchObject({ cueLine: '🕐 언제 · 아침 식사 후', methodLine: '📝 어떻게 · 책상에서 읽기' });
+  expect(rowOf(result.current, 'b1')).toMatchObject({ cueLine: null, methodLine: null });
+});
+
+it('blocks duplicate order saves, moves and cancellation while saving', async () => {
+  const repo = new LocalRepository(new MemoryKV());
+  await repo.upsertHabit(habit({ id: 'a' }));
+  await repo.upsertHabit(habit({ id: 'b' }));
+  const result = await todayScreen(repo);
+  act(() => result.current.startOrderEdit());
+  expect(result.current.orderEditor?.canSave).toBe(false);
+  act(() => result.current.moveHabit('b', -1));
+  let release!: () => void;
+  const pending = new Promise<void>((resolve) => { release = resolve; });
+  const reorder = repo.reorderHabits.bind(repo);
+  const writes = jest.spyOn(repo, 'reorderHabits').mockImplementationOnce(async (ids) => {
+    await pending;
+    await reorder(ids);
+  });
+  let saving!: Promise<void>;
+  act(() => {
+    saving = result.current.saveOrder();
+    void result.current.saveOrder();
+    result.current.cancelOrderEdit();
+    result.current.moveHabit('a', -1);
+  });
+  expect(result.current.orderEditor?.saving).toBe(true);
+  expect(result.current.orderEditor?.canMoveDown('b')).toBe(false);
+  expect(result.current.rows.map(row => row.habit.id)).toEqual(['b', 'a']);
+  expect(writes).toHaveBeenCalledTimes(1);
+  await act(async () => { release(); await saving; });
+  expect(result.current.orderEditor).toBeNull();
+});
+
+it('keeps the chosen order after logging, reload and a new day', async () => {
+  const repo = new LocalRepository(new MemoryKV());
+  await repo.upsertHabit(habit({ id: 'a' }));
+  await repo.upsertHabit(habit({ id: 'b' }));
+  const result = await todayScreen(repo);
+  act(() => result.current.startOrderEdit());
+  act(() => result.current.moveHabit('b', -1));
+  await act(async () => { await result.current.saveOrder(); });
+  await log(result, 'b', 5);
+  await waitFor(() => expect(dayOf(result.current, 'b')?.state).toBe('done'));
+  expect(result.current.rows.map(row => row.habit.id)).toEqual(['b', 'a']);
+  const next = renderHook(() => useToday({ today: addDays(TODAY, 1) }), { wrapper: wrapperFor(repo) });
+  await waitFor(() => expect(next.result.current.loading).toBe(false));
+  expect(next.result.current.rows.map(row => row.habit.id)).toEqual(['b', 'a']);
 });

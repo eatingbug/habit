@@ -11,8 +11,7 @@ import { useTheme } from '@/theme/ThemeProvider';
  * Tab bar — SPEC §6.1, the `.tabbar` at the bottom of `ReToday`, `ReDashboard` and
  * `ReJournal`. Three tabs in order: 오늘, 대시보드, 글 모음. Redesign tokens only.
  *
- * `index` keeps the Dashboard at `/` and `today` keeps `/today`, so every existing link
- * still lands. Habit Detail, New habit, Reflection and Settings stay root Stack routes.
+ * `/` redirects to Today; Dashboard lives at `/dashboard` and Today at `/today`. Habit Detail, New habit, Reflection and Settings stay root Stack routes.
  */
 
 /** `.tabbar button` is `min-height:56px` (over `TAP_TARGET`) inside `padding:4px 0 10px`. */
@@ -35,6 +34,7 @@ export default function TabsLayout() {
 
   return (
     <Tabs
+      initialRouteName="today"
       screenOptions={{
         // Each screen draws its own title (§6.2, §6.3), so there is no navigator header.
         headerShown: false,
@@ -70,13 +70,14 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
-        name="index"
+        name="dashboard"
         options={{
           title: TAB_LABELS.dashboard,
           tabBarAccessibilityLabel: TAB_LABELS.dashboard,
           tabBarIcon: tabIcon(LayoutGrid),
         }}
       />
+      <Tabs.Screen name="index" options={{ href: null }} />
       <Tabs.Screen
         name="journal"
         options={{

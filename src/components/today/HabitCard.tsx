@@ -1,4 +1,4 @@
-import { Plus } from 'lucide-react-native';
+import { ArrowDown, ArrowUp, Plus } from 'lucide-react-native';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Card, ProgressBar } from '@/components/re';
@@ -12,15 +12,20 @@ export interface HabitCardProps {
   onPress: () => void;
   /** The button's accessible name, e.g. "독서 기록". */
   accessibilityLabel: string;
+  order?: {
+    canMoveUp: boolean;
+    canMoveDown: boolean;
+    onMove(direction: -1 | 1): void;
+  };
 }
 
 /**
  * A Today habit card (SPEC §6.2 Habit card, `ReToday`'s `.card.habit`): the icon on the
- * `accent` tint, the name with its status words, the 언제·어디서 value, the progress line
+ * `accent` tint, the name with its status words, the separate 언제 and 어떻게 lines, the progress line
  * with its bar on one row, and the round button. Every word and the bar's ratio are the
  * hook's. Compact by ADR-0008: icon 40, button 44, padding 12.
  */
-export function HabitCard({ row, onPress, accessibilityLabel }: HabitCardProps) {
+export function HabitCard({ row, onPress, accessibilityLabel, order }: HabitCardProps) {
   const { redesign } = useTheme();
   const badgeColor = row.floorMet ? redesign.doneInk : redesign.muted;
 
@@ -37,6 +42,7 @@ export function HabitCard({ row, onPress, accessibilityLabel }: HabitCardProps) 
           )}
         </Text>
         {row.cueLine != null && <Text style={[TYPE.body, { color: redesign.muted }]}>{row.cueLine}</Text>}
+        {row.methodLine != null && <Text style={[TYPE.body, { color: redesign.muted }]}>{row.methodLine}</Text>}
         {(row.progressLine != null || row.progressRatio != null) && (
           <View style={styles.progress}>
             {row.progressLine != null && (
@@ -48,7 +54,30 @@ export function HabitCard({ row, onPress, accessibilityLabel }: HabitCardProps) 
           </View>
         )}
       </View>
-      <Pressable
+      {order != null ? (
+        <View style={styles.moves}>
+          <Pressable
+            onPress={() => order.onMove(-1)}
+            disabled={!order.canMoveUp}
+            accessibilityRole="button"
+            accessibilityLabel={`${row.habit.name} 위로`}
+            accessibilityState={{ disabled: !order.canMoveUp }}
+            style={[styles.move, { backgroundColor: redesign.inset, opacity: order.canMoveUp ? 1 : 0.35 }]}
+          >
+            <ArrowUp size={20} color={redesign.muted} />
+          </Pressable>
+          <Pressable
+            onPress={() => order.onMove(1)}
+            disabled={!order.canMoveDown}
+            accessibilityRole="button"
+            accessibilityLabel={`${row.habit.name} 아래로`}
+            accessibilityState={{ disabled: !order.canMoveDown }}
+            style={[styles.move, { backgroundColor: redesign.inset, opacity: order.canMoveDown ? 1 : 0.35 }]}
+          >
+            <ArrowDown size={20} color={redesign.muted} />
+          </Pressable>
+        </View>
+      ) : <Pressable
         onPress={onPress}
         disabled={!row.canLog}
         accessibilityRole="button"
@@ -65,13 +94,15 @@ export function HabitCard({ row, onPress, accessibilityLabel }: HabitCardProps) 
         ) : (
           <Plus size={24} strokeWidth={2.5} color="#fff" />
         )}
-      </Pressable>
+      </Pressable>}
     </Card>
   );
 }
 
 const styles = StyleSheet.create({
   // `.habit` — `display:flex; align-items:center; gap:var(--space-md); padding:var(--space-md)`.
+  moves: { gap: SPACE.xs },
+  move: { width: 44, height: 44, borderRadius: RADIUS.sm, alignItems: 'center', justifyContent: 'center' },
   card: { flexDirection: 'row', alignItems: 'center', gap: SPACE.md, padding: SPACE.md },
   icon: { width: 40, height: 40, borderRadius: RADIUS.md, alignItems: 'center', justifyContent: 'center' },
   iconText: { fontSize: 22, lineHeight: 28 },

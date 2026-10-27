@@ -75,6 +75,7 @@ type HabitRow = {
   floor_unit: string;
   target: number | null;
   cue: string | null;
+  method: string | null;
   identity: string | null;
   icon: string | null;
   lifecycle: Lifecycle;
@@ -197,7 +198,8 @@ function present<K extends string, V>(key: K, value: V | null): { [P in K]?: V }
 }
 
 /**
- * Writes name **every** column, including the ones that are absent. PostgREST merges
+ * Design writes name every design column, including the ones that are absent.
+ * `sort_order` is owned by `reorderHabits` and is never sent by a design upsert. PostgREST merges
  * duplicate-key upserts column by column, so a write that omitted `note` would leave
  * yesterday's note behind on an edit that cleared it — where `LocalRepository`'s
  * upsert replaces the whole object. Absent optionals therefore go out as explicit
@@ -219,6 +221,7 @@ function toHabitRow(habit: Habit): HabitRow {
     floor_unit: habit.floorUnit,
     target: habit.target ?? null,
     cue: habit.cue ?? null,
+    method: habit.method ?? null,
     identity: habit.identity ?? null,
     icon: habit.icon ?? null,
     lifecycle: habit.lifecycle,
@@ -247,6 +250,7 @@ function fromHabitRow(row: HabitRow): Habit {
     createdAt: isoUtc(row.created_at),
     ...present('target', row.target),
     ...present('cue', row.cue),
+    ...present('method', row.method),
     ...present('identity', row.identity),
     ...present('icon', row.icon),
     ...present('pauses', row.pauses.length === 0 ? null : row.pauses),
@@ -317,12 +321,12 @@ export class SupabaseRepository implements HabitRepository {
    * Ordered explicitly, and the order is **required** rather than decorative: it is
    * what makes `readAllPages` safe. Postgres is free to return an unordered relation
    * differently on each request, which across page boundaries duplicates some rows and
-   * loses others. `created_at ASC, id ASC` is also the closest stable stand-in for
-   * `LocalRepository`'s insertion order, which in practice is creation order.
+   * loses others. Saved display order comes first; unsorted new habits follow in
+   * `created_at ASC, id ASC` order.
    */
   async getHabits(): Promise<Habit[]> {
     const rows = await readAllPages<HabitRow>('getHabits', (offset, last) =>
-      this.client.from('habits').select('*').order('created_at').order('id').range(offset, last),
+      this.client.from('habits').select('*').order('sort_order', { nullsFirst: false }).order('created_at').order('id').range(offset, last),
     );
     return rows.map(fromHabitRow);
   }
@@ -337,6 +341,11 @@ export class SupabaseRepository implements HabitRepository {
   async upsertHabit(habit: Habit): Promise<void> {
     const { error } = await this.client.from('habits').upsert(toHabitRow(habit));
     raiseIfFailed('upsertHabit', error);
+  }
+
+  async reorderHabits(ids: string[]): Promise<void> {
+    const { error } = await this.client.rpc('reorder_habits', { habit_ids: ids });
+    raiseIfFailed('reorderHabits', error);
   }
 
   /**
